@@ -16,7 +16,7 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from .. import audit
@@ -40,6 +40,7 @@ from ..db.models import (
     SnapshotStatus,
 )
 from ..pki import CertificateAuthority, PkiError, fingerprint_pem, token_digest
+from ..scheduler import orphan_blobs_query, purge_plan
 from .deps import AppSettings, DbSession, client_ip
 
 router = APIRouter(prefix="/api/agent", tags=["agent protocol"])
@@ -340,6 +341,10 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
         )
         if prev is not None and params.get("backup_type") != BackupType.FULL.value:
             previous = PreviousSnapshot(snapshot_id=prev.id, token=prev.sync_token)
+    if job.kind is JobKind.PURGE and "blobs" not in params:
+        # Fixed at first claim (the agent is idle, so nothing deduplicates against them).
+        params.update(await purge_plan(db))
+        job.params = params
     await db.flush()
     await _audit(
         db,
@@ -619,6 +624,63 @@ async def restore_complete(
             "unsupported": body.unsupported,
             "failed": len(body.failed),
         },
+    )
+
+
+class PurgeResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    manifests_deleted: list[uuid.UUID] = Field(default_factory=list, max_length=100_000)
+    blobs_deleted: list[str] = Field(default_factory=list, max_length=100_000)
+    freed_bytes: int = Field(default=0, ge=0)
+
+
+@router.post("/jobs/{job_id}/purge-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def purge_complete(
+    job_id: uuid.UUID, body: PurgeResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Forget what the agent deleted from the repository."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.PURGE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a purge job")
+    planned_blobs = set(job.params.get("blobs", []))
+    planned_manifests = {m["snapshot"] for m in job.params.get("manifests", [])}
+    blobs = [b for b in body.blobs_deleted if b in planned_blobs]
+    manifests = [m for m in body.manifests_deleted if str(m) in planned_manifests]
+    now = datetime.now(UTC)
+    if manifests:
+        await db.execute(
+            update(Snapshot)
+            .where(Snapshot.id.in_(manifests), Snapshot.status == SnapshotStatus.EXPIRED)
+            .values(purged_at=now)
+        )
+    if blobs:
+        # Only rows that are still orphans: anything else would be a bug worth seeing.
+        orphans = set(
+            await db.scalars(orphan_blobs_query(len(blobs) + 1).where(Blob.id.in_(blobs)))
+        )
+        await db.execute(delete(Blob).where(Blob.id.in_(orphans)))
+        still_used = sorted(set(blobs) - orphans)
+    else:
+        still_used = []
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, now, None
+    job.progress = {
+        "manifests": len(manifests),
+        "blobs": len(blobs),
+        "freed_bytes": body.freed_bytes,
+    }
+    job.error = f"{len(still_used)} deleted blob(s) were referenced again" if still_used else None
+    await _audit(
+        db,
+        agent,
+        "purge.complete",
+        Outcome.FAILURE if still_used else Outcome.SUCCESS,
+        target_type="job",
+        target_id=str(job.id),
+        details={**job.progress, "still_used": still_used[:20]},
     )
 
 

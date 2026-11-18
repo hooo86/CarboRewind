@@ -131,6 +131,9 @@ class AgentApi:
     def complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/complete", payload)
 
+    def purge_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/purge-complete", payload)
+
     def restore_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/restore-complete", payload)
 

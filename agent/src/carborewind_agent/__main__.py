@@ -140,6 +140,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         carbonio,
         AccountBackup(carbonio, repo, throttle),
         AccountRestore(carbonio, repo, throttle),
+        repo,
     )
     signal.signal(signal.SIGTERM, lambda *_: worker.stop())
     worker.run_forever()

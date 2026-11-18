@@ -325,6 +325,10 @@ class Policy(Base):
     # e.g. {"daily": 14, "weekly": 8, "monthly": 12}
     retention: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
     enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # IANA zone the cron expression is evaluated in.
+    timezone: Mapped[str] = mapped_column(String(64), server_default=text("'UTC'"))
+    # Last schedule slot already turned into jobs (missed slots are caught up once).
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -418,12 +422,19 @@ class Snapshot(Base):
     new_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
     # Account attributes (COS, quota, aliases…) needed to recreate a deleted account.
     account_attrs: Mapped[dict[str, Any] | None]
+    # Set once the agent has deleted the manifest of an expired snapshot.
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
         UniqueConstraint("account_id", "seq", name="uq_snapshots_account_seq"),
         CheckConstraint("seq >= 1", name="seq_positive"),
         Index("ix_snapshots_account_taken", "account_id", "taken_at"),
+        Index(
+            "ix_snapshots_expired_unpurged",
+            "account_id",
+            postgresql_where=text("status = 'expired' AND purged_at IS NULL"),
+        ),
     )
 
 

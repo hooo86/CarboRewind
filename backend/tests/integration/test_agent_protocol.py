@@ -24,9 +24,12 @@ from carborewind_api.db.models import (
     AccountStatus,
     AuditEvent,
     AuthSource,
+    Blob,
     Domain,
     ItemVersion,
     Job,
+    JobKind,
+    JobStatus,
     Role,
     RoleAssignment,
     Snapshot,
@@ -811,3 +814,62 @@ def test_restore_request_validation_and_rbac(
     operator = _login_as(api, engine, Role.RESTORE_OPERATOR, domain_id)
     assert api.get(f"/api/accounts/{account_id}/snapshots/{s2}/items").status_code == 200
     assert post(ok, operator) == 202
+
+
+def test_purge_job_plan_and_result(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    email = f"purge@{uuid.uuid4().hex[:6]}.test"
+    account_id, (s1, s2) = _two_snapshots(api, admin, agent, engine, email)
+    # Retention expired the first snapshot and pruned the versions only it needed; their
+    # blobs (unique to this test: other tests share the "a"…"e" blobs) became orphans.
+    gone = [uuid.uuid4().hex * 2, uuid.uuid4().hex * 2]
+    with Session(engine) as s, s.begin():
+        s.execute(
+            update(Snapshot)
+            .where(Snapshot.id == uuid.UUID(s1))
+            .values(status=SnapshotStatus.EXPIRED)
+        )
+        s.add_all(Blob(id=b, size=100, stored_size=100) for b in gone)
+        s.execute(
+            update(Job)
+            .where(Job.kind == JobKind.PURGE, Job.status.in_(["queued", "running"]))
+            .values(status=JobStatus.FAILED, agent_id=None, lease_expires_at=None)
+        )
+        s.add(Job(kind=JobKind.PURGE, status=JobStatus.QUEUED, priority=0))
+    claimed = agent.post("/jobs/claim").json()
+    assert claimed["kind"] == "purge"
+    params = claimed["params"]
+    assert {"account": _carbonio(engine, account_id), "snapshot": s1} in params["manifests"]
+    assert set(gone) <= set(params["blobs"])
+    assert "d" * 64 not in params["blobs"]  # still referenced by snapshot 2
+    result = {
+        "manifests_deleted": [s1, str(uuid.uuid4())],  # unplanned ids are ignored
+        "blobs_deleted": [*gone, "d" * 64],
+        "freed_bytes": 200,
+    }
+    assert agent.post(f"/jobs/{claimed['job_id']}/purge-complete", result).status_code == 204
+    assert agent.post(f"/jobs/{claimed['job_id']}/purge-complete", result).status_code == 204
+    with Session(engine) as s:
+        assert s.get(Snapshot, uuid.UUID(s1)).purged_at is not None  # type: ignore[union-attr]
+        assert s.get(Snapshot, uuid.UUID(s2)).purged_at is None  # type: ignore[union-attr]
+        assert s.get(Blob, gone[0]) is None
+        assert s.get(Blob, "d" * 64) is not None
+        job = s.get(Job, uuid.UUID(claimed["job_id"]))
+        assert job is not None and job.status == "succeeded"
+        assert job.progress == {"manifests": 1, "blobs": 2, "freed_bytes": 200}
+    # A restore job cannot be completed as a purge.
+    api.post(
+        "/api/restores",
+        json={"account_id": str(account_id), "snapshot_id": s2, "dry_run": True},
+        headers=admin,
+    )
+    restore = agent.post("/jobs/claim").json()
+    assert agent.post(f"/jobs/{restore['job_id']}/purge-complete", result).status_code == 422
+
+
+def _carbonio(engine: Engine, account_id: uuid.UUID) -> str:
+    with Session(engine) as s:
+        value = s.scalar(select(Account.carbonio_id).where(Account.id == account_id))
+        assert value is not None
+        return value

@@ -1683,6 +1683,273 @@
         "title": "Page[UserOut]",
         "type": "object"
       },
+      "PolicyIn": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType",
+            "default": "incremental"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionIn"
+          },
+          "schedule": {
+            "description": "5-field cron expression",
+            "maxLength": 128,
+            "title": "Schedule",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "enum": [
+              "global",
+              "domain",
+              "account"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "UTC",
+            "description": "IANA time zone",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "schedule",
+          "target_type"
+        ],
+        "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyOut": {
+        "properties": {
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionIn"
+          },
+          "schedule": {
+            "title": "Schedule",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Name"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "target_type",
+          "target_id",
+          "target_name",
+          "backup_type",
+          "schedule",
+          "timezone",
+          "retention",
+          "priority",
+          "enabled",
+          "last_run_at",
+          "next_run_at",
+          "created_at"
+        ],
+        "title": "PolicyOut",
+        "type": "object"
+      },
+      "PolicyPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "retention": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetentionIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "PolicyPatch",
+        "type": "object"
+      },
       "PreviousSnapshot": {
         "properties": {
           "snapshot_id": {
@@ -1707,6 +1974,36 @@
           "token"
         ],
         "title": "PreviousSnapshot",
+        "type": "object"
+      },
+      "PurgeResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "blobs_deleted": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000,
+            "title": "Blobs Deleted",
+            "type": "array"
+          },
+          "freed_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Freed Bytes",
+            "type": "integer"
+          },
+          "manifests_deleted": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100000,
+            "title": "Manifests Deleted",
+            "type": "array"
+          }
+        },
+        "title": "PurgeResultIn",
         "type": "object"
       },
       "RestoreRequest": {
@@ -1853,6 +2150,41 @@
         "title": "RestoreResultIn",
         "type": "object"
       },
+      "RetentionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "daily": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Daily",
+            "type": "integer"
+          },
+          "last": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Last",
+            "type": "integer"
+          },
+          "monthly": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Monthly",
+            "type": "integer"
+          },
+          "weekly": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Weekly",
+            "type": "integer"
+          }
+        },
+        "title": "RetentionIn",
+        "type": "object"
+      },
       "Role": {
         "enum": [
           "super_admin",
@@ -1992,6 +2324,15 @@
           "expired"
         ],
         "title": "SnapshotStatus",
+        "type": "string"
+      },
+      "TargetType": {
+        "enum": [
+          "account",
+          "domain",
+          "global"
+        ],
+        "title": "TargetType",
         "type": "string"
       },
       "UserCreate": {
@@ -2821,6 +3162,53 @@
           }
         },
         "summary": "Heartbeat",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/purge-complete": {
+      "post": {
+        "description": "Forget what the agent deleted from the repository.",
+        "operationId": "purge_complete_api_agent_jobs__job_id__purge_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Purge Complete",
         "tags": [
           "agent protocol"
         ]
@@ -3757,6 +4145,157 @@
         "summary": "Get Job",
         "tags": [
           "backups"
+        ]
+      }
+    },
+    "/api/policies": {
+      "get": {
+        "operationId": "list_policies_api_policies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolicyOut"
+                  },
+                  "title": "Response List Policies Api Policies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Policies",
+        "tags": [
+          "policies"
+        ]
+      },
+      "post": {
+        "operationId": "create_policy_api_policies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Policy",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
+    "/api/policies/{policy_id}": {
+      "delete": {
+        "operationId": "delete_policy_api_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Policy",
+        "tags": [
+          "policies"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_api_policies__policy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Policy",
+        "tags": [
+          "policies"
         ]
       }
     },

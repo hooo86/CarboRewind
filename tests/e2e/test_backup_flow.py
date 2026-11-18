@@ -107,7 +107,7 @@ class Stack:
         self.repo = Repository.init(tmp / "repo", generate_key())
         self.engine = AccountBackup(client, self.repo, checkpoint_every=2)
         self.worker = Worker(AgentApi(agent_settings, http=proxied), client, self.engine,
-                             AccountRestore(client, self.repo), sleep=lambda _: True)
+                             AccountRestore(client, self.repo), self.repo, sleep=lambda _: True)
 
     def request_backup(self, engine: Engine, email: str) -> str:
         with Session(engine) as s:
@@ -262,3 +262,92 @@ def test_point_in_time_restore_of_deleted_mail(tmp_path: Path, engine: Engine) -
     with Session(engine) as s:
         actions = {e.action for e in s.scalars(select(AuditEvent))}
     assert {"restore.request", "restore.dry_run", "restore.complete"} <= actions
+
+
+def test_scheduled_backups_retention_and_purge(tmp_path: Path, engine: Engine) -> None:
+    """A policy drives backups; retention expires old snapshots; the agent frees space."""
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from carborewind_api.db.models import Blob, Job, Policy
+    from carborewind_api.db.session import make_engine
+    from carborewind_api.scheduler import tick
+
+    def run_tick(now: datetime) -> None:
+        async def go() -> None:
+            eng = make_engine(str(DB_URL))
+            try:
+                async with async_sessionmaker(eng)() as db, db.begin():
+                    await tick(db, now)
+            finally:
+                await eng.dispose()
+
+        asyncio.run(go())
+
+    stack = Stack(tmp_path, engine)
+    box = stack.carbonio.add_mailbox(f"yann@{uuid.uuid4().hex[:6]}.test")
+    for n in range(3):
+        box.add("m", 2, eml(f"Message {n}"))
+    stack.worker.sync_inventory()
+    with Session(engine) as s:
+        account_id = s.scalar(select(Account.id).where(Account.email == box.name))
+    r = stack.api.post(
+        "/api/policies",
+        json={
+            "name": f"nightly-{uuid.uuid4().hex[:6]}",
+            "target_type": "account",
+            "target_id": str(account_id),
+            "schedule": "0 1 * * *",
+            "timezone": "Africa/Algiers",
+            "retention": {"last": 2},
+        },
+        headers=stack.csrf,
+    )
+    assert r.status_code == 201, r.text
+    policy_id = r.json()["id"]
+    # Three nights; mail changes every day.
+    night = datetime(2026, 11, 18, 0, 5, tzinfo=UTC)
+    with Session(engine) as s, s.begin():
+        s.execute(
+            update(Policy)
+            .where(Policy.id == uuid.UUID(policy_id))
+            .values(last_run_at=night - timedelta(days=1))
+        )
+    for day in range(3):
+        now = night + timedelta(days=day)
+        run_tick(now)
+        assert stack.worker.run_once()  # the scheduled backup
+        while stack.worker.run_once():  # a purge job, when retention released something
+            pass
+        oldest = min(box.items)
+        box.delete(oldest)
+        box.add("m", 2, eml(f"Jour {day}"))
+    # The next hourly pass (midday, no backup due) applies retention to the last night.
+    run_tick(night + timedelta(days=2, hours=12))
+    assert stack.worker.run_once()  # purge
+    assert not stack.worker.run_once()
+    with Session(engine) as s:
+        snaps = s.scalars(
+            select(Snapshot).where(Snapshot.account_id == account_id).order_by(Snapshot.seq)
+        ).all()
+        assert [(x.seq, x.status) for x in snaps] == [
+            (1, "expired"),
+            (2, "complete"),
+            (3, "complete"),
+        ]
+        assert snaps[0].purged_at is not None
+        jobs = s.scalars(select(Job).where(Job.policy_id == uuid.UUID(policy_id))).all()
+        assert len(jobs) == 3 and all(j.status == "succeeded" for j in jobs)
+        known_blobs = set(s.scalars(select(Blob.id)))
+    # The repository holds exactly the blobs the catalogue knows about for this account's
+    # remaining snapshots, and the expired manifest is gone.
+    with pytest.raises(Exception, match="not found"):
+        stack.repo.get_manifest(box.id, str(snaps[0].id))
+    for snap in snaps[1:]:
+        for entry in stack.repo.get_manifest(box.id, str(snap.id))["items"].values():
+            assert stack.repo.get(entry["blob"])
+            assert entry["blob"] in known_blobs
+    assert stack.repo.verify().ok

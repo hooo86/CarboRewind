@@ -10,6 +10,8 @@ from typing import Any
 from .api_client import AgentApi, ApiError
 from .backup import AccountBackup
 from .carbonio import CarbonioClient, SoapFaultError
+from .purge import run_purge
+from .repository import Repository
 from .restore import AccountRestore, RestoreError
 
 log = logging.getLogger(__name__)
@@ -25,6 +27,7 @@ class Worker:
         carbonio: CarbonioClient,
         engine: AccountBackup,
         restore: AccountRestore | None = None,
+        repo: Repository | None = None,
         *,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
@@ -34,6 +37,7 @@ class Worker:
         self._carbonio = carbonio
         self._engine = engine
         self._restore = restore
+        self._repo = repo
         self._poll = poll_seconds
         self._inventory_every = inventory_every
         self._stop = threading.Event()
@@ -84,6 +88,8 @@ class Worker:
             runner = self._run_backup
         elif job["kind"] == "restore" and self._restore is not None:
             runner = self._run_restore
+        elif job["kind"] == "purge" and self._repo is not None:
+            runner = self._run_purge
         else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
@@ -141,6 +147,18 @@ class Worker:
             result.item_count,
             result.new_bytes,
             f", {len(result.errors)} item error(s)" if result.errors else "",
+        )
+
+    def _run_purge(self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]) -> None:
+        assert self._repo is not None  # noqa: S101 - checked by the caller
+        result = run_purge(self._repo, job["params"])
+        self._api.purge_complete(job["job_id"], result.to_payload())
+        log.info(
+            "job %s done: purge, %s manifest(s) and %s blob(s) deleted, %s bytes freed",
+            job["job_id"],
+            len(result.manifests_deleted),
+            len(result.blobs_deleted),
+            result.freed_bytes,
         )
 
     def _run_restore(

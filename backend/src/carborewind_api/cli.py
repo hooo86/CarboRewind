@@ -230,6 +230,37 @@ async def backup_request(email: str, full: bool) -> str:
         await engine.dispose()
 
 
+async def run_scheduler(interval: float, once: bool) -> int:
+    import logging
+    import signal
+
+    from .logging import configure_logging
+    from .scheduler import run_forever, tick
+
+    configure_logging(get_settings().log_level)
+    engine, factory = _sessionmaker()
+    try:
+        if once:
+            async with factory() as db, db.begin():
+                report = await tick(db, datetime.now(UTC))
+            print(
+                f"{report.jobs_queued} job(s) queued, {report.snapshots_expired} snapshot(s) "
+                f"expired, purge job: {report.purge_job or '-'}"
+            )
+            for error in report.errors:
+                print(f"error: {error}", file=sys.stderr)
+            return 1 if report.errors else 0
+        stop = asyncio.Event()  # pragma: no cover - long-running service
+        loop = asyncio.get_running_loop()  # pragma: no cover
+        for sig in (signal.SIGTERM, signal.SIGINT):  # pragma: no cover
+            loop.add_signal_handler(sig, stop.set)
+        logging.getLogger(__name__).info("scheduler started")  # pragma: no cover
+        await run_forever(factory, interval=interval, stop=stop)  # pragma: no cover
+        return 0  # pragma: no cover
+    finally:
+        await engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-api")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -238,6 +269,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     create.add_argument("--role", choices=[r.value for r in Role], default=Role.SUPER_ADMIN.value)
     passwd = sub.add_parser("set-password", help="reset a local user's password (also unlocks it)")
     passwd.add_argument("username")
+    sched = sub.add_parser(
+        "scheduler", help="run the scheduler (policies, retention, purge) until stopped"
+    )
+    sched.add_argument("--interval", type=float, default=60.0, help="seconds between ticks")
+    sched.add_argument("--once", action="store_true", help="run a single tick and exit")
     sub.add_parser("audit-verify", help="recompute the audit hash chain (exit 1 if broken)")
     sub.add_parser("pki-init", help="create the agents' certificate authority")
     agent = sub.add_parser("agent-create", help="register an agent, print its enrolment token")
@@ -257,6 +293,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "backup":
         print(f"backup job {asyncio.run(backup_request(args.email, args.full))} queued")
         return 0
+    if args.command == "scheduler":
+        return asyncio.run(run_scheduler(args.interval, args.once))
     if args.command == "audit-verify":
         return asyncio.run(audit_verify())
     if args.command == "pki-init":

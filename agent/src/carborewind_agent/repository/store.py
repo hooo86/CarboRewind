@@ -186,10 +186,15 @@ class Repository:
             raise IntegrityError(f"blob {blob_id}: content does not match its id")
         return data
 
-    def delete(self, blob_id: str) -> None:
-        """Remove a blob (garbage collection, under the exclusive lock)."""
-        with contextlib.suppress(FileNotFoundError):
-            self._blob_path(blob_id).unlink()
+    def delete(self, blob_id: str) -> int:
+        """Remove a blob (garbage collection, under the exclusive lock); bytes freed."""
+        path = self._blob_path(blob_id)
+        try:
+            size = path.stat().st_size
+            path.unlink()
+        except FileNotFoundError:
+            return 0
+        return size
 
     def blob_ids(self) -> Iterator[str]:
         for prefix in sorted((self.root / "blobs").iterdir()):

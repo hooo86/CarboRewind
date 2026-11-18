@@ -315,4 +315,16 @@ ALTER TABLE agents ADD CONSTRAINT uq_agents_enrollment_token_hash UNIQUE (enroll
 
 UPDATE alembic_version SET version_num='0003' WHERE alembic_version.version_num = '0002';
 
+-- Running upgrade 0003 -> 0004
+
+ALTER TABLE policies ADD COLUMN timezone VARCHAR(64) DEFAULT 'UTC' NOT NULL;
+
+ALTER TABLE policies ADD COLUMN last_run_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE snapshots ADD COLUMN purged_at TIMESTAMP WITH TIME ZONE;
+
+CREATE INDEX ix_snapshots_expired_unpurged ON snapshots (account_id) WHERE status = 'expired' AND purged_at IS NULL;
+
+UPDATE alembic_version SET version_num='0004' WHERE alembic_version.version_num = '0003';
+
 COMMIT;
