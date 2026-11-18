@@ -2,16 +2,30 @@
 # Build carborewind-agent_<version>_amd64.deb with a self-contained Python runtime.
 #
 # Usage: deploy/packaging/agent/build-deb.sh [output-dir]
-#   PYTHON_DIR  path to a relocatable CPython (python-build-standalone), e.g. obtained with
-#               `uv python install 3.12 --install-dir …`. Built for glibc 2.17+, so the
-#               package runs on Ubuntu 20.04+/Debian 11+/RHEL 8+ (via alien/rpm, untested).
+#   PYTHON_DIR  path to a relocatable CPython (python-build-standalone). Built for glibc 2.17+,
+#               so the package runs on Ubuntu 20.04+/Debian 11+/RHEL 8+ (via alien/rpm,
+#               untested). When unset, it is fetched with `uv` (https://docs.astral.sh/uv/)
+#               into ~/.cache/carborewind/python.
 #   VERSION     package version (default: 0.1.0~dev<commit date>+<git sha>)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OUT="${1:-$ROOT/dist}"
-: "${PYTHON_DIR:?set PYTHON_DIR to a python-build-standalone installation}"
+if [ -z "${PYTHON_DIR:-}" ]; then
+    UV="$(command -v uv || true)"
+    [ -n "$UV" ] || [ ! -x "$HOME/.local/bin/uv" ] || UV="$HOME/.local/bin/uv"
+    if [ -z "$UV" ]; then
+        echo "error: set PYTHON_DIR, or install uv first:" >&2
+        echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+        exit 1
+    fi
+    CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/carborewind/python"
+    echo "==> fetching a relocatable Python 3.12 with uv into $CACHE"
+    "$UV" python install 3.12 --install-dir "$CACHE" >/dev/null
+    PYTHON_DIR="$(find "$CACHE" -maxdepth 1 -name "cpython-3.12.*-linux-x86_64-gnu" | sort -V | tail -1)"
+fi
+[ -x "$PYTHON_DIR/bin/python3" ] || { echo "error: no bin/python3 in $PYTHON_DIR" >&2; exit 1; }
 # Dev versions sort by commit date (Debian ordering), then name the commit.
 VERSION="${VERSION:-0.1.0~dev$(git -C "$ROOT" log -1 --format=%cd --date=format:%Y%m%d%H%M)+$(git -C "$ROOT" rev-parse --short HEAD)}"
 PREFIX=/opt/carborewind-agent
