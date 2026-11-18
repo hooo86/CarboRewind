@@ -8,6 +8,8 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MigrationBatchPage } from "./pages/MigrationBatchPage";
+import { MigrationsPage } from "./pages/MigrationsPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { RestorePage } from "./pages/RestorePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -30,6 +32,8 @@ export function AppRoutes() {
         <Route path="jobs" element={<JobsPage />} />
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="migrations" element={<MigrationsPage />} />
+        <Route path="migrations/:id" element={<MigrationBatchPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

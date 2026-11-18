@@ -81,6 +81,16 @@ Les autres routes `/api/agent/*` exigent `X-Client-Verify: SUCCESS`.
 | `complete` reçu deux fois | idempotent : la réponse a pu être perdue, aucun doublon n'est créé |
 | `complete` | dans **une seule transaction** : snapshot, blobs, fermeture des versions remplacées ou supprimées, ouverture des nouvelles, dossiers, job `succeeded`, audit `backup.complete` |
 
+### Jobs `migrate` (migration IMAP)
+
+| Étape | Comportement |
+|---|---|
+| `claim` | la réponse contient `migration` : `imap` (hôte, port, TLS, identifiants **déchiffrés à cet instant**), `options`, `state` (état incrémental), `dry_run`. Les identifiants ne sont jamais écrits dans le job. Mot de passe absent ou indéchiffrable : job `failed` sans être transmis. |
+| `heartbeat` | `progress` (dossier, dossiers faits, messages copiés) ; `409` si le lot a été arrêté → l'agent s'arrête au message suivant |
+| `migrate-complete` | `{dry_run, cancelled, copied, duplicates, bytes, failed, failed_count, folders[], state}` ; accepté aussi sur un job annulé pour conserver l'état ; idempotent |
+
+Voir [migrations.md](migrations.md).
+
 ## Commandes
 
 ```bash

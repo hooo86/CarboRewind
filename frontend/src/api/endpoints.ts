@@ -9,8 +9,16 @@ import type {
   Dashboard,
   Domain,
   Health,
+  ImportReport,
   Job,
   JobStatus,
+  MigrationBatch,
+  MigrationBatchDetail,
+  MigrationMailbox,
+  MigrationOptions,
+  MigrationRowInput,
+  MigrationSource,
+  MigrationSourceInput,
   NotificationSettings,
   NotificationSettingsInput,
   OutboxEntry,
@@ -22,6 +30,7 @@ import type {
   Snapshot,
   SnapshotFolder,
   SnapshotItem,
+  StartResult,
   User,
 } from "./types";
 
@@ -117,6 +126,76 @@ export const api = {
     ),
   notificationOutbox: () =>
     request<OutboxEntry[]>("GET", "/api/settings/notifications/outbox"),
+  migrationSources: () =>
+    request<MigrationSource[]>("GET", "/api/migrations/sources"),
+  createMigrationSource: (body: MigrationSourceInput) =>
+    request<MigrationSource>("POST", "/api/migrations/sources", body),
+  updateMigrationSource: (id: string, body: MigrationSourceInput) =>
+    request<MigrationSource>("PUT", `/api/migrations/sources/${id}`, body),
+  deleteMigrationSource: (id: string) =>
+    request<undefined>("DELETE", `/api/migrations/sources/${id}`),
+  migrationBatches: () =>
+    request<MigrationBatch[]>("GET", "/api/migrations/batches"),
+  migrationBatch: (id: string) =>
+    request<MigrationBatchDetail>("GET", `/api/migrations/batches/${id}`),
+  saveMigrationBatch: (
+    id: string | null,
+    body: { name: string; source_id: string; options: MigrationOptions },
+  ) =>
+    id
+      ? request<MigrationBatch>("PUT", `/api/migrations/batches/${id}`, body)
+      : request<MigrationBatch>("POST", "/api/migrations/batches", body),
+  deleteMigrationBatch: (id: string) =>
+    request<undefined>("DELETE", `/api/migrations/batches/${id}`),
+  importMigrationFile: (id: string, file: Blob, targetDomain?: string) =>
+    request<ImportReport>(
+      "POST",
+      `/api/migrations/batches/${id}/import`,
+      file,
+      { target_domain: targetDomain },
+    ),
+  addMigrationMailboxes: (
+    id: string,
+    rows: MigrationRowInput[],
+    targetDomain?: string,
+  ) =>
+    request<ImportReport>("POST", `/api/migrations/batches/${id}/mailboxes`, {
+      rows,
+      target_domain: targetDomain || null,
+    }),
+  rematchMigration: (id: string, targetDomain?: string, all = false) =>
+    request<ImportReport>("POST", `/api/migrations/batches/${id}/match`, {
+      target_domain: targetDomain || null,
+      all,
+    }),
+  updateMigrationMailbox: (
+    id: string,
+    body: {
+      target_email?: string | null;
+      clear_target?: boolean;
+      source_login?: string | null;
+      password?: string | null;
+      root?: string | null;
+    },
+  ) =>
+    request<MigrationMailbox>("PATCH", `/api/migrations/mailboxes/${id}`, body),
+  deleteMigrationMailbox: (id: string) =>
+    request<undefined>("DELETE", `/api/migrations/mailboxes/${id}`),
+  startMigration: (id: string, mailboxIds: string[] | null, dryRun: boolean) =>
+    request<StartResult>("POST", `/api/migrations/batches/${id}/start`, {
+      mailbox_ids: mailboxIds,
+      dry_run: dryRun,
+    }),
+  cancelMigration: (id: string) =>
+    request<{ cancelled: number }>(
+      "POST",
+      `/api/migrations/batches/${id}/cancel`,
+    ),
+  forgetMigrationPasswords: (id: string) =>
+    request<undefined>(
+      "POST",
+      `/api/migrations/batches/${id}/forget-passwords`,
+    ),
   startBackup: (accountId: string, backupType: BackupType) =>
     request<Job>("POST", "/api/backups", {
       account_id: accountId,

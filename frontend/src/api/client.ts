@@ -50,7 +50,12 @@ export async function request<T>(
       url.searchParams.set(key, String(value));
   }
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // A Blob (file upload) is sent as is; anything else as JSON.
+  const raw = typeof Blob !== "undefined" && body instanceof Blob;
+  if (body !== undefined)
+    headers["Content-Type"] = raw
+      ? "application/octet-stream"
+      : "application/json";
   if (UNSAFE.has(method)) {
     const token = csrfToken ?? readCookie(CSRF_COOKIE);
     if (token) headers["X-CSRF-Token"] = token;
@@ -59,7 +64,12 @@ export async function request<T>(
     method,
     headers,
     credentials: "same-origin",
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body:
+      body === undefined
+        ? undefined
+        : raw
+          ? (body as Blob)
+          : JSON.stringify(body),
   });
   if (response.status === 401) {
     unauthorizedListeners.forEach((listener) => listener());

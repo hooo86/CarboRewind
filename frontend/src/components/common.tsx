@@ -100,6 +100,7 @@ const TONE: Record<string, string> = {
   deleted: "bad",
   disabled: "muted",
   enabled: "ok",
+  new: "muted",
 };
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {

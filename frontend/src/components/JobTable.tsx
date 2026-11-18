@@ -41,6 +41,10 @@ function kindLabel(job: Job, t: TFunction): string {
     if (job.dry_run) label += ` · ${t("restore.simulation")}`;
     if (job.snapshot_seq) label += ` · #${job.snapshot_seq}`;
   }
+  if (job.kind === "migrate") {
+    if (job.dry_run) label += ` · ${t("migrations.test")}`;
+    if (job.source_email) label += ` · ${job.source_email}`;
+  }
   return label;
 }
 
@@ -103,6 +107,19 @@ export function JobTable({
                   <>
                     <br />
                     <RestoreSummaryText job={job} />
+                  </>
+                )}
+                {job.kind === "migrate" && job.progress && (
+                  <>
+                    <br />
+                    <span className="summary">
+                      {t("migrations.jobSummary", {
+                        copied: Number(job.progress.copied ?? 0),
+                        failed: Number(
+                          job.progress.failed_count ?? job.progress.failed ?? 0,
+                        ),
+                      })}
+                    </span>
                   </>
                 )}
                 {job.kind === "purge" &&

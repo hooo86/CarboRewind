@@ -25,6 +25,8 @@ interface AuthState {
   canManagePolicies: (domainId: string | null) => boolean;
   /** Global settings (notifications): super-admins only. */
   canManageSettings: boolean;
+  /** Mailbox migrations: global super administrators only (migrations:manage). */
+  canManageMigrations: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -99,10 +101,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canManageSettings = (user?.roles ?? []).some(
     (r) => r.role === "super_admin",
   );
+  const canManageMigrations = canManageSettings;
 
   const value = useMemo(
     () => ({
       canManageSettings,
+      canManageMigrations,
       user,
       loading,
       login,
@@ -120,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canRestore,
       canManagePolicies,
       canManageSettings,
+      canManageMigrations,
     ],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

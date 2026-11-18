@@ -287,3 +287,115 @@ export interface StorageReport {
   error?: string | null;
   reported_at: string;
 }
+
+// ------------------------------------------------------------------ migrations
+
+export type ImapSecurity = "ssl" | "starttls" | "none";
+export type MigrationAuth = "password" | "master_plain" | "master_login";
+
+export interface MigrationSource {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  security: ImapSecurity;
+  verify_tls: boolean;
+  auth_mode: MigrationAuth;
+  master_username: string | null;
+  master_password_set: boolean;
+  master_separator: string;
+  batches: number;
+}
+
+export interface MigrationSourceInput {
+  name: string;
+  host: string;
+  port: number;
+  security: ImapSecurity;
+  verify_tls: boolean;
+  auth_mode: MigrationAuth;
+  master_username?: string | null;
+  master_password?: string | null;
+  master_separator?: string;
+}
+
+export interface MigrationOptions {
+  root?: string | null;
+  exclude_folders?: string[];
+  since?: string | null;
+  before?: string | null;
+}
+
+export interface MigrationBatch {
+  id: string;
+  name: string;
+  source_id: string;
+  source_name: string;
+  auth_mode: MigrationAuth;
+  options: MigrationOptions;
+  created_at: string;
+  counts: Record<string, number>;
+}
+
+export type MigrationStatus =
+  | "new"
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface MigrationStats {
+  copied?: number;
+  duplicates?: number;
+  failed?: number;
+  bytes?: number;
+  total_copied?: number;
+  total_bytes?: number;
+  cancelled?: boolean;
+  finished_at?: string;
+  plan?: { messages: number; total: number; folders: number; at: string };
+}
+
+export interface MigrationMailbox {
+  id: string;
+  source_email: string;
+  source_login: string | null;
+  password_set: boolean;
+  target_account_id: string | null;
+  target_email: string | null;
+  target_status: string | null;
+  match: "exact" | "alias" | "local_part" | "manual" | null;
+  root: string | null;
+  status: MigrationStatus;
+  dry_run: boolean | null;
+  progress: Record<string, unknown> | null;
+  stats: MigrationStats | null;
+  error: string | null;
+  last_run_at: string | null;
+}
+
+export interface MigrationBatchDetail extends MigrationBatch {
+  mailboxes: MigrationMailbox[];
+}
+
+export interface MigrationRowInput {
+  source_email: string;
+  source_login?: string | null;
+  password?: string | null;
+  target_email?: string | null;
+  root?: string | null;
+}
+
+export interface ImportReport {
+  added: number;
+  updated: number;
+  matched: number;
+  unmatched: { line: number; source: string; candidates: string[] }[];
+  errors: { line: number; message: string }[];
+}
+
+export interface StartResult {
+  queued: number;
+  skipped: { id: string; source: string; reason: string }[];
+}

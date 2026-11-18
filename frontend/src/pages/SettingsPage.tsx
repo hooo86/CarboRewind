@@ -19,6 +19,7 @@ const EVENTS = [
   "restore_failed",
   "agent_offline",
   "daily_digest",
+  "migration_done",
 ];
 
 type Form = Omit<

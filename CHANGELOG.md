@@ -6,6 +6,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Migrations IMAP vers Carbonio : serveurs sources (TLS vérifié, mot de passe par boîte ou compte
+  maître), lots avec options (dossier racine, exclusions, dates), import Excel/CSV ou saisie manuelle,
+  association automatique (même adresse, alias, même nom avant le @ dans le domaine choisi), test de
+  connexion, copie incrémentale reprenable sans doublon (UIDVALIDITY/UID, Message-ID), arrêt, oubli des
+  mots de passe, notification de fin de lot. Écran **Migrations**, permission `migrations:manage`,
+  migration 0007. Voir `docs/migrations.md`.
 - Liste des comptes : détails Carbonio (nom, prénom, alias, classe de service, quota, espace utilisé, admin,
   dernière connexion, création) et de sauvegarde ; choix des colonnes ; filtres à la Odoo (prédéfinis et
   personnalisés sur tous les champs) ; tri ; sélection multiple → sauvegarde groupée ou politique sur la
