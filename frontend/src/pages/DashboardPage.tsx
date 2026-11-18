@@ -1,10 +1,19 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../api/endpoints";
-import type { Dashboard, Job, Page, Policy } from "../api/types";
+import type {
+  BackupType,
+  Dashboard,
+  Domain,
+  Job,
+  Page,
+  Policy,
+} from "../api/types";
+import { useAuth } from "../auth/AuthContext";
 import { JobTable } from "../components/JobTable";
-import { LoadView, useLoad } from "../components/common";
+import { LoadView, errorMessage, useLoad } from "../components/common";
 import { formatBytes, formatRelative } from "../utils/format";
 
 function Tile({
@@ -21,6 +30,98 @@ function Tile({
       <span className="tile-value">{value}</span>
       <span className="tile-label">{label}</span>
     </div>
+  );
+}
+
+function ManualBackup({ onQueued }: { onQueued: () => void }) {
+  const { t } = useTranslation();
+  const { canRunBackup } = useAuth();
+  const [domains] = useLoad<Page<Domain>>(() => api.domains(), []);
+  const [type, setType] = useState<BackupType>("incremental");
+  const [domain, setDomain] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
+  const allowed =
+    domains.state === "ready"
+      ? domains.data.items.filter((d) => canRunBackup(d.id))
+      : [];
+  if (allowed.length === 0) return null;
+
+  async function run() {
+    const scope = domain
+      ? (allowed.find((d) => d.id === domain)?.name ?? "")
+      : t("manual.allDomains");
+    if (
+      !window.confirm(
+        t("manual.confirm", { scope, type: t(`backupType.${type}`) }),
+      )
+    )
+      return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await api.backupAll(type, domain || undefined);
+      setNotice({
+        ok: true,
+        text: t("manual.queued", { count: r.queued, busy: r.skipped_busy }),
+      });
+      onQueued();
+    } catch (err) {
+      setNotice({
+        ok: false,
+        text: t("error", { message: errorMessage(err) }),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card stack" aria-labelledby="manual-title">
+      <h2 id="manual-title">{t("manual.title")}</h2>
+      <p className="muted">{t("manual.help")}</p>
+      <div className="row">
+        <label>
+          {t("manual.scope")}
+          <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+            <option value="">{t("manual.allDomains")}</option>
+            {allowed.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t("manual.type")}
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as BackupType)}
+          >
+            <option value="incremental">{t("backupType.incremental")}</option>
+            <option value="full">{t("backupType.full")}</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          className="align-end"
+          disabled={busy}
+          onClick={() => void run()}
+        >
+          {t("manual.run")}
+        </button>
+      </div>
+      {notice && (
+        <p
+          role={notice.ok ? "status" : "alert"}
+          className={`alert ${notice.ok ? "ok" : "error"}`}
+        >
+          {notice.text}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -126,12 +227,28 @@ export function DashboardPage() {
                         free: formatBytes(st.free_bytes ?? 0),
                         total: formatBytes(st.total_bytes ?? 0),
                       })}
+                  {st.replica && (
+                    <>
+                      {" · "}
+                      {t("dashboard.replica", {
+                        where: st.replica.source ?? st.replica.path,
+                      })}{" "}
+                      {st.replica.error
+                        ? t("dashboard.storageUnreachable")
+                        : st.replica.total_bytes != null &&
+                          t("dashboard.storageFree", {
+                            free: formatBytes(st.replica.free_bytes ?? 0),
+                            total: formatBytes(st.replica.total_bytes),
+                          })}
+                    </>
+                  )}
                 </p>
               );
             })}
           </>
         )}
       </LoadView>
+      <ManualBackup onQueued={reloadJobs} />
       <h2>{t("dashboard.recentJobs")}</h2>
       <LoadView load={jobs} reload={reloadJobs}>
         {(page) => <JobTable jobs={page.items.slice(0, 10)} />}

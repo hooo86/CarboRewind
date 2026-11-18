@@ -31,6 +31,8 @@ import type {
   SnapshotFolder,
   SnapshotItem,
   StartResult,
+  StorageSettings,
+  StorageSettingsInput,
   User,
 } from "./types";
 
@@ -196,6 +198,19 @@ export const api = {
       "POST",
       `/api/migrations/batches/${id}/forget-passwords`,
     ),
+  storageSettings: () =>
+    request<StorageSettings>("GET", "/api/settings/storage"),
+  saveStorageSettings: (body: StorageSettingsInput) =>
+    request<StorageSettings>("PUT", "/api/settings/storage", body),
+  replicateNow: () =>
+    request<{ job_id: string }>("POST", "/api/settings/storage/replicate"),
+  backupAll: (backupType: BackupType, domainId?: string) =>
+    request<BulkBackupResult>("POST", "/api/backups/all", {
+      backup_type: backupType,
+      domain_id: domainId || null,
+    }),
+  runPolicy: (id: string) =>
+    request<BulkBackupResult>("POST", `/api/policies/${id}/run`, {}),
   startBackup: (accountId: string, backupType: BackupType) =>
     request<Job>("POST", "/api/backups", {
       account_id: accountId,

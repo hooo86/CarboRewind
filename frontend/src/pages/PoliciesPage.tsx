@@ -478,6 +478,7 @@ export function PoliciesPage() {
     incoming?.accountIds?.length ? "new" : null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const domainList = domains.state === "ready" ? domains.data.items : [];
   const canCreate =
     domains.state === "ready" &&
@@ -507,6 +508,24 @@ export function PoliciesPage() {
     }
   }
 
+  async function runNow(p: Policy) {
+    if (!window.confirm(t("policies.confirmRun", { name: p.name }))) return;
+    setError(null);
+    setInfo(null);
+    try {
+      const r = await api.runPolicy(p.id);
+      setInfo(
+        t("policies.runQueued", {
+          name: p.name,
+          count: r.queued,
+          busy: r.skipped_busy,
+        }),
+      );
+    } catch (err) {
+      setError(t("error", { message: errorMessage(err) }));
+    }
+  }
+
   async function toggle(p: Policy) {
     try {
       await api.updatePolicy(p.id, { enabled: !p.enabled });
@@ -530,6 +549,11 @@ export function PoliciesPage() {
       {error && (
         <p role="alert" className="alert error">
           {error}
+        </p>
+      )}
+      {info && (
+        <p role="status" className="alert ok">
+          {info}
         </p>
       )}
       {editing !== null && (
@@ -606,6 +630,16 @@ export function PoliciesPage() {
                       <td>
                         {owns(p, domainList) && (
                           <span className="actions wrap-actions">
+                            <button
+                              type="button"
+                              className="small"
+                              aria-label={t("policies.runTitle", {
+                                name: p.name,
+                              })}
+                              onClick={() => void runNow(p)}
+                            >
+                              {t("policies.run")}
+                            </button>
                             <button
                               type="button"
                               className="small secondary"

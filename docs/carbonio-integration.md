@@ -46,6 +46,8 @@ passer les 🔎 en ✅.
 | Restauration de dossier | `CreateFolderRequest` (`l`, `name`, `view`, `fie=1` : idempotent) | 443 | ✅ (restauration réussie sur un serveur CE de production) |
 | Restauration de mail | `AddMsgRequest` (`m {l, f, tn, d, content}`). Contenu 8 bits : envoi préalable à `/service/upload?fmt=raw`, puis `aid` | 443 | ✅ `AddMsgRequest` ; 🔎 réponse du servlet d'upload `200,'null','<aid>'` (mails non UTF-8) |
 | Doublons d'une migration IMAP | `SearchRequest` (`query: inid:<dossier> msgid:"<id>"`, `limit 1`) → `m[]` non vide | 443 | 🔎 opérateur `msgid:` |
+| Quota hérité | `GetAllCosRequest` → attribut `zimbraMailQuota` de la classe de service ; `GetQuotaUsageRequest` → `limit` effectif | admin 7071 | 🔎 `limit` |
+| Taille d'une boîte | `GetMailboxRequest` (`mbox id`) → `mbox[0].s` (octets) | admin 7071 | 🔎 |
 | Import contacts et agendas | REST `POST /home/<compte>/<dossier>?fmt=ics|vcf&resolve=skip` | 443 | ✅ (forum Zextras : `postRestURL "/?fmt=tgz&resolve=skip"`) ; 🔎 contenu renvoyé par `?id=` pour un rendez-vous (iCalendar attendu) |
 | Fichiers (Files / `doc`) | non restaurables par ce chemin en CE : signalés « non pris en charge » | — | limite connue |
 | Export complet de contrôle | REST `GET /home/<compte>/?fmt=tgz` | 443 | ✅ |

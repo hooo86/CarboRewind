@@ -11,6 +11,7 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
+import { StorageSettingsSection } from "../components/StorageSettingsForm";
 import { formatDate } from "../utils/format";
 
 const EVENTS = [
@@ -423,6 +424,7 @@ export function SettingsPage() {
         )}
       </LoadView>
       <Outbox refresh={refresh} />
+      <StorageSettingsSection />
     </>
   );
 }

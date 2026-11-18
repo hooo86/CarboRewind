@@ -91,6 +91,16 @@ Les autres routes `/api/agent/*` exigent `X-Client-Verify: SUCCESS`.
 
 Voir [migrations.md](migrations.md).
 
+### Stockage et copie 2
+
+| Appel | Rôle |
+|---|---|
+| `GET /storage` | paramètres de stockage (mots de passe des partages déchiffrés, mTLS) ; `204` si jamais configurés |
+| `POST /storage-status` | emplacement du dépôt et de la copie 2, résultat de la dernière application (audité ; échec notifié) |
+| `replicate` (job) → `replicate-complete` | `{files, copied, copied_bytes, deleted, errors, error_count}` |
+
+Voir [storage.md](storage.md).
+
 ## Commandes
 
 ```bash

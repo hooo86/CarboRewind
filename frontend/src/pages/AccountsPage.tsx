@@ -169,6 +169,34 @@ export const COLUMNS: Column[] = [
   },
 ];
 
+/** Carbonio profile fields (sent by the agent, filterable and sortable). */
+export const PROFILE_FIELDS = [
+  "title",
+  "company",
+  "department",
+  "phone",
+  "mobile",
+  "home_phone",
+  "street",
+  "postal_code",
+  "city",
+  "state",
+  "country",
+  "description",
+  "notes",
+  "employee_number",
+];
+
+COLUMNS.push(
+  ...PROFILE_FIELDS.map(
+    (field): Column => ({
+      key: field,
+      sort: field,
+      render: (a) => a.profile?.[field] ?? dash,
+    }),
+  ),
+);
+
 const DEFAULT_COLUMNS = [
   "email",
   "display_name",
@@ -639,7 +667,7 @@ export function AccountsPage() {
             </div>
           )}
         </Dropdown>
-        <Dropdown label={t("columns.title")}>
+        <Dropdown label={t("columns.picker")}>
           {() => (
             <ul className="menu columns-menu">
               {COLUMNS.map((c) => (

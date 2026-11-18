@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
-import type { NotificationSettings } from "../api/types";
+import type { NotificationSettings, StorageSettings } from "../api/types";
 import i18n from "../i18n";
 import { fakeApi, user } from "../test/fakeApi";
 
@@ -25,6 +25,40 @@ const stored: NotificationSettings = {
   digest_hour: 8,
   timezone: "Africa/Algiers",
   language: "fr",
+  secret_key_configured: true,
+};
+
+const storage: StorageSettings = {
+  revision: 2,
+  primary_kind: "smb",
+  primary_smb: {
+    share: "//nas1.lnhc.dz/backups",
+    username: "svc",
+    domain: "",
+    seal: false,
+    password_set: true,
+  },
+  migrate: true,
+  copy_02: null,
+  agents: [
+    {
+      agent: "mail",
+      path: "/var/lib/carborewind/nas/repository",
+      kind: "network",
+      fstype: "cifs",
+      source: "//nas1.lnhc.dz/backups",
+      total_bytes: 1024 ** 4,
+      free_bytes: 512 * 1024 ** 3,
+      apply: {
+        revision: 2,
+        ok: false,
+        at: "2026-11-19T10:00:00Z",
+        error: "mount error(13): Permission denied",
+      },
+    },
+  ],
+  applied: true,
+  last_replication: null,
   secret_key_configured: true,
 };
 
@@ -62,6 +96,27 @@ function open(role = user("super_admin"), extra: Record<string, unknown> = {}) {
         sent_at: "2026-11-18T08:00:01Z",
       },
     ],
+    "GET /api/settings/storage": storage,
+    "PUT /api/settings/storage": (c: { body: unknown }) => ({
+      body: {
+        ...storage,
+        revision: 3,
+        applied: false,
+        copy_02: (c.body as { copy_02: unknown }).copy_02
+          ? {
+              share: "//nas2/copie02",
+              username: "u2",
+              domain: "",
+              seal: true,
+              password_set: true,
+            }
+          : null,
+      },
+    }),
+    "POST /api/settings/storage/replicate": {
+      status: 202,
+      body: { job_id: "j1" },
+    },
     ...extra,
   });
   window.history.pushState({}, "", "/settings");
@@ -216,5 +271,94 @@ describe("settings page", () => {
       "Super-administrators only.",
     );
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+  });
+});
+
+function last(list: HTMLElement[]): HTMLElement {
+  const el = list.at(-1);
+  if (!el) throw new Error("missing");
+  return el;
+}
+
+describe("storage settings", () => {
+  it("shows the NAS, its status, and saves a copy 02", async () => {
+    const { calls } = open();
+    const section = await screen
+      .findByRole("region", { name: "Backup storage" })
+      .catch(() => screen.findByText("Backup storage"));
+    expect(section).toBeInTheDocument();
+    expect(
+      await screen.findByDisplayValue("//nas1.lnhc.dz/backups"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("mount error(13): Permission denied"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("not applied")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Enable copy 2"));
+    const shares = screen.getAllByLabelText("Share (//server/share/folder)");
+    fireEvent.change(last(shares), { target: { value: "//nas2/copie02" } });
+    const users = screen.getAllByLabelText("Share user");
+    fireEvent.change(last(users), { target: { value: "u2" } });
+    const passwords = screen.getAllByLabelText("Share password");
+    fireEvent.change(last(passwords), {
+      target: { value: "pw2" },
+    });
+    fireEvent.click(
+      last(screen.getAllByLabelText("Require SMB 3 transport encryption")),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save and apply" }));
+    expect(
+      await screen.findByText(/The agent applies them/),
+    ).toBeInTheDocument();
+    const put = calls.find(
+      (c) => c.method === "PUT" && c.url.endsWith("/storage"),
+    );
+    expect(put?.body).toEqual({
+      primary: {
+        kind: "smb",
+        smb: {
+          share: "//nas1.lnhc.dz/backups",
+          username: "svc",
+          domain: "",
+          seal: false,
+          password: null,
+        },
+        migrate: true,
+      },
+      copy_02: {
+        share: "//nas2/copie02",
+        username: "u2",
+        domain: "",
+        seal: true,
+        password: "pw2",
+      },
+    });
+    expect(
+      await screen.findByText("Waiting for the agent to apply them…"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh copy 2 now" }));
+    expect(
+      await screen.findByText("Copy 2 refresh started."),
+    ).toBeInTheDocument();
+  });
+
+  it("warns before starting an empty repository on the local disk", async () => {
+    const { calls } = open();
+    await screen.findByDisplayValue("//nas1.lnhc.dz/backups");
+    fireEvent.click(screen.getByLabelText("Local disk of the Carbonio server"));
+    fireEvent.click(screen.getByLabelText(/Copy the current repository/));
+    expect(
+      screen.getByText(/An empty repository will be created/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save and apply" }));
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === "PUT" && c.url.endsWith("/storage"))
+          ?.body,
+      ).toEqual({
+        primary: { kind: "local", smb: null, migrate: false },
+        copy_02: null,
+      }),
+    );
   });
 });

@@ -426,3 +426,34 @@ describe("dashboard alerts", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("run a policy now", () => {
+  it("queues its backups and reports the result", async () => {
+    const { calls } = open(user("super_admin"), [policy()], {
+      "POST /api/policies/p1/run": {
+        status: 202,
+        body: { queued: 4, skipped_busy: 1, skipped_deleted: 0 },
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Run policy .* now/ }),
+    );
+    expect(
+      await screen.findByText(/4 backup\(s\) started \(1 already running\)/),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/policies/p1/run")).toBe(true);
+  });
+
+  it("shows a refusal", async () => {
+    open(user("super_admin"), [policy()], {
+      "POST /api/policies/p1/run": {
+        status: 403,
+        body: { detail: "forbidden" },
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Run policy .* now/ }),
+    );
+    expect(await screen.findByText("Error: forbidden")).toBeInTheDocument();
+  });
+});

@@ -228,6 +228,7 @@ export interface AccountItem {
   snapshot_count: number;
   stored_bytes: number | null;
   policies: string[];
+  profile?: Record<string, string>;
 }
 
 export type FieldType = "text" | "number" | "date" | "choice" | "boolean";
@@ -286,6 +287,56 @@ export interface StorageReport {
   free_bytes?: number | null;
   error?: string | null;
   reported_at: string;
+  replica?: Omit<
+    StorageReport,
+    "agent" | "reported_at" | "replica" | "apply"
+  > | null;
+  apply?: {
+    revision?: number | null;
+    ok?: boolean | null;
+    error?: string | null;
+    at?: string | null;
+    changed?: string[] | null;
+  } | null;
+}
+
+export interface ShareSettings {
+  share: string;
+  username: string;
+  domain: string;
+  seal: boolean;
+  password_set: boolean;
+}
+
+export interface ShareInput {
+  share: string;
+  username: string;
+  password?: string | null;
+  domain: string;
+  seal: boolean;
+}
+
+export interface StorageSettings {
+  revision: number;
+  primary_kind: "local" | "smb" | null;
+  primary_smb: ShareSettings | null;
+  migrate: boolean;
+  copy_02: ShareSettings | null;
+  agents: Partial<StorageReport>[];
+  applied: boolean;
+  last_replication: {
+    status: JobStatus;
+    created_at: string;
+    finished_at: string | null;
+    progress: Record<string, unknown> | null;
+    error: string | null;
+  } | null;
+  secret_key_configured: boolean;
+}
+
+export interface StorageSettingsInput {
+  primary: { kind: "local" | "smb"; smb?: ShareInput | null; migrate: boolean };
+  copy_02: ShareInput | null;
 }
 
 // ------------------------------------------------------------------ migrations

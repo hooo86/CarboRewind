@@ -26,7 +26,7 @@ export function Layout() {
   const { user, logout, canManageSettings, canManageMigrations } = useAuth();
   return (
     <div className="shell">
-      <header className="topbar">
+      <aside className="sidebar">
         <span className="brand">CarboRewind</span>
         <nav aria-label="main">
           <NavLink to="/" end>
@@ -43,8 +43,8 @@ export function Layout() {
           )}
         </nav>
         <div className="user">
-          <LanguageSelect />
           <span className="who">{user?.display_name ?? user?.username}</span>
+          <LanguageSelect />
           <button
             type="button"
             className="secondary"
@@ -53,7 +53,7 @@ export function Layout() {
             {t("logout")}
           </button>
         </div>
-      </header>
+      </aside>
       <main className="content">
         <Outlet />
       </main>

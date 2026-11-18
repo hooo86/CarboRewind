@@ -147,42 +147,71 @@ label {
 }
 
 /* Shell */
-.topbar {
+/* Layout: menu on the left, content uses the whole remaining width */
+.shell {
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 1.5rem;
-  padding: 0.6rem 1rem;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1rem 0.75rem;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  box-sizing: border-box;
 }
 
 .brand {
   font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0 0.5rem;
 }
 
-.topbar nav {
+.sidebar nav {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.15rem;
   flex: 1;
 }
 
-.topbar nav a {
+.sidebar nav a {
   text-decoration: none;
   color: var(--muted);
-  padding: 0.25rem 0;
-  border-bottom: 2px solid transparent;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius);
+  border-left: 3px solid transparent;
 }
 
-.topbar nav a.active {
+.sidebar nav a:hover {
+  background: var(--info-bg);
   color: var(--text);
-  border-bottom-color: var(--accent);
+}
+
+.sidebar nav a.active {
+  color: var(--text);
+  font-weight: 600;
+  background: var(--info-bg);
+  border-left-color: var(--accent);
 }
 
 .user {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+}
+
+.user .who {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lang select {
@@ -190,9 +219,31 @@ label {
 }
 
 .content {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.25rem 1rem 3rem;
+  min-width: 0;
+  padding: 1.25rem 1.5rem 3rem;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .user {
+    flex-direction: row;
+    align-items: center;
+  }
 }
 
 /* Login */
@@ -424,13 +475,6 @@ th {
 
 .facts dd {
   margin: 0.15rem 0 0;
-}
-
-@media (max-width: 640px) {
-  .topbar nav {
-    order: 3;
-    flex-basis: 100%;
-  }
 }
 
 /* Restore */
@@ -725,4 +769,12 @@ label.inline {
 
 .block {
   display: block;
+}
+
+.align-end {
+  align-self: flex-end;
+}
+
+.alert.info {
+  background: var(--info-bg);
 }

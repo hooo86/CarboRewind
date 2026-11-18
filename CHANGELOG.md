@@ -6,6 +6,20 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Stockage depuis l'interface (Paramètres) : copie 1 sur disque local ou NAS (SMB/CIFS), copie 2 sur
+  un deuxième NAS (réplique du dépôt, job `replicate`, mise à jour automatique et à la demande), état
+  et erreurs d'application affichés ; service root `carborewind-storage.path` dans le paquet de l'agent.
+  Migrations 0008.
+- Sauvegarde manuelle : « Sauvegarde manuelle » au tableau de bord (tous les comptes ou un domaine,
+  incrémentale ou complète) et « Exécuter maintenant » sur une politique.
+- Profil des comptes (fonction, société, service, téléphones, adresse, description, notes, matricule) :
+  colonnes, recherche, filtres et tri. Migration 0009.
+- Menu de navigation à gauche ; les pages occupent toute la largeur.
+
+### Fixed
+- Quota et espace utilisé : quota hérité de la classe de service ou limite effective de Carbonio,
+  espace mesuré boîte par boîte (`GetMailboxRequest`) quand `GetQuotaUsage` ne liste pas un compte,
+  au lieu d'afficher 0. Diagnostic : `carborewind-agent carbonio quota <adresse>`.
 - Migrations IMAP vers Carbonio : serveurs sources (TLS vérifié, mot de passe par boîte ou compte
   maître), lots avec options (dossier racine, exclusions, dates), import Excel/CSV ou saisie manuelle,
   association automatique (même adresse, alias, même nom avant le @ dans le domaine choisi), test de
