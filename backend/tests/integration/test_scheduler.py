@@ -188,8 +188,9 @@ def test_policy_crud_validation_and_scope(api: TestClient, engine: Engine) -> No
     _login(api, engine, Role.VIEWER, d2)
     assert body["name"] not in {p["name"] for p in api.get("/api/policies").json()}
     admin = _login(api, engine, Role.SUPER_ADMIN, None)
-    assert api.delete(f"/api/policies/{pid}", headers=admin).status_code == 204
-    assert api.delete(f"/api/policies/{pid}", headers=admin).status_code == 403
+    first = api.delete(f"/api/policies/{pid}", headers=admin)
+    again = api.delete(f"/api/policies/{pid}", headers=admin)
+    assert (first.status_code, again.status_code) == (204, 403)
     with Session(engine) as s:
         actions = {
             e.action for e in s.scalars(select(AuditEvent).where(AuditEvent.target_id == pid))

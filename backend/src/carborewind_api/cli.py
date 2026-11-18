@@ -231,10 +231,10 @@ async def backup_request(email: str, full: bool) -> str:
 
 
 async def run_scheduler(interval: float, once: bool) -> int:
-    import logging
     import signal
 
     from .logging import configure_logging
+    from .scheduler import log as scheduler_log
     from .scheduler import run_forever, tick
 
     configure_logging(get_settings().log_level)
@@ -254,7 +254,7 @@ async def run_scheduler(interval: float, once: bool) -> int:
         loop = asyncio.get_running_loop()  # pragma: no cover
         for sig in (signal.SIGTERM, signal.SIGINT):  # pragma: no cover
             loop.add_signal_handler(sig, stop.set)
-        logging.getLogger(__name__).info("scheduler started")  # pragma: no cover
+        scheduler_log.info("scheduler started")  # pragma: no cover
         await run_forever(factory, interval=interval, stop=stop)  # pragma: no cover
         return 0  # pragma: no cover
     finally:
