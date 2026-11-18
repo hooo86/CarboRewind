@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+if [ "$1" = "configure" ]; then
+    if ! getent passwd carborewind >/dev/null; then
+        adduser --system --group --home /var/lib/carborewind --no-create-home \
+            --shell /usr/sbin/nologin --gecos "CarboRewind agent" carborewind
+    fi
+    # Group-writable so the service user can create its key files (0600) here; nothing
+    # is accessible to other users.
+    install -d -o root -g carborewind -m 0770 /etc/carborewind
+    install -d -o carborewind -g carborewind -m 0700 /var/lib/carborewind
+    install -d -o carborewind -g carborewind -m 0700 /var/lib/carborewind/tls
+    chown root:carborewind /etc/carborewind/agent.env
+    chmod 0640 /etc/carborewind/agent.env
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload || true
+    fi
+    echo "CarboRewind agent installed. Next steps: see /usr/share/doc/carborewind-agent/INSTALL.md"
+fi
+exit 0

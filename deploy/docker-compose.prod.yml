@@ -1,0 +1,77 @@
+# CarboRewind — production stack (single host). Installed and driven by install-server.sh.
+# Only the proxy publishes ports; the API, PostgreSQL and Redis stay on internal networks.
+name: carborewind
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes: [db-data:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ../backend
+    image: carborewind-api:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      CARBOREWIND_ENVIRONMENT: production
+      CARBOREWIND_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      CARBOREWIND_REDIS_URL: redis://redis:6379/0
+      CARBOREWIND_PKI_DIR: /var/lib/carborewind/pki
+      # Peer addresses are rewritten from X-Forwarded-For; the proxy is recognised by
+      # CARBOREWIND_AGENT_PROXY_SECRET instead (see nginx/carborewind.conf.template).
+      CARBOREWIND_AGENT_PROXY_IPS: "[]"
+      FORWARDED_ALLOW_IPS: "*"
+    volumes: [pki:/var/lib/carborewind/pki]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks: [backend, frontend]
+
+  frontend:
+    build: ../frontend
+    image: carborewind-frontend:local
+    restart: unless-stopped
+    networks: [frontend]
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      SERVER_NAME: ${SERVER_NAME}
+      PROXY_SECRET: ${CARBOREWIND_AGENT_PROXY_SECRET}
+    volumes:
+      - ./nginx/carborewind.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./tls:/etc/nginx/tls:ro
+      - pki:/pki:ro
+    depends_on: [api, frontend]
+    networks: [frontend]
+
+networks:
+  backend:
+    internal: true
+  frontend: {}
+
+volumes:
+  db-data:
+  pki:

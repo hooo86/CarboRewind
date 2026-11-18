@@ -1,0 +1,4154 @@
+{
+  "components": {
+    "schemas": {
+      "AccountDetail": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "domain_id": {
+            "format": "uuid",
+            "title": "Domain Id",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "last_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snapshot_count": {
+            "title": "Snapshot Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "status",
+          "domain_id",
+          "domain",
+          "last_seen_at",
+          "snapshot_count",
+          "last_snapshot"
+        ],
+        "title": "AccountDetail",
+        "type": "object"
+      },
+      "AccountIn": {
+        "properties": {
+          "carbonio_id": {
+            "maxLength": 64,
+            "title": "Carbonio Id",
+            "type": "string"
+          },
+          "email": {
+            "maxLength": 320,
+            "pattern": "^[^@\\s]+@[^@\\s]+$",
+            "title": "Email",
+            "type": "string"
+          },
+          "status": {
+            "maxLength": 32,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "carbonio_id",
+          "email",
+          "status"
+        ],
+        "title": "AccountIn",
+        "type": "object"
+      },
+      "AccountOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_backup_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Backup At"
+          },
+          "last_backup_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_backup_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountStatus"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "status",
+          "last_seen_at"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AccountStatus": {
+        "enum": [
+          "active",
+          "locked",
+          "closed",
+          "deleted"
+        ],
+        "title": "AccountStatus",
+        "type": "string"
+      },
+      "ActorType": {
+        "enum": [
+          "user",
+          "agent",
+          "system"
+        ],
+        "title": "ActorType",
+        "type": "string"
+      },
+      "AgentCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "maxLength": 253,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.-]+$",
+            "title": "Hostname",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "hostname"
+        ],
+        "title": "AgentCreate",
+        "type": "object"
+      },
+      "AgentCreated": {
+        "properties": {
+          "cert_not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cert Not After"
+          },
+          "enrollment_expires_at": {
+            "format": "date-time",
+            "title": "Enrollment Expires At",
+            "type": "string"
+          },
+          "enrollment_token": {
+            "description": "Shown once. Pass it to `carborewind-agent enroll`.",
+            "title": "Enrollment Token",
+            "type": "string"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentStatus"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hostname",
+          "status",
+          "cert_not_after",
+          "last_heartbeat_at",
+          "version",
+          "enrollment_token",
+          "enrollment_expires_at"
+        ],
+        "title": "AgentCreated",
+        "type": "object"
+      },
+      "AgentOut": {
+        "properties": {
+          "cert_not_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cert Not After"
+          },
+          "hostname": {
+            "title": "Hostname",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentStatus"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "hostname",
+          "status",
+          "cert_not_after",
+          "last_heartbeat_at",
+          "version"
+        ],
+        "title": "AgentOut",
+        "type": "object"
+      },
+      "AgentStatus": {
+        "enum": [
+          "pending",
+          "active",
+          "revoked"
+        ],
+        "title": "AgentStatus",
+        "type": "string"
+      },
+      "AuditEventOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "actor_type": {
+            "$ref": "#/components/schemas/ActorType"
+          },
+          "details": {
+            "additionalProperties": true,
+            "title": "Details",
+            "type": "object"
+          },
+          "domain_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Id"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome"
+          },
+          "prev_hash": {
+            "title": "Prev Hash",
+            "type": "string"
+          },
+          "source_ip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ip"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Type"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "actor_type",
+          "actor_id",
+          "actor_name",
+          "action",
+          "outcome",
+          "target_type",
+          "target_id",
+          "domain_id",
+          "source_ip",
+          "details",
+          "prev_hash",
+          "hash"
+        ],
+        "title": "AuditEventOut",
+        "type": "object"
+      },
+      "AuthSource": {
+        "enum": [
+          "local",
+          "ldap",
+          "oidc"
+        ],
+        "title": "AuthSource",
+        "type": "string"
+      },
+      "BackupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType",
+            "default": "incremental"
+          },
+          "priority": {
+            "default": 50,
+            "title": "Priority",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id"
+        ],
+        "title": "BackupRequest",
+        "type": "object"
+      },
+      "BackupResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "account_attrs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Attrs"
+          },
+          "added": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ItemIn"
+            },
+            "title": "Added",
+            "type": "object"
+          },
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Errors",
+            "type": "object"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/FolderIn"
+            },
+            "title": "Folders",
+            "type": "array"
+          },
+          "item_count": {
+            "minimum": 0.0,
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "manifest_ref": {
+            "maxLength": 512,
+            "title": "Manifest Ref",
+            "type": "string"
+          },
+          "new_bytes": {
+            "minimum": 0.0,
+            "title": "New Bytes",
+            "type": "integer"
+          },
+          "removed": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "size_bytes": {
+            "minimum": 0.0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "token": {
+            "maxLength": 128,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "backup_type",
+          "manifest_ref",
+          "token",
+          "item_count",
+          "size_bytes",
+          "new_bytes"
+        ],
+        "title": "BackupResultIn",
+        "type": "object"
+      },
+      "BackupType": {
+        "enum": [
+          "full",
+          "incremental"
+        ],
+        "title": "BackupType",
+        "type": "string"
+      },
+      "ClaimedJob": {
+        "properties": {
+          "account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Email"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "carbonio_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carbonio Id"
+          },
+          "checkpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "lease_seconds": {
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviousSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seq"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "attempt",
+          "lease_seconds",
+          "params",
+          "checkpoint",
+          "account_id",
+          "carbonio_id",
+          "account_email",
+          "snapshot_id",
+          "seq",
+          "previous"
+        ],
+        "title": "ClaimedJob",
+        "type": "object"
+      },
+      "Dashboard": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "agents_active": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agents Active"
+          },
+          "jobs_failed_24h": {
+            "title": "Jobs Failed 24H",
+            "type": "integer"
+          },
+          "jobs_queued": {
+            "title": "Jobs Queued",
+            "type": "integer"
+          },
+          "jobs_running": {
+            "title": "Jobs Running",
+            "type": "integer"
+          },
+          "last_agent_heartbeat": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Agent Heartbeat"
+          },
+          "never_backed_up": {
+            "title": "Never Backed Up",
+            "type": "integer"
+          },
+          "partial_last": {
+            "title": "Partial Last",
+            "type": "integer"
+          },
+          "protected_24h": {
+            "title": "Protected 24H",
+            "type": "integer"
+          },
+          "stored_bytes": {
+            "title": "Stored Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accounts",
+          "protected_24h",
+          "never_backed_up",
+          "partial_last",
+          "jobs_queued",
+          "jobs_running",
+          "jobs_failed_24h",
+          "stored_bytes",
+          "agents_active",
+          "last_agent_heartbeat"
+        ],
+        "title": "Dashboard",
+        "type": "object"
+      },
+      "DomainOut": {
+        "properties": {
+          "account_count": {
+            "title": "Account Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "account_count"
+        ],
+        "title": "DomainOut",
+        "type": "object"
+      },
+      "EnrollRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "csr_pem": {
+            "maxLength": 8192,
+            "title": "Csr Pem",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 128,
+            "minLength": 20,
+            "title": "Token",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "token",
+          "csr_pem"
+        ],
+        "title": "EnrollRequest",
+        "type": "object"
+      },
+      "EnrollResponse": {
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "ca_pem": {
+            "title": "Ca Pem",
+            "type": "string"
+          },
+          "certificate_pem": {
+            "title": "Certificate Pem",
+            "type": "string"
+          },
+          "not_after": {
+            "format": "date-time",
+            "title": "Not After",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "certificate_pem",
+          "ca_pem",
+          "not_after"
+        ],
+        "title": "EnrollResponse",
+        "type": "object"
+      },
+      "FailureIn": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "maxLength": 2000,
+            "title": "Error",
+            "type": "string"
+          },
+          "retryable": {
+            "default": true,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "FailureIn",
+        "type": "object"
+      },
+      "FolderIn": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "path": {
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "view": {
+            "maxLength": 32,
+            "title": "View",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parent",
+          "path",
+          "view"
+        ],
+        "title": "FolderIn",
+        "type": "object"
+      },
+      "FolderOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ItemKind"
+          }
+        },
+        "required": [
+          "id",
+          "parent_id",
+          "path",
+          "view",
+          "item_count"
+        ],
+        "title": "FolderOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "description": "Liveness / readiness payload.",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "Heartbeat": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          }
+        },
+        "title": "Heartbeat",
+        "type": "object"
+      },
+      "InventoryIn": {
+        "additionalProperties": false,
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountIn"
+            },
+            "maxItems": 100000,
+            "title": "Accounts",
+            "type": "array"
+          },
+          "complete": {
+            "default": false,
+            "title": "Complete",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accounts"
+        ],
+        "title": "InventoryIn",
+        "type": "object"
+      },
+      "InventoryOut": {
+        "properties": {
+          "accounts_created": {
+            "title": "Accounts Created",
+            "type": "integer"
+          },
+          "accounts_deleted": {
+            "title": "Accounts Deleted",
+            "type": "integer"
+          },
+          "accounts_updated": {
+            "title": "Accounts Updated",
+            "type": "integer"
+          },
+          "domains_created": {
+            "title": "Domains Created",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "domains_created",
+          "accounts_created",
+          "accounts_updated",
+          "accounts_deleted"
+        ],
+        "title": "InventoryOut",
+        "type": "object"
+      },
+      "ItemIn": {
+        "properties": {
+          "blob": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Blob",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "folder": {
+            "title": "Folder",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "meta_blob": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Meta Blob",
+            "type": "string"
+          },
+          "meta_size": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Meta Size",
+            "type": "integer"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender"
+          },
+          "size": {
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "kind",
+          "folder",
+          "blob",
+          "meta_blob",
+          "size"
+        ],
+        "title": "ItemIn",
+        "type": "object"
+      },
+      "ItemKind": {
+        "enum": [
+          "message",
+          "contact",
+          "appointment",
+          "task",
+          "document"
+        ],
+        "title": "ItemKind",
+        "type": "string"
+      },
+      "ItemOut": {
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "folder_id": {
+            "title": "Folder Id",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ItemKind"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "id",
+          "folder_id",
+          "kind",
+          "subject",
+          "sender",
+          "date",
+          "size"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "JobKind": {
+        "enum": [
+          "backup",
+          "restore",
+          "config_backup",
+          "verify",
+          "purge"
+        ],
+        "title": "JobKind",
+        "type": "string"
+      },
+      "JobOut": {
+        "properties": {
+          "account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Email"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "backup_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Type"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dry_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dry Run"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "restore_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Mode"
+          },
+          "snapshot_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Seq"
+          },
+          "source_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Email"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "account_id",
+          "attempts",
+          "progress",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "JobOut",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "Outcome": {
+        "enum": [
+          "success",
+          "failure",
+          "denied"
+        ],
+        "title": "Outcome",
+        "type": "string"
+      },
+      "Page_AccountOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccountOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AccountOut]",
+        "type": "object"
+      },
+      "Page_AuditEventOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEventOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[AuditEventOut]",
+        "type": "object"
+      },
+      "Page_DomainOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DomainOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[DomainOut]",
+        "type": "object"
+      },
+      "Page_ItemOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ItemOut]",
+        "type": "object"
+      },
+      "Page_JobOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[JobOut]",
+        "type": "object"
+      },
+      "Page_SnapshotOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[SnapshotOut]",
+        "type": "object"
+      },
+      "Page_UserOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UserOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[UserOut]",
+        "type": "object"
+      },
+      "PreviousSnapshot": {
+        "properties": {
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "token"
+        ],
+        "title": "PreviousSnapshot",
+        "type": "object"
+      },
+      "RestoreRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "description": "Account the snapshot belongs to",
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "description": "Compute the plan without writing",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "folder_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 1000,
+            "title": "Folder Ids",
+            "type": "array"
+          },
+          "item_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "new_folder",
+            "description": "new_folder: into a new dated folder (never touches existing data); original: back into the original folders, skipping items still present",
+            "enum": [
+              "new_folder",
+              "original"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account to restore into (default: the source account)",
+            "title": "Target Account Id"
+          }
+        },
+        "required": [
+          "account_id",
+          "snapshot_id"
+        ],
+        "title": "RestoreRequest",
+        "type": "object"
+      },
+      "RestoreResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "by_kind": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Kind",
+            "type": "object"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "failed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Failed",
+            "type": "object"
+          },
+          "folders_created": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Folders Created",
+            "type": "array"
+          },
+          "mode": {
+            "maxLength": 32,
+            "title": "Mode",
+            "type": "string"
+          },
+          "present": {
+            "minimum": 0.0,
+            "title": "Present",
+            "type": "integer"
+          },
+          "restored": {
+            "minimum": 0.0,
+            "title": "Restored",
+            "type": "integer"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "selected": {
+            "minimum": 0.0,
+            "title": "Selected",
+            "type": "integer"
+          },
+          "unsupported": {
+            "minimum": 0.0,
+            "title": "Unsupported",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dry_run",
+          "mode",
+          "selected",
+          "restored",
+          "present",
+          "unsupported"
+        ],
+        "title": "RestoreResultIn",
+        "type": "object"
+      },
+      "Role": {
+        "enum": [
+          "super_admin",
+          "domain_admin",
+          "restore_operator",
+          "viewer"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "RoleGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "domain_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "RoleGrant",
+        "type": "object"
+      },
+      "RoleOut": {
+        "properties": {
+          "domain_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "domain_id"
+        ],
+        "title": "RoleOut",
+        "type": "object"
+      },
+      "SessionOut": {
+        "properties": {
+          "csrf_token": {
+            "description": "Echo this value in the X-CSRF-Token header of every unsafe request",
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserOut"
+          }
+        },
+        "required": [
+          "user",
+          "csrf_token"
+        ],
+        "title": "SessionOut",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "properties": {
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "new_bytes": {
+            "title": "New Bytes",
+            "type": "integer"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SnapshotStatus"
+          },
+          "taken_at": {
+            "format": "date-time",
+            "title": "Taken At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "backup_type",
+          "status",
+          "taken_at",
+          "item_count",
+          "size_bytes",
+          "new_bytes"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "SnapshotStatus": {
+        "enum": [
+          "complete",
+          "partial",
+          "expired"
+        ],
+        "title": "SnapshotStatus",
+        "type": "string"
+      },
+      "UserCreate": {
+        "additionalProperties": false,
+        "description": "Create a local account, or pre-register an LDAP account (no password).",
+        "properties": {
+          "auth_source": {
+            "$ref": "#/components/schemas/AuthSource",
+            "default": "local"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "username": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "UserCreate",
+        "type": "object"
+      },
+      "UserOut": {
+        "properties": {
+          "auth_source": {
+            "$ref": "#/components/schemas/AuthSource"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Until"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleOut"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "email",
+          "auth_source",
+          "is_active",
+          "locked_until",
+          "last_login_at",
+          "roles"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "UserUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "unlock": {
+            "default": false,
+            "description": "Clear the failed-login lock",
+            "title": "Unlock",
+            "type": "boolean"
+          }
+        },
+        "title": "UserUpdate",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyOut": {
+        "properties": {
+          "broken_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broken Id"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "head_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Hash"
+          },
+          "head_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Id"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "ok",
+          "checked",
+          "head_id",
+          "head_hash",
+          "broken_id",
+          "reason"
+        ],
+        "title": "VerifyOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Hot, point-in-time backup and restore for Carbonio mail servers.",
+    "title": "CarboRewind API",
+    "version": "0.1.0.dev0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/accounts/{account_id}": {
+      "get": {
+        "operationId": "get_account_api_accounts__account_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Account",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/snapshots": {
+      "get": {
+        "description": "Snapshots of one account, most recent first.",
+        "operationId": "list_snapshots_api_accounts__account_id__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SnapshotOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/snapshots/{snapshot_id}/folders": {
+      "get": {
+        "operationId": "snapshot_folders_api_accounts__account_id__snapshots__snapshot_id__folders_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FolderOut"
+                  },
+                  "title": "Response Snapshot Folders Api Accounts  Account Id  Snapshots  Snapshot Id  Folders Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot Folders",
+        "tags": [
+          "restores"
+        ]
+      }
+    },
+    "/api/accounts/{account_id}/snapshots/{snapshot_id}/items": {
+      "get": {
+        "description": "Items as they were at that snapshot, newest first. ``q`` searches subject and sender.",
+        "operationId": "snapshot_items_api_accounts__account_id__snapshots__snapshot_id__items_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Snapshot Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "folder_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Folder Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ItemOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Snapshot Items",
+        "tags": [
+          "restores"
+        ]
+      }
+    },
+    "/api/agent/enroll": {
+      "post": {
+        "description": "Exchange a one-time token and a CSR for a client certificate.",
+        "operationId": "enroll_api_agent_enroll_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Enroll",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/inventory": {
+      "post": {
+        "operationId": "inventory_api_agent_inventory_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Inventory",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/claim": {
+      "post": {
+        "description": "Lease the next job: first an abandoned one (expired lease, resumed from its\ncheckpoint), else the highest-priority queued job.",
+        "operationId": "claim_api_agent_jobs_claim_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimedJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "Nothing to do"
+          }
+        },
+        "summary": "Claim",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/complete": {
+      "post": {
+        "description": "Record the snapshot and apply the catalogue diff, atomically.",
+        "operationId": "complete_api_agent_jobs__job_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/fail": {
+      "post": {
+        "description": "Report a failure: re-queued (keeping its checkpoint) if retryable and attempts remain.",
+        "operationId": "fail_api_agent_jobs__job_id__fail_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FailureIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fail",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/heartbeat": {
+      "post": {
+        "description": "Extend the lease and store the resume point.",
+        "operationId": "heartbeat_api_agent_jobs__job_id__heartbeat_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Heartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Heartbeat",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/restore-complete": {
+      "post": {
+        "description": "Record the outcome of a restore (or of its dry run) on the job.",
+        "operationId": "restore_complete_api_agent_jobs__job_id__restore_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "operationId": "list_agents_api_agents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentOut"
+                  },
+                  "title": "Response List Agents Api Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "agents"
+        ]
+      },
+      "post": {
+        "description": "Register an agent and return a one-time enrolment token.",
+        "operationId": "create_agent_api_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/{agent_id}/revoke": {
+      "post": {
+        "description": "Revoke the agent's certificate immediately (fingerprint cleared).",
+        "operationId": "revoke_agent_api_agents__agent_id__revoke_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Agent",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "description": "Most recent first. Domain admins only see events of their domains and their own.",
+        "operationId": "list_events_api_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Exact, or prefix ending in *",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact, or prefix ending in *",
+              "title": "Action"
+            }
+          },
+          {
+            "description": "actor_name, exact",
+            "in": "query",
+            "name": "actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "actor_name, exact",
+              "title": "Actor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Outcome"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditEventOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Events",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/audit/export.csv": {
+      "get": {
+        "description": "Export the filtered events (oldest first) as CSV. The export itself is audited.",
+        "operationId": "export_csv_api_audit_export_csv_get",
+        "parameters": [
+          {
+            "description": "Exact, or prefix ending in *",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact, or prefix ending in *",
+              "title": "Action"
+            }
+          },
+          {
+            "description": "actor_name, exact",
+            "in": "query",
+            "name": "actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "actor_name, exact",
+              "title": "Actor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Outcome"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {}
+            },
+            "description": "CSV export (UTF-8)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Csv",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/audit/head": {
+      "get": {
+        "description": "Latest event id and hash, to anchor outside the database (cheap, no recomputation).",
+        "operationId": "head_api_audit_head_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Head",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/audit/verify": {
+      "get": {
+        "description": "Recompute the full hash chain (global auditors only).",
+        "operationId": "verify_api_audit_verify_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "description": "Open a session. Sets an HttpOnly session cookie and a CSRF cookie.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Invalid credentials (generic, whatever the reason)"
+          },
+          "415": {
+            "description": "Body must be application/json"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many attempts from this address"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "description": "Revoke the current session (requires the CSRF header).",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "description": "Current user and role assignments.",
+        "operationId": "me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/backups": {
+      "post": {
+        "operationId": "start_backup_api_backups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Backup",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/dashboard": {
+      "get": {
+        "description": "Figures for the home page, restricted to the caller's domains.",
+        "operationId": "dashboard_api_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Dashboard",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/domains": {
+      "get": {
+        "description": "Domains visible to the caller (all for global roles).",
+        "operationId": "list_domains_api_domains_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DomainOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Domains",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/domains/{domain_id}/accounts": {
+      "get": {
+        "description": "Accounts of one domain. 403 outside the caller's scope, 404 if the domain is unknown.",
+        "operationId": "list_accounts_api_domains__domain_id__accounts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Domain Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_deleted",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Deleted",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Address substring",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Address substring",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AccountOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Accounts",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "description": "Jobs on the caller's domains, most recent first.",
+        "operationId": "list_jobs_api_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_JobOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/restores": {
+      "post": {
+        "operationId": "start_restore_api_restores_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Restore",
+        "tags": [
+          "restores"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "list_users_api_users_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UserOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Users",
+        "tags": [
+          "users"
+        ]
+      },
+      "post": {
+        "operationId": "create_user_api_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "operationId": "get_user_api_users__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get User",
+        "tags": [
+          "users"
+        ]
+      },
+      "patch": {
+        "operationId": "update_user_api_users__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/roles": {
+      "post": {
+        "operationId": "grant_role_api_users__user_id__roles_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleGrant"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grant Role",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/users/{user_id}/roles/{assignment_id}": {
+      "delete": {
+        "operationId": "revoke_role_api_users__user_id__roles__assignment_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Role",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/healthz": {
+      "get": {
+        "description": "Liveness probe: the process is up.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness probe: PostgreSQL and Redis answer within the configured timeout.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "A dependency is unavailable"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "ops"
+        ]
+      }
+    }
+  }
+}
