@@ -1665,7 +1665,7 @@
   "info": {
     "description": "Hot, point-in-time backup and restore for Carbonio mail servers.",
     "title": "CarboRewind API",
-    "version": "0.0.0"
+    "version": "0.1.0.dev0"
   },
   "openapi": "3.1.0",
   "paths": {

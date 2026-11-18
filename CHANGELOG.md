@@ -51,3 +51,15 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   idempotence, ingestion transactionnelle du catalogue ; `POST /api/backups`,
   `GET /api/jobs/{id}` ; agent : `enroll` et service `run`.
 - Test de bout en bout (agent + API + PostgreSQL + dépôt chiffré) exécuté en CI.
+- Installables Linux : paquet `carborewind-agent_<version>_amd64.deb` (Python embarqué,
+  service systemd durci, utilisateur dédié) et archive `carborewind-server-<version>.tar.gz`
+  (Docker Compose de production, nginx TLS + mTLS, `install-server.sh` idempotent),
+  construits et attachés aux releases par la CI ; procédure `docs/install.md`.
+- CLI serveur `agent-create` et `backup` ; reconnaissance du reverse proxy par secret partagé.
+
+### Fixed
+- nginx : la règle générique `/api` masquait `/api/agent/` (priorité des `location` regex) et
+  aurait bloqué tous les agents ; corrigé avec `^~`.
+- Agent : le certificat client n'était pas présenté par httpx lorsqu'une CA serveur était
+  fournie ; contexte TLS désormais construit explicitement.
+- Paquet agent : `/etc/carborewind` non inscriptible par l'utilisateur de service.
