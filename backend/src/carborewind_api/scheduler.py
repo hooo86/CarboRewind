@@ -21,14 +21,14 @@ import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import audit
+from . import audit, storage_settings
 from .config import Settings
 from .db.models import (
     Account,
@@ -65,6 +65,7 @@ class TickReport:
     snapshots_expired: int = 0
     versions_pruned: int = 0
     purge_job: uuid.UUID | None = None
+    replicate_job: uuid.UUID | None = None
     notifications_queued: int = 0
     notifications_sent: int = 0
     errors: list[str] = field(default_factory=list)
@@ -278,12 +279,53 @@ async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
     report.purge_job = job.id
 
 
+REPLICATE_BACKOFF = timedelta(hours=1)
+
+
+async def enqueue_replicate(db: AsyncSession, now: datetime, report: TickReport) -> None:
+    """Refresh copy 02 when the repository changed since its last refresh."""
+    cfg = await storage_settings.load(db)
+    if cfg.copy is None:
+        return
+    pending = await db.scalar(
+        select(func.count()).where(Job.kind == JobKind.REPLICATE, Job.status.in_(PENDING))
+    )
+    if pending:
+        return
+    last = await db.scalar(
+        select(Job).where(Job.kind == JobKind.REPLICATE).order_by(Job.created_at.desc()).limit(1)
+    )
+    if (
+        last is not None
+        and last.status is JobStatus.FAILED
+        and (last.finished_at or last.created_at) > now - REPLICATE_BACKOFF
+    ):
+        return  # do not hammer an unreachable NAS; the failure was notified
+    done = await db.scalar(
+        select(func.max(Job.started_at)).where(
+            Job.kind == JobKind.REPLICATE, Job.status == JobStatus.SUCCEEDED
+        )
+    )
+    changed = await db.scalar(
+        select(func.max(Job.finished_at)).where(
+            Job.kind.in_([JobKind.BACKUP, JobKind.PURGE]), Job.status == JobStatus.SUCCEEDED
+        )
+    )
+    if changed is None or (done is not None and changed <= done):
+        return
+    job = Job(kind=JobKind.REPLICATE, status=JobStatus.QUEUED, priority=210, max_attempts=2)
+    db.add(job)
+    await db.flush()
+    report.replicate_job = job.id
+
+
 async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> TickReport:
     """One scheduling pass, in the caller's transaction."""
     report = TickReport()
     await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LOCK_ID})
     await enqueue_due_backups(db, now, report)
     report.notifications_queued = await periodic_alerts(db, now)
+    await enqueue_replicate(db, now, report)
     if retention:
         await apply_retention(db, report)
         await enqueue_purge(db, report)

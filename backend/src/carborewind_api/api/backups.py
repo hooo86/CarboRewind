@@ -138,6 +138,25 @@ async def start_bulk_backup(
         principal.access.allows(Permission.BACKUPS_RUN, a.domain_id) for a in accounts
     ):
         raise await deny(db, principal, request, Permission.BACKUPS_RUN, accounts=str(len(ids)))
+    return await queue_backups(
+        db, principal, request, accounts, body.backup_type, body.priority, "backup.request_bulk"
+    )
+
+
+async def queue_backups(
+    db: DbSession,
+    principal: Principal,
+    request: Request,
+    accounts: list[Account],
+    backup_type: BackupType,
+    priority: int,
+    action: str,
+    policy_id: uuid.UUID | None = None,
+    **details: Any,
+) -> BulkBackupOut:
+    """Queue one backup per account now; accounts already queued/running or deleted are
+    skipped. Permissions are the caller's job."""
+    ids = [a.id for a in accounts]
     busy = set(
         await db.scalars(
             select(Job.account_id).where(
@@ -154,22 +173,24 @@ async def start_bulk_backup(
             kind=JobKind.BACKUP,
             status=JobStatus.QUEUED,
             account_id=a.id,
+            policy_id=policy_id,
             created_by=principal.user.id,
-            priority=body.priority,
-            params={"backup_type": body.backup_type.value},
+            priority=priority,
+            params={"backup_type": backup_type.value, "manual": True},
         )
         for a in todo
     )
     await db.flush()
     await audit.record(
         db,
-        action="backup.request_bulk",
+        action=action,
         outcome=Outcome.SUCCESS,
         actor_id=str(principal.user.id),
         actor_name=principal.user.username,
         source_ip=client_ip(request),
         details={
-            "type": body.backup_type.value,
+            **details,
+            "type": backup_type.value,
             "queued": len(todo),
             "accounts": sorted(a.email for a in todo)[:200],
         },
@@ -178,6 +199,41 @@ async def start_bulk_backup(
         queued=len(todo),
         skipped_busy=len([a for a in accounts if a.id in busy]),
         skipped_deleted=len(deleted),
+    )
+
+
+class AllBackupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backup_type: BackupType = BackupType.INCREMENTAL
+    domain_id: uuid.UUID | None = None
+
+
+@router.post("/api/backups/all", response_model=BulkBackupOut, status_code=status.HTTP_202_ACCEPTED)
+async def start_backup_all(
+    body: AllBackupRequest, principal: Runner, db: DbSession, request: Request
+) -> BulkBackupOut:
+    """Manual backup of every active account the caller may back up (optionally one domain)."""
+    query = select(Account).where(Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED]))
+    scope = principal.access.domains(Permission.BACKUPS_RUN)
+    if body.domain_id is not None:
+        if not principal.access.allows(Permission.BACKUPS_RUN, body.domain_id):
+            raise await deny(
+                db, principal, request, Permission.BACKUPS_RUN, domain=str(body.domain_id)
+            )
+        query = query.where(Account.domain_id == body.domain_id)
+    elif scope is not None:
+        query = query.where(Account.domain_id.in_(scope))
+    accounts = list(await db.scalars(query))
+    return await queue_backups(
+        db,
+        principal,
+        request,
+        accounts,
+        body.backup_type,
+        50,
+        "backup.request_all",
+        domain=str(body.domain_id) if body.domain_id else None,
     )
 
 

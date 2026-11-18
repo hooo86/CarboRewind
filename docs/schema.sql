@@ -467,4 +467,12 @@ CREATE INDEX ix_migration_mailboxes_target ON migration_mailboxes (target_accoun
 
 UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
 
+-- Running upgrade 0007 -> 0008
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate'));
+
+UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
+
 COMMIT;

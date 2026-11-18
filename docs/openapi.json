@@ -693,6 +693,97 @@
         "title": "AgentStatus",
         "type": "string"
       },
+      "AllBackupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType",
+            "default": "incremental"
+          },
+          "domain_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain Id"
+          }
+        },
+        "title": "AllBackupRequest",
+        "type": "object"
+      },
+      "ApplyIn": {
+        "description": "Outcome of the last storage settings applied by the root helper.",
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "changed": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          }
+        },
+        "title": "ApplyIn",
+        "type": "object"
+      },
       "AuditEventOut": {
         "properties": {
           "action": {
@@ -1921,7 +2012,8 @@
           "config_backup",
           "verify",
           "purge",
-          "migrate"
+          "migrate",
+          "replicate"
         ],
         "title": "JobKind",
         "type": "string"
@@ -3078,6 +3170,89 @@
         "title": "Page[UserOut]",
         "type": "object"
       },
+      "PlaceIn": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "fstype": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fstype"
+          },
+          "kind": {
+            "enum": [
+              "local",
+              "network"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bytes"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "PlaceIn",
+        "type": "object"
+      },
       "PolicyIn": {
         "additionalProperties": false,
         "properties": {
@@ -3405,6 +3580,39 @@
         "title": "PreviousSnapshot",
         "type": "object"
       },
+      "PrimaryIn": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "local",
+              "smb"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "migrate": {
+            "default": true,
+            "title": "Migrate",
+            "type": "boolean"
+          },
+          "smb": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "PrimaryIn",
+        "type": "object"
+      },
       "PurgeResultIn": {
         "additionalProperties": false,
         "properties": {
@@ -3433,6 +3641,123 @@
           }
         },
         "title": "PurgeResultIn",
+        "type": "object"
+      },
+      "ReplicaResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "copied": {
+            "minimum": 0.0,
+            "title": "Copied",
+            "type": "integer"
+          },
+          "copied_bytes": {
+            "minimum": 0.0,
+            "title": "Copied Bytes",
+            "type": "integer"
+          },
+          "deleted": {
+            "minimum": 0.0,
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "error_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Errors",
+            "type": "array"
+          },
+          "files": {
+            "minimum": 0.0,
+            "title": "Files",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "copied",
+          "copied_bytes",
+          "deleted"
+        ],
+        "title": "ReplicaResultIn",
+        "type": "object"
+      },
+      "ReplicateResult": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "ReplicateResult",
+        "type": "object"
+      },
+      "ReplicationOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "status",
+          "created_at",
+          "finished_at",
+          "progress",
+          "error"
+        ],
+        "title": "ReplicationOut",
         "type": "object"
       },
       "RestoreRequest": {
@@ -3773,6 +4098,23 @@
         "title": "RowsIn",
         "type": "object"
       },
+      "RunRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RunRequest",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "csrf_token": {
@@ -3789,6 +4131,86 @@
           "csrf_token"
         ],
         "title": "SessionOut",
+        "type": "object"
+      },
+      "ShareIn": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "default": "",
+            "maxLength": 256,
+            "title": "Domain",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "seal": {
+            "default": false,
+            "description": "require SMB 3 transport encryption",
+            "title": "Seal",
+            "type": "boolean"
+          },
+          "share": {
+            "description": "//server/share[/folder]",
+            "maxLength": 1024,
+            "title": "Share",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "share",
+          "username"
+        ],
+        "title": "ShareIn",
+        "type": "object"
+      },
+      "ShareOut": {
+        "properties": {
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "password_set": {
+            "title": "Password Set",
+            "type": "boolean"
+          },
+          "seal": {
+            "title": "Seal",
+            "type": "boolean"
+          },
+          "share": {
+            "title": "Share",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "share",
+          "username",
+          "domain",
+          "seal",
+          "password_set"
+        ],
+        "title": "ShareOut",
         "type": "object"
       },
       "SnapshotOut": {
@@ -4044,6 +4466,16 @@
       },
       "StorageIn": {
         "properties": {
+          "apply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplyIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "anyOf": [
               {
@@ -4093,6 +4525,16 @@
             "title": "Path",
             "type": "string"
           },
+          "replica": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "anyOf": [
               {
@@ -4123,6 +4565,115 @@
           "kind"
         ],
         "title": "StorageIn",
+        "type": "object"
+      },
+      "StorageSettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "copy_02": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "primary": {
+            "$ref": "#/components/schemas/PrimaryIn"
+          }
+        },
+        "required": [
+          "primary"
+        ],
+        "title": "StorageSettingsIn",
+        "type": "object"
+      },
+      "StorageSettingsOut": {
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "copy_02": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_replication": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplicationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "migrate": {
+            "title": "Migrate",
+            "type": "boolean"
+          },
+          "primary_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local",
+                  "smb"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Kind"
+          },
+          "primary_smb": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "secret_key_configured": {
+            "title": "Secret Key Configured",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "revision",
+          "primary_kind",
+          "primary_smb",
+          "migrate",
+          "copy_02",
+          "agents",
+          "applied",
+          "last_replication",
+          "secret_key_configured"
+        ],
+        "title": "StorageSettingsOut",
         "type": "object"
       },
       "TargetType": {
@@ -5247,6 +5798,53 @@
         ]
       }
     },
+    "/api/agent/jobs/{job_id}/replicate-complete": {
+      "post": {
+        "description": "Record a refresh of copy 02.",
+        "operationId": "replicate_complete_api_agent_jobs__job_id__replicate_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplicaResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replicate Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/jobs/{job_id}/restore-complete": {
       "post": {
         "description": "Record the outcome of a restore (or of its dry run) on the job.",
@@ -5289,6 +5887,64 @@
           }
         },
         "summary": "Restore Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/storage": {
+      "get": {
+        "description": "Storage settings with the share passwords decrypted (mutual TLS only).",
+        "operationId": "storage_config_api_agent_storage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "Never configured from the interface"
+          }
+        },
+        "summary": "Storage Config",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/storage-status": {
+      "post": {
+        "description": "Where the repository and copy 02 are now, and how the last settings were applied.",
+        "operationId": "storage_status_api_agent_storage_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Storage Status",
         "tags": [
           "agent protocol"
         ]
@@ -5868,6 +6524,48 @@
           }
         },
         "summary": "Start Backup",
+        "tags": [
+          "backups"
+        ]
+      }
+    },
+    "/api/backups/all": {
+      "post": {
+        "description": "Manual backup of every active account the caller may back up (optionally one domain).",
+        "operationId": "start_backup_all_api_backups_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllBackupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkBackupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Backup All",
         "tags": [
           "backups"
         ]
@@ -7163,6 +7861,60 @@
         ]
       }
     },
+    "/api/policies/{policy_id}/run": {
+      "post": {
+        "description": "Run a policy now (manual backup of its accounts), outside its schedule.",
+        "operationId": "run_policy_api_policies__policy_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkBackupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Policy",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
     "/api/restores": {
       "post": {
         "operationId": "start_restore_api_restores_post",
@@ -7326,6 +8078,89 @@
           }
         },
         "summary": "Test Notification",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/storage": {
+      "get": {
+        "operationId": "get_storage_settings_api_settings_storage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Storage Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Choose where backups go; the agent applies it within a minute (mount, restart).",
+        "operationId": "put_storage_settings_api_settings_storage_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Storage Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/storage/replicate": {
+      "post": {
+        "description": "Refresh copy 02 now.",
+        "operationId": "replicate_now_api_settings_storage_replicate_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicateResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Replicate Now",
         "tags": [
           "settings"
         ]

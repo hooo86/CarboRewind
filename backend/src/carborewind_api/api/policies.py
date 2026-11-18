@@ -27,7 +27,9 @@ from ..db.models import (
     PolicyAccount,
     TargetType,
 )
+from ..scheduler import _accounts_of
 from ..scheduling import Cron, CronError, Retention, zone
+from .backups import BulkBackupOut, queue_backups
 from .deps import DbSession, Principal, client_ip, deny, require
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
@@ -346,3 +348,36 @@ async def delete_policy(
     policy = await _editable(db, principal, request, policy_id)
     await _audit(db, principal, request, "policy.delete", policy)
     await db.delete(policy)
+
+
+class RunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Default: the policy's own backup type.
+    backup_type: BackupType | None = None
+
+
+@router.post("/{policy_id}/run", response_model=BulkBackupOut, status_code=status.HTTP_202_ACCEPTED)
+async def run_policy(
+    policy_id: uuid.UUID,
+    body: RunRequest,
+    principal: Annotated[Principal, Depends(require(Permission.BACKUPS_RUN))],
+    db: DbSession,
+    request: Request,
+) -> BulkBackupOut:
+    """Run a policy now (manual backup of its accounts), outside its schedule."""
+    p = await db.get(Policy, policy_id)
+    if p is None or not await _allowed(db, principal, Permission.BACKUPS_RUN, p):
+        raise await deny(db, principal, request, Permission.BACKUPS_RUN, policy=str(policy_id))
+    accounts = list(await db.scalars(select(Account).where(Account.id.in_(_accounts_of(p)))))
+    return await queue_backups(
+        db,
+        principal,
+        request,
+        accounts,
+        body.backup_type or p.backup_type,
+        50,
+        "policy.run_now",
+        policy_id=p.id,
+        policy=p.name,
+    )

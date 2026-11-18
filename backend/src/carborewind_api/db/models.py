@@ -129,6 +129,7 @@ class JobKind(enum.StrEnum):
     VERIFY = "verify"
     PURGE = "purge"
     MIGRATE = "migrate"  # copy a mailbox from a remote IMAP server
+    REPLICATE = "replicate"  # mirror the repository onto copy 02
 
 
 class JobStatus(enum.StrEnum):

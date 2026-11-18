@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import audit
+from .. import audit, storage_settings
 from ..db.models import (
     Account,
     AccountStatus,
@@ -41,7 +41,7 @@ from ..db.models import (
     SnapshotStatus,
 )
 from ..migration_jobs import MigrationSpecError, job_spec, notify_batch_done, record_result
-from ..notifications import notify
+from ..notifications import SecretKeyError, notify
 from ..pki import CertificateAuthority, PkiError, fingerprint_pem, token_digest
 from ..scheduler import orphan_blobs_query, purge_plan
 from .deps import AppSettings, DbSession, client_ip
@@ -197,7 +197,7 @@ class AccountIn(BaseModel):
         return out
 
 
-class StorageIn(BaseModel):
+class PlaceIn(BaseModel):
     path: str = Field(max_length=4096)
     kind: Literal["local", "network"]
     fstype: str | None = Field(default=None, max_length=64)
@@ -205,6 +205,21 @@ class StorageIn(BaseModel):
     total_bytes: int | None = Field(default=None, ge=0)
     free_bytes: int | None = Field(default=None, ge=0)
     error: str | None = Field(default=None, max_length=200)
+
+
+class ApplyIn(BaseModel):
+    """Outcome of the last storage settings applied by the root helper."""
+
+    revision: int | None = None
+    ok: bool | None = None
+    error: str | None = Field(default=None, max_length=500)
+    at: str | None = Field(default=None, max_length=64)
+    changed: list[str] | None = Field(default=None, max_length=10)
+
+
+class StorageIn(PlaceIn):
+    replica: PlaceIn | None = None  # copy 02
+    apply: ApplyIn | None = None
 
 
 class InventoryIn(BaseModel):
@@ -303,6 +318,51 @@ async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> In
         accounts_updated=updated,
         accounts_deleted=deleted,
     )
+
+
+# ------------------------------------------------------------------ storage settings
+
+
+@router.get(
+    "/storage",
+    response_model=None,
+    responses={204: {"description": "Never configured from the interface"}},
+)
+async def storage_config(
+    agent: CurrentAgent, db: DbSession, settings: AppSettings
+) -> dict[str, Any] | Response:
+    """Storage settings with the share passwords decrypted (mutual TLS only)."""
+    cfg = await storage_settings.load(db)
+    if cfg.revision == 0:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    try:
+        return cfg.for_agent(settings)
+    except SecretKeyError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.post("/storage-status", status_code=status.HTTP_204_NO_CONTENT)
+async def storage_status(body: StorageIn, agent: CurrentAgent, db: DbSession) -> None:
+    """Where the repository and copy 02 are now, and how the last settings were applied."""
+    previous = (agent.storage or {}).get("apply") or {}
+    agent.storage = {**body.model_dump(), "reported_at": datetime.now(UTC).isoformat()}
+    if body.apply and body.apply.revision != previous.get("revision"):
+        await _audit(
+            db,
+            agent,
+            "storage.apply",
+            Outcome.SUCCESS if body.apply.ok else Outcome.FAILURE,
+            details=body.apply.model_dump(),
+        )
+        if body.apply.ok is False:
+            await notify(
+                db,
+                "job_failed",
+                kind="storage",
+                account=agent.name,
+                error=body.apply.error or "?",
+                job=f"storage settings #{body.apply.revision}",
+            )
 
 
 # ------------------------------------------------------------------ job protocol
@@ -836,6 +896,51 @@ async def migrate_complete(
         },
     )
     await notify_batch_done(db, job)
+
+
+class ReplicaResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    files: int = Field(ge=0)
+    copied: int = Field(ge=0)
+    copied_bytes: int = Field(ge=0)
+    deleted: int = Field(ge=0)
+    errors: list[str] = Field(default_factory=list, max_length=50)
+    error_count: int = Field(default=0, ge=0)
+
+
+@router.post("/jobs/{job_id}/replicate-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def replicate_complete(
+    job_id: uuid.UUID, body: ReplicaResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Record a refresh of copy 02."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.REPLICATE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a replicate job")
+    job.progress = body.model_dump()
+    job.error = f"{body.error_count} file(s) not copied" if body.error_count else None
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
+    if body.error_count:
+        await notify(
+            db,
+            "job_failed",
+            kind="replicate",
+            account=agent.name,
+            error=job.error,
+            job=str(job.id),
+        )
+    await _audit(
+        db,
+        agent,
+        "replicate.complete",
+        Outcome.FAILURE if body.error_count else Outcome.SUCCESS,
+        target_type="job",
+        target_id=str(job.id),
+        details={k: v for k, v in body.model_dump().items() if k != "errors"},
+    )
 
 
 async def _notify_failure(db: DbSession, job: Job) -> None:

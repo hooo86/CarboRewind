@@ -234,7 +234,7 @@ def test_bulk_backup(api: TestClient, engine: Engine, world: dict[str, Any]) -> 
         job = s.scalar(
             select(Job).where(Job.account_id == world["ana"], Job.kind == JobKind.BACKUP)
         )
-        assert job is not None and job.params == {"backup_type": "full"}
+        assert job is not None and job.params == {"backup_type": "full", "manual": True}
     # One account outside the caller's domains: nothing is queued.
     out = {"account_ids": [str(world["ana"]), str(world["cy"])]}
     assert api.post("/api/backups/bulk", json=out, headers=headers).status_code == 403
