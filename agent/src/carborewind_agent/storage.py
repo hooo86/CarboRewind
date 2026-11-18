@@ -178,7 +178,8 @@ def set_env(env_file: Path, key: str, value: str) -> None:
             break
     if not done:
         lines.append(f"{key}={value}")
-    mode = env_file.stat().st_mode & 0o777 if env_file.exists() else 0o640
+    # Keep the mode the package gave it (0640 root:carborewind); new files stay private.
+    mode = env_file.stat().st_mode & 0o777 if env_file.exists() else 0o600
     _write(env_file, "\n".join(lines) + "\n", mode)
 
 
@@ -290,14 +291,14 @@ def configure_smb(
     _write(
         systemd / unit_name,
         mount_unit(req.share, req.mount_point, credentials, user.pw_uid, user.pw_gid, req.seal),
-        0o644,
+        0o600,  # systemd reads units as root
     )
     _write(
         systemd / "carborewind-agent.service.d" / "storage.conf",
         "# Written by carborewind-agent storage smb.\n"
         "[Unit]\n"
         f"RequiresMountsFor={req.mount_point}\n",
-        0o644,
+        0o600,  # systemd reads units as root
     )
     req.mount_point.mkdir(parents=True, exist_ok=True)
     runner("systemctl", "daemon-reload")

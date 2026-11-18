@@ -309,7 +309,8 @@ def test_policy_on_a_selection(
         ).status_code
         == 422
     )
-    assert api.delete(f"/api/policies/{pid}", headers=admin).status_code == 204
+    deleted = api.delete(f"/api/policies/{pid}", headers=admin)
+    assert deleted.status_code == 204
     with Session(engine) as s:
         assert not s.scalars(
             select(PolicyAccount).where(PolicyAccount.policy_id == uuid.UUID(pid))

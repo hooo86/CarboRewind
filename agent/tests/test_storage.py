@@ -41,7 +41,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "# comment\nCARBOREWIND_AGENT_API_URL=https://api\n"
         "CARBOREWIND_AGENT_REPOSITORY_PATH=/var/lib/carborewind/repository\n"
     )
-    os.chmod(env_file, 0o640)
+    os.chmod(env_file, 0o600)
     calls: list[tuple[str, ...]] = []
     return {
         "tmp": tmp_path,
@@ -102,11 +102,11 @@ def test_mount_info_and_describe(tmp_path: Path) -> None:
 def test_set_env_keeps_other_lines(tmp_path: Path) -> None:
     f = tmp_path / "agent.env"
     f.write_text("A=1\n#CARBOREWIND_AGENT_REPOSITORY_PATH=/old\nB=2\n")
-    os.chmod(f, 0o640)
+    os.chmod(f, 0o600)
     set_env(f, "CARBOREWIND_AGENT_REPOSITORY_PATH", "/new")
     set_env(f, "C", "3")
     assert f.read_text() == "A=1\nCARBOREWIND_AGENT_REPOSITORY_PATH=/new\nB=2\nC=3\n"
-    assert f.stat().st_mode & 0o777 == 0o640
+    assert f.stat().st_mode & 0o777 == 0o600
     fresh = tmp_path / "new.env"
     set_env(fresh, "X", "1")
     assert fresh.read_text() == "X=1\n"
