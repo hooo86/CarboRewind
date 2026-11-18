@@ -14,7 +14,7 @@
 └── locks/repo.lock                   verrou consultatif
 ```
 
-Tous les répertoires sont en `0700` et les fichiers en `0600` ; seul `config.json` est en `0644`.
+Tous les répertoires sont en `0700` et tous les fichiers en `0600`, au nom de l'utilisateur système de l'agent.
 
 ## Cryptographie
 

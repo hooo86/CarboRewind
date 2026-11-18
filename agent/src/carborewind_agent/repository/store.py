@@ -4,6 +4,8 @@ Layout::
 
     <root>/
       config.json                      format version, repository id (plain, no secret)
+
+Every directory is 0700 and every file 0600 (owner: the agent's system user).
       keys/master.json                 master key wrapped by the KEK
       blobs/<id[:2]>/<id>              sealed objects, content-addressed
       manifests/<account>/<snap>.json  sealed snapshot manifests
@@ -67,7 +69,8 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def _atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` atomically, owner-only (0600)."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     try:
@@ -75,7 +78,7 @@ def _atomic_write(path: Path, data: bytes, mode: int = 0o600) -> None:
             fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
-        os.chmod(tmp, mode)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
@@ -117,7 +120,7 @@ class Repository:
         for sub in ("blobs", "manifests", "locks", "keys"):
             (root / sub).mkdir(mode=0o700)
         _atomic_write(root / "keys" / "master.json", json.dumps(wrap_master(kek, master)).encode())
-        _atomic_write(root / "config.json", json.dumps(config, indent=2).encode(), mode=0o644)
+        _atomic_write(root / "config.json", json.dumps(config, indent=2).encode())
         return cls(root, Keys.from_master(master), repo_id)
 
     @classmethod

@@ -40,6 +40,7 @@ def test_init_layout_and_permissions(repo: Repository) -> None:
     assert config["repository_id"] == repo.repo_id
     key_file = repo.root / "keys" / "master.json"
     assert oct(key_file.stat().st_mode & 0o777) == "0o600"
+    assert oct((repo.root / "config.json").stat().st_mode & 0o777) == "0o600"
     assert oct((repo.root / "blobs").stat().st_mode & 0o777) == "0o700"
 
 
@@ -149,13 +150,13 @@ def test_no_temporary_files_left(repo: Repository) -> None:
 
 
 def test_concurrent_puts_of_same_content(repo: Repository) -> None:
-    errors: list[BaseException] = []
+    errors: list[Exception] = []
 
     def worker() -> None:
         try:
             for _ in range(20):
                 repo.put(EML)
-        except BaseException as exc:  # pragma: no cover - reported below
+        except Exception as exc:  # pragma: no cover - reported below
             errors.append(exc)
 
     threads = [threading.Thread(target=worker) for _ in range(8)]
@@ -211,7 +212,8 @@ def test_kek_rotation(repo: Repository, kek: bytes) -> None:
     blob = repo.put(EML).blob_id
     new = generate_key()
     Repository.rotate_kek(repo.root, kek, new)
-    assert Repository.open(repo.root, new).get(blob) == EML
+    reopened = Repository.open(repo.root, new)
+    assert reopened.get(blob) == EML
     with pytest.raises(IntegrityError):
         Repository.open(repo.root, kek)
 
@@ -240,7 +242,7 @@ def test_keyfile_permissions(tmp_path: Path) -> None:
     assert len(read_kek(path)) == 32
     with pytest.raises(FileExistsError):
         create_kek(path)
-    os.chmod(path, 0o644)
+    os.chmod(path, 0o640)  # group-readable is already refused
     with pytest.raises(KeyFileError, match="group/others"):
         read_kek(path)
     with pytest.raises(KeyFileError, match="not found"):
