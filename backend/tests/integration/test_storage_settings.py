@@ -291,3 +291,35 @@ def _domain_admin(api: TestClient, engine: Engine, domain: uuid.UUID) -> dict[st
     api.cookies.clear()
     r = api.post("/api/auth/login", json={"username": name, "password": "a-long-enough-password"})
     return {"X-CSRF-Token": r.json()["csrf_token"]}
+
+
+def test_profile_and_usage_from_inventory(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    tag = uuid.uuid4().hex[:6]
+    email = f"prof@p{tag}.test"
+    entry = {
+        "carbonio_id": uuid.uuid4().hex,
+        "email": email,
+        "status": "active",
+        "quota_bytes": 1000,
+        "used_bytes": 900,
+        "profile": {"title": "Chimiste", "department": "Labo", "phone": "021", "evil": "x"},
+    }
+    assert agent.post("/inventory", {"accounts": [entry]}).status_code == 200
+    page = api.get("/api/accounts", params={"q": email}).json()
+    (item,) = page["items"]
+    assert item["profile"] == {"title": "Chimiste", "department": "Labo", "phone": "021"}
+    assert (item["quota_bytes"], item["used_bytes"], item["usage_pct"]) == (1000, 900, 90.0)
+    found = api.get(
+        "/api/accounts", params={"f": ["department:contains:lab", f"domain:eq:p{tag}.test"]}
+    )
+    assert [i["email"] for i in found.json()["items"]] == [email]
+    assert api.get("/api/accounts", params={"q": "chimiste"}).json()["total"] >= 1
+    sort = api.get("/api/accounts", params={"sort": "title", "f": [f"domain:eq:p{tag}.test"]})
+    assert sort.status_code == 200
+    # An agent that does not know the usage keeps the last value; no profile keeps it too.
+    del entry["used_bytes"], entry["profile"]
+    agent.post("/inventory", {"accounts": [entry]})
+    (item,) = api.get("/api/accounts", params={"q": email}).json()["items"]
+    assert item["used_bytes"] == 900 and item["profile"]["title"] == "Chimiste"

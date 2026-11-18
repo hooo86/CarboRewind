@@ -162,6 +162,20 @@
             ],
             "title": "Last Name"
           },
+          "profile": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
           "quota_bytes": {
             "anyOf": [
               {
@@ -349,6 +363,13 @@
             },
             "title": "Policies",
             "type": "array"
+          },
+          "profile": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Profile",
+            "type": "object"
           },
           "quota_bytes": {
             "anyOf": [

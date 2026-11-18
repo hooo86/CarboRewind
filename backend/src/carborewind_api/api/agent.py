@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
@@ -47,6 +47,24 @@ from ..scheduler import orphan_blobs_query, purge_plan
 from .deps import AppSettings, DbSession, client_ip
 
 router = APIRouter(prefix="/api/agent", tags=["agent protocol"])
+
+# Profile fields an agent may send (see carborewind_agent.worker.PROFILE_ATTRS).
+PROFILE_FIELDS = (
+    "title",
+    "company",
+    "department",
+    "phone",
+    "mobile",
+    "home_phone",
+    "street",
+    "postal_code",
+    "city",
+    "state",
+    "country",
+    "description",
+    "notes",
+    "employee_number",
+)
 
 
 # ------------------------------------------------------------------ authentication
@@ -177,6 +195,14 @@ class AccountIn(BaseModel):
     is_admin: bool = False
     last_login_at: datetime | None = None
     carbonio_created_at: datetime | None = None
+    profile: dict[str, str] | None = None
+
+    @field_validator("profile")
+    @classmethod
+    def _profile(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        return {k: v[:1000] for k, v in value.items() if k in PROFILE_FIELDS and v}
 
     def details(self) -> dict[str, Any]:
         out = self.model_dump(
@@ -194,6 +220,8 @@ class AccountIn(BaseModel):
         out["aliases"] = [a.lower() for a in self.aliases]
         if "used_bytes" in self.model_fields_set:  # absent = usage unknown, keep the last value
             out["used_bytes"] = self.used_bytes
+        if self.profile is not None:  # older agents do not send it
+            out["profile"] = self.profile
         return out
 
 

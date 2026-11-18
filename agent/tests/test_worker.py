@@ -240,13 +240,55 @@ def test_inventory_carries_carbonio_attributes(
         "last_login_at": "2026-11-18T09:30:00+00:00",
         "carbonio_created_at": "2025-01-02T03:04:05+00:00",
         "used_bytes": len(b"Subject: x\r\n\r\n12345"),
+        "profile": {},
     }
     bad = accounts[other.name]
     assert (bad["quota_bytes"], bad["cos"], bad["last_login_at"]) == (None, "gone", None)
-    # Quota usage refused (restricted admin): inventory still flows, without the figure.
+    # Quota usage refused (restricted admin): each mailbox is measured instead.
     fake.quota_denied = True
     worker.sync_inventory()
-    assert all("used_bytes" not in a for a in api.calls[-1][1]["accounts"])
+    sizes = {a["email"]: a.get("used_bytes") for a in api.calls[-1][1]["accounts"]}
+    assert sizes["zoe@example.test"] == len(b"Subject: x\r\n\r\n12345")
+    assert "GetMailboxRequest" in fake.calls
+
+
+def test_inventory_quota_from_cos_usage_fallback_and_profile(
+    settings: AgentSettings, carbonio: CarbonioClient, engine: AccountBackup, fake: FakeCarbonio
+) -> None:
+    vip = fake.add_mailbox(
+        "vip@example.test",
+        zimbraCOSId="cos-vip",
+        title="Directrice",
+        company="LNHC",
+        ou="Laboratoire",
+        telephoneNumber="+213 21 00 00 00",
+        mobile="+213 555 00 00 00",
+        l="Alger",
+        co="Algérie",
+        zimbraNotes="Accès VIP",
+    )
+    vip.add("m", 2, b"Subject: y\r\n\r\n" + b"x" * 100)
+    plain = fake.add_mailbox("plain@example.test", zimbraCOSId="cos-default")
+    hidden = fake.add_mailbox("hidden@example.test")
+    hidden.add("m", 2, b"Subject: z\r\n\r\nzz")
+    fake.quota_missing.add(hidden.id)  # GetQuotaUsage forgets it (other server, cache)
+    api = FakeApi([])
+    _worker(api, settings, carbonio, engine).sync_inventory()
+    accounts = {a["email"]: a for a in api.calls[-1][1]["accounts"]}
+    assert accounts["vip@example.test"]["quota_bytes"] == 5 * 1024**3  # from its COS
+    assert accounts["vip@example.test"]["profile"] == {
+        "title": "Directrice",
+        "company": "LNHC",
+        "department": "Laboratoire",
+        "phone": "+213 21 00 00 00",
+        "mobile": "+213 555 00 00 00",
+        "city": "Alger",
+        "country": "Algérie",
+        "notes": "Accès VIP",
+    }
+    assert accounts[plain.name]["quota_bytes"] == 0  # COS: unlimited
+    assert accounts[hidden.name]["used_bytes"] == len(b"Subject: z\r\n\r\nzz")
+    assert accounts[hidden.name]["quota_bytes"] is None
 
 
 def test_run_forever_survives_api_errors(
@@ -340,3 +382,18 @@ def test_tls_context_loads_client_certificate(tmp_path: Path) -> None:
     assert ctx.cert_store_stats()["x509"] == 1  # the given CA file, not the system store
     with pytest.raises(FileNotFoundError):
         tls_context(None, (tmp_path / "missing.crt", pem_key))
+
+
+def test_quota_report(carbonio: CarbonioClient, fake: FakeCarbonio) -> None:
+    from carborewind_agent.carbonio.probe import quota_report
+
+    box = fake.add_mailbox("q@example.test", zimbraCOSId="cos-vip")
+    box.add("m", 2, b"Subject: q\r\n\r\nq")
+    text = "\n".join(quota_report(carbonio, "Q@example.test"))
+    assert "class of service: vip" in text and "GetMailboxRequest size: 15 bytes" in text
+    assert "(used, limit) = (15, 0)" in text
+    fake.quota_denied = True
+    assert "GetQuotaUsageRequest refused" in "\n".join(quota_report(carbonio, box.name))
+    assert quota_report(carbonio, "nobody@example.test") == [
+        "nobody@example.test: not found by SearchDirectoryRequest"
+    ]

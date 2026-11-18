@@ -104,6 +104,8 @@ class FakeCarbonio:
         self.calls: list[str] = []
         self.fail_next: list[int] = []  # HTTP statuses to return before answering
         self.quota_denied = False
+        self.quota_missing: set[str] = set()  # accounts GetQuotaUsage does not list
+        self.vip_quota = 5 * 1024**3
 
     # ------------------------------------------------------------------ setup helpers
 
@@ -219,7 +221,27 @@ class FakeCarbonio:
 
     def _GetAllCosRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
-        return {"cos": [{"id": "cos-default", "name": "default"}, {"id": "cos-vip", "name": "vip"}]}
+        return {
+            "cos": [
+                {
+                    "id": "cos-default",
+                    "name": "default",
+                    "a": [{"n": "zimbraMailQuota", "_content": "0"}],
+                },
+                {
+                    "id": "cos-vip",
+                    "name": "vip",
+                    "a": [{"n": "zimbraMailQuota", "_content": str(self.vip_quota)}],
+                },
+            ]
+        }
+
+    def _GetMailboxRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["mbox"]["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        return {"mbox": [{"mbid": "1", "s": sum(len(i.raw) for i in mbox.items.values())}]}
 
     def _GetQuotaUsageRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
@@ -237,6 +259,7 @@ class FakeCarbonio:
                     "limit": int(q) if (q := m.attrs.get("zimbraMailQuota", "0")).isdigit() else 0,
                 }
                 for m in page
+                if m.id not in self.quota_missing
             ],
             "more": offset + limit < len(boxes),
         }

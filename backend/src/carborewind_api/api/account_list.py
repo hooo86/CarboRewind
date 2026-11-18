@@ -27,6 +27,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from pydantic import Field as PydanticField
 from sqlalchemy import (
     Boolean,
     ColumnElement,
@@ -58,6 +59,7 @@ from ..db.models import (
     TargetType,
 )
 from .accounts import latest_snapshots
+from .agent import PROFILE_FIELDS
 from .deps import DbSession, Principal, require
 from .schemas import MAX_PAGE, Page
 
@@ -120,6 +122,10 @@ def _snapshot_count() -> ColumnElement[Any]:
     )
 
 
+def _profile_field(name: str) -> Field:
+    return Field("text", lambda s: Account.profile[name].astext)
+
+
 FIELDS: dict[str, Field] = {
     "email": Field("text", lambda s: Account.email),
     "display_name": Field("text", lambda s: Account.display_name),
@@ -151,6 +157,7 @@ FIELDS: dict[str, Field] = {
         ),
     ),
     "has_policy": Field("boolean", lambda s: exists(_covering_policies())),
+    **{name: _profile_field(name) for name in PROFILE_FIELDS},
 }
 
 OPERATORS: dict[FieldType, set[str]] = {
@@ -248,6 +255,8 @@ class AccountListItem(BaseModel):
     snapshot_count: int
     stored_bytes: int | None
     policies: list[str]
+    # Carbonio profile: title, company, department, phone, mobile, city…
+    profile: dict[str, str] = PydanticField(default_factory=dict)
 
 
 @router.get("/api/accounts", response_model=Page[AccountListItem])
@@ -283,6 +292,7 @@ async def list_all_accounts(
                 func.lower(Account.email).like(pattern, escape="\\"),
                 func.lower(func.coalesce(Account.display_name, "")).like(pattern, escape="\\"),
                 func.lower(cast(Account.aliases, Text)).like(pattern, escape="\\"),
+                func.lower(cast(Account.profile, Text)).like(pattern, escape="\\"),
             )
         )
     where.extend(parse_filter(item, snap, now) for item in f)
@@ -337,6 +347,7 @@ async def list_all_accounts(
                 snapshot_count=int(count or 0),
                 stored_bytes=s.size_bytes if s else None,
                 policies=sorted(p for p in (policies or []) if p),
+                profile=dict(account.profile or {}),
             )
         )
     return Page(items=items, total=total or 0, limit=limit, offset=offset)

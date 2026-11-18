@@ -301,6 +301,8 @@ class Account(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     carbonio_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Profile from Carbonio (title, company, department, phones, address, notes…).
+    profile: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (

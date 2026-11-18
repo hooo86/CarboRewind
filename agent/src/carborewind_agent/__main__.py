@@ -80,7 +80,7 @@ def repo_command(args: argparse.Namespace) -> int:
 
 def carbonio_command(args: argparse.Namespace) -> int:
     from .carbonio.factory import build_client
-    from .carbonio.probe import run_probe
+    from .carbonio.probe import quota_report, run_probe
 
     try:
         settings = AgentSettings()
@@ -88,6 +88,9 @@ def carbonio_command(args: argparse.Namespace) -> int:
     except (ValidationError, KeyFileError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.carbonio_command == "quota":
+        print("\n".join(quota_report(client, args.account)))
+        return 0
     report = run_probe(client, args.account)
     print(report.render())
     return 0 if report.ok else 1
@@ -239,6 +242,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     carbonio_sub = carbonio.add_subparsers(dest="carbonio_command", required=True)
     probe = carbonio_sub.add_parser("probe", help="read-only check of the Carbonio API contract")
     probe.add_argument("--account", help="account to probe (default: first one listed)")
+    quota = carbonio_sub.add_parser("quota", help="show where quota and usage come from")
+    quota.add_argument("account", help="e-mail address of the account")
     enroll_p = sub.add_parser("enroll", help="obtain the client certificate (one-time token)")
     enroll_p.add_argument("--token-file", help="file holding the token (default: read stdin)")
     enroll_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")

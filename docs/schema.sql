@@ -475,4 +475,10 @@ ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'rest
 
 UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
 
+-- Running upgrade 0008 -> 0009
+
+ALTER TABLE accounts ADD COLUMN profile JSONB DEFAULT '{}'::jsonb NOT NULL;
+
+UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
+
 COMMIT;

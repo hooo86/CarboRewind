@@ -41,12 +41,49 @@ def _generalized_time(value: str | None) -> str | None:
     return f"{v[:4]}-{v[4:6]}-{v[6:8]}T{v[8:10]}:{v[10:12]}:{v[12:14]}+00:00"
 
 
+# LDAP attribute -> profile field shown in the interface.
+PROFILE_ATTRS = {
+    "title": "title",
+    "company": "company",
+    "ou": "department",
+    "telephoneNumber": "phone",
+    "mobile": "mobile",
+    "homePhone": "home_phone",
+    "street": "street",
+    "postalCode": "postal_code",
+    "l": "city",
+    "st": "state",
+    "co": "country",
+    "description": "description",
+    "zimbraNotes": "notes",
+    "employeeNumber": "employee_number",
+}
+# Mailboxes GetQuotaUsage did not list are measured one by one, up to this many.
+MAX_SIZE_LOOKUPS = 5000
+
+
 def account_payload(
-    a: AccountInfo, cos: dict[str, str], used: dict[str, int] | None
+    a: AccountInfo,
+    cos: dict[str, tuple[str, int | None]] | dict[str, str],
+    used: dict[str, int] | None,
+    limits: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Inventory entry sent to the API (see ``AccountIn``)."""
+    """Inventory entry sent to the API (see ``AccountIn``).
+
+    Quota: the account's own ``zimbraMailQuota``, else the effective limit reported by
+    ``GetQuotaUsage``, else its class of service (0 = unlimited). Usage is only sent when it
+    is known: an account missing from the answers is left unknown, never shown as 0.
+    """
     quota = _first(a.attrs, "zimbraMailQuota")
     cos_id = _first(a.attrs, "zimbraCOSId")
+    cos_entry = cos.get(cos_id) if cos_id else None
+    cos_name, cos_quota = cos_entry if isinstance(cos_entry, tuple) else (cos_entry, None)
+    if quota and quota.isdigit():
+        quota_bytes: int | None = int(quota)
+    elif limits and limits.get(a.id):
+        quota_bytes = limits[a.id]
+    else:
+        quota_bytes = cos_quota
     payload: dict[str, Any] = {
         "carbonio_id": a.id,
         "email": a.name,
@@ -55,14 +92,19 @@ def account_payload(
         "first_name": _first(a.attrs, "givenName"),
         "last_name": _first(a.attrs, "sn"),
         "aliases": sorted(a.attrs.get("zimbraMailAlias", [])),
-        "cos": cos.get(cos_id, cos_id) if cos_id else None,
-        "quota_bytes": int(quota) if quota and quota.isdigit() else None,
+        "cos": (cos_name or cos_id) if cos_id else None,
+        "quota_bytes": quota_bytes,
         "is_admin": _first(a.attrs, "zimbraIsAdminAccount") == "TRUE",
         "last_login_at": _generalized_time(_first(a.attrs, "zimbraLastLogonTimestamp")),
         "carbonio_created_at": _generalized_time(_first(a.attrs, "zimbraCreateTimestamp")),
+        "profile": {
+            field: value[:1000]
+            for attr, field in PROFILE_ATTRS.items()
+            if (value := _first(a.attrs, attr))
+        },
     }
-    if used is not None:
-        payload["used_bytes"] = used.get(a.id, 0)
+    if used is not None and a.id in used:
+        payload["used_bytes"] = used[a.id]
     return payload
 
 
@@ -107,16 +149,29 @@ class Worker:
     def sync_inventory(self) -> dict[str, Any]:
         # Optional enrichments: an older Carbonio or a restricted admin may refuse them.
         try:
-            cos = self._carbonio.cos_names()
+            cos: dict[str, tuple[str, int | None]] = self._carbonio.cos_info()
         except SoapFaultError as exc:
             log.warning("cannot list classes of service: %s", exc)
             cos = {}
+        used: dict[str, int] = {}
+        limits: dict[str, int] = {}
         try:
-            used: dict[str, int] | None = self._carbonio.quota_usage()
+            for account_id, (bytes_used, limit) in self._carbonio.quota_usage_detail().items():
+                used[account_id], limits[account_id] = bytes_used, limit
         except SoapFaultError as exc:
             log.warning("cannot read quota usage: %s", exc)
-            used = None
-        accounts = [account_payload(a, cos, used) for a in self._carbonio.iter_accounts()]
+        infos = list(self._carbonio.iter_accounts())
+        # GetQuotaUsage may leave accounts out (other server, cache): measure those directly.
+        lookups = 0
+        for info in infos:
+            if info.id in used or lookups >= MAX_SIZE_LOOKUPS:
+                continue
+            lookups += 1
+            try:
+                used[info.id] = self._carbonio.mailbox_size(info.id)
+            except SoapFaultError as exc:
+                log.debug("no mailbox size for %s: %s", info.name, exc)
+        accounts = [account_payload(a, cos, used, limits) for a in infos]
         return self._api.inventory(accounts, complete=True, storage=self.storage_report())
 
     # ------------------------------------------------------------------ storage settings

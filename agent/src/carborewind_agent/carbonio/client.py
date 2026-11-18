@@ -33,6 +33,21 @@ INVENTORY_ATTRS = (
     "zimbraIsAdminAccount",
     "zimbraLastLogonTimestamp",
     "zimbraCreateTimestamp",
+    # Profile (LDAP / Carbonio admin console "contact" fields).
+    "title",
+    "company",
+    "ou",
+    "telephoneNumber",
+    "mobile",
+    "homePhone",
+    "street",
+    "postalCode",
+    "l",
+    "st",
+    "co",
+    "description",
+    "zimbraNotes",
+    "employeeNumber",
 )
 
 # Item element names in SyncResponse / folder listings -> our item kinds.
@@ -173,6 +188,44 @@ class CarbonioClient:
         """Class-of-service id -> name (``GetAllCosRequest``)."""
         resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_auth())
         return {c["id"]: c.get("name", c["id"]) for c in resp.get("cos", [])}
+
+    def cos_info(self) -> dict[str, tuple[str, int | None]]:
+        """Class-of-service id -> (name, mail quota in bytes or None), ``GetAllCosRequest``.
+
+        The quota of an account without its own ``zimbraMailQuota`` comes from its COS.
+        """
+        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_auth())
+        out: dict[str, tuple[str, int | None]] = {}
+        for c in resp.get("cos", []):
+            quota = (_attrs(c).get("zimbraMailQuota") or [""])[0]
+            out[c["id"]] = (c.get("name", c["id"]), int(quota) if quota.isdigit() else None)
+        return out
+
+    def mailbox_size(self, account_id: str) -> int:
+        """Bytes used by one mailbox (``GetMailboxRequest``, exact, no cache)."""
+        resp = self._admin.invoke(
+            "GetMailbox", NS_ADMIN, {"mbox": {"id": account_id}}, token=self._admin_auth()
+        )
+        boxes = resp.get("mbox") or [{}]
+        return int(boxes[0].get("s", 0))
+
+    def quota_usage_detail(self, page: int = 1000) -> dict[str, tuple[int, int]]:
+        """Account id -> (bytes used, effective quota), ``GetQuotaUsageRequest`` paged."""
+        usage: dict[str, tuple[int, int]] = {}
+        offset = 0
+        while True:
+            resp = self._admin.invoke(
+                "GetQuotaUsage",
+                NS_ADMIN,
+                {"allServers": 1, "limit": page, "offset": offset, "sortBy": "totalUsed"},
+                token=self._admin_auth(),
+            )
+            accounts = resp.get("account", [])
+            for entry in accounts:
+                usage[entry["id"]] = (int(entry.get("used", 0)), int(entry.get("limit", 0)))
+            offset += len(accounts)
+            if not resp.get("more") or not accounts:
+                return usage
 
     def quota_usage(self, page: int = 1000) -> dict[str, int]:
         """Account id -> bytes used, for every account (``GetQuotaUsageRequest``, paged)."""
