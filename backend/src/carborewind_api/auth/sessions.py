@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -77,3 +77,13 @@ async def resolve_session(
 async def revoke_session(db: AsyncSession, session: UserSession) -> None:
     session.revoked_at = datetime.now(UTC)
     await db.flush()
+
+
+async def revoke_all_sessions(db: AsyncSession, user_id: object) -> int:
+    """Revoke every live session of a user (deactivation, role change). Returns the count."""
+    result = await db.execute(
+        update(UserSession)
+        .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
