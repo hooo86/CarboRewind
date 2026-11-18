@@ -107,25 +107,34 @@ def _sessionmaker() -> tuple[Any, async_sessionmaker[Any]]:
 
 
 async def agent_create(name: str, hostname: str) -> tuple[str, str]:
-    """Register an agent; returns (agent id, one-time enrolment token)."""
+    """Register an agent, or re-issue the token of one not enrolled yet.
+
+    Returns (agent id, one-time enrolment token). Refuses to touch an agent that is
+    already enrolled (revoke it first) so that a typo cannot hijack a working agent.
+    """
     settings = get_settings()
     engine, factory = _sessionmaker()
     token = secrets.token_urlsafe(32)
+    expires = datetime.now(UTC) + timedelta(minutes=settings.agent_enrollment_minutes)
     try:
         async with factory() as db, db.begin():
-            agent = Agent(
-                name=name,
-                hostname=hostname,
-                status=AgentStatus.PENDING,
-                enrollment_token_hash=token_digest(token),
-                enrollment_expires_at=datetime.now(UTC)
-                + timedelta(minutes=settings.agent_enrollment_minutes),
-            )
-            db.add(agent)
+            agent = await db.scalar(select(Agent).where(Agent.name == name).with_for_update())
+            if agent is not None and agent.status is not AgentStatus.PENDING:
+                raise SystemExit(
+                    f"agent {name!r} is {agent.status.value}: choose another name, or revoke it "
+                    "(POST /api/agents/{id}/revoke) before registering it again"
+                )
+            action = "agent.token.reissue" if agent is not None else "agent.create"
+            if agent is None:
+                agent = Agent(name=name, hostname=hostname, status=AgentStatus.PENDING)
+                db.add(agent)
+            agent.hostname = hostname
+            agent.enrollment_token_hash = token_digest(token)
+            agent.enrollment_expires_at = expires
             await db.flush()
             await audit.record(
                 db,
-                action="agent.create",
+                action=action,
                 outcome=Outcome.SUCCESS,
                 actor_type=ActorType.SYSTEM,
                 actor_name="cli",

@@ -574,3 +574,37 @@ def test_cli_agent_create_and_backup(
             cli.main(["backup", "nobody@nowhere.test"])
     finally:
         get_settings.cache_clear()
+
+
+def test_cli_agent_create_reissues_pending_token_and_protects_enrolled(
+    api: TestClient,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from carborewind_api import cli
+    from carborewind_api.config import get_settings
+
+    monkeypatch.setenv("CARBOREWIND_DATABASE_URL", str(settings.database_url.get_secret_value()))  # type: ignore[union-attr]
+    get_settings.cache_clear()
+    name = f"re-{uuid.uuid4().hex[:6]}"
+    try:
+        assert cli.main(["agent-create", name, "mx.example.test"]) == 0
+        first = capsys.readouterr().out.strip().splitlines()[-1]
+        # Same name again while still pending: new token, the old one stops working.
+        assert cli.main(["agent-create", name, "mx2.example.test"]) == 0
+        second = capsys.readouterr().out.strip().splitlines()[-1]
+        assert second != first
+        assert (
+            api.post("/api/agent/enroll", json={"token": first, "csr_pem": _csr()}).status_code
+            == 401
+        )
+        assert (
+            api.post("/api/agent/enroll", json={"token": second, "csr_pem": _csr()}).status_code
+            == 200
+        )
+        # Once enrolled, the name is protected.
+        with pytest.raises(SystemExit, match="is active"):
+            cli.main(["agent-create", name, "evil.example.test"])
+    finally:
+        get_settings.cache_clear()
