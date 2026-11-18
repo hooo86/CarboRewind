@@ -8,6 +8,7 @@ the certificate fingerprint to an active agent. Enrolment itself uses a one-time
 
 from __future__ import annotations
 
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -49,7 +50,11 @@ router = APIRouter(prefix="/api/agent", tags=["agent protocol"])
 
 async def current_agent(request: Request, db: DbSession, settings: AppSettings) -> Agent:
     peer = request.client.host if request.client else None
-    if peer not in settings.agent_proxy_ips:
+    secret = settings.agent_proxy_secret
+    via_secret = secret is not None and secrets.compare_digest(
+        request.headers.get("X-Proxy-Auth", "").encode(), secret.get_secret_value().encode()
+    )
+    if not via_secret and peer not in settings.agent_proxy_ips:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "agent endpoints are only reachable via the proxy"
         )

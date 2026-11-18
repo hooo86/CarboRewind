@@ -71,8 +71,12 @@ class Settings(BaseSettings):
     # (nginx: $ssl_client_verify and $ssl_client_escaped_cert).
     agent_verify_header: str = "X-Client-Verify"
     agent_cert_header: str = "X-Client-Cert"
-    # Only these peers may present those headers (the reverse proxy).
+    # The proxy is recognised either by its address (peer IP before X-Forwarded-For
+    # rewriting, i.e. when the API runs without --proxy-headers)…
     agent_proxy_ips: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+    # …or by a shared secret it adds to every request (recommended with Docker, where the
+    # API sees the client address forwarded by nginx). Header: X-Proxy-Auth.
+    agent_proxy_secret: SecretStr | None = None
     job_lease_seconds: int = Field(default=300, ge=30, le=3600)
 
     @property

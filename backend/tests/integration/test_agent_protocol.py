@@ -524,3 +524,53 @@ def test_pki_init_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         assert cli.main(["pki-init"]) == 1  # never overwrites a CA
     finally:
         get_settings.cache_clear()
+
+
+def test_proxy_recognised_by_shared_secret(
+    migrated: str, tmp_path: Path, agent: AgentHandle
+) -> None:
+    settings = Settings(
+        environment="test",
+        database_url=migrated,  # type: ignore[arg-type]
+        pki_dir=tmp_path / "pki",
+        agent_proxy_ips=[],
+        agent_proxy_secret="proxy-secret-for-tests",
+    )
+    with TestClient(create_app(settings), base_url="https://testserver") as api:
+        assert api.post("/api/agent/jobs/claim", headers=agent.headers).status_code == 403
+        wrong = {**agent.headers, "X-Proxy-Auth": "nope"}
+        assert api.post("/api/agent/jobs/claim", headers=wrong).status_code == 403
+        good = {**agent.headers, "X-Proxy-Auth": "proxy-secret-for-tests"}
+        assert api.post("/api/agent/jobs/claim", headers=good).status_code in (200, 204)
+
+
+def test_cli_agent_create_and_backup(
+    api: TestClient,
+    settings: Settings,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from carborewind_api import cli
+    from carborewind_api.config import get_settings
+
+    monkeypatch.setenv("CARBOREWIND_DATABASE_URL", str(settings.database_url.get_secret_value()))  # type: ignore[union-attr]
+    get_settings.cache_clear()
+    try:
+        assert cli.main(["agent-create", f"cli-{uuid.uuid4().hex[:6]}", "mx.example.test"]) == 0
+        token = capsys.readouterr().out.strip().splitlines()[-1]
+        enrolled = api.post("/api/agent/enroll", json={"token": token, "csr_pem": _csr()})
+        assert enrolled.status_code == 200
+        body = enrolled.json()
+        agent = AgentHandle(api, body["agent_id"], body["certificate_pem"])
+        _drain(agent)
+        email = f"cli@{uuid.uuid4().hex[:6]}.test"
+        _inventory(agent, email)
+        assert cli.main(["backup", email.upper(), "--full"]) == 0
+        claimed = agent.post("/jobs/claim").json()
+        assert claimed["account_email"] == email
+        assert claimed["params"]["backup_type"] == "full"
+        with pytest.raises(SystemExit, match="unknown account"):
+            cli.main(["backup", "nobody@nowhere.test"])
+    finally:
+        get_settings.cache_clear()

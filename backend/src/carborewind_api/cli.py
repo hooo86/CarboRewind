@@ -10,17 +10,36 @@ from __future__ import annotations
 import argparse
 import asyncio
 import getpass
+import secrets
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import audit
 from .auth.service import normalise_username
 from .config import get_settings
-from .db.models import ActorType, AuthSource, Outcome, Role, RoleAssignment, User
+from .db.models import (
+    Account,
+    AccountStatus,
+    ActorType,
+    Agent,
+    AgentStatus,
+    AuthSource,
+    BackupType,
+    Job,
+    JobKind,
+    JobStatus,
+    Outcome,
+    Role,
+    RoleAssignment,
+    User,
+)
 from .db.session import make_engine
-from .pki import PkiError, init_ca
+from .pki import PkiError, init_ca, token_digest
 from .security.passwords import WeakPasswordError, hash_password
 
 
@@ -79,6 +98,85 @@ async def audit_verify() -> int:
     return 1
 
 
+def _sessionmaker() -> tuple[Any, async_sessionmaker[Any]]:
+    settings = get_settings()
+    if settings.database_url is None:
+        raise SystemExit("CARBOREWIND_DATABASE_URL is not set")
+    engine = make_engine(settings.database_url.get_secret_value())
+    return engine, async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def agent_create(name: str, hostname: str) -> tuple[str, str]:
+    """Register an agent; returns (agent id, one-time enrolment token)."""
+    settings = get_settings()
+    engine, factory = _sessionmaker()
+    token = secrets.token_urlsafe(32)
+    try:
+        async with factory() as db, db.begin():
+            agent = Agent(
+                name=name,
+                hostname=hostname,
+                status=AgentStatus.PENDING,
+                enrollment_token_hash=token_digest(token),
+                enrollment_expires_at=datetime.now(UTC)
+                + timedelta(minutes=settings.agent_enrollment_minutes),
+            )
+            db.add(agent)
+            await db.flush()
+            await audit.record(
+                db,
+                action="agent.create",
+                outcome=Outcome.SUCCESS,
+                actor_type=ActorType.SYSTEM,
+                actor_name="cli",
+                target_type="agent",
+                target_id=str(agent.id),
+                details={"name": name, "hostname": hostname},
+            )
+            return str(agent.id), token
+    finally:
+        await engine.dispose()
+
+
+async def backup_request(email: str, full: bool) -> str:
+    """Queue a backup of one account (same job as POST /api/backups)."""
+    engine, factory = _sessionmaker()
+    try:
+        async with factory() as db, db.begin():
+            account = await db.scalar(
+                select(Account).where(
+                    func.lower(Account.email) == email.lower(),
+                    Account.status != AccountStatus.DELETED,
+                )
+            )
+            if account is None:
+                raise SystemExit(f"unknown account {email} (has the agent synced the inventory?)")
+            backup_type = BackupType.FULL if full else BackupType.INCREMENTAL
+            job = Job(
+                kind=JobKind.BACKUP,
+                status=JobStatus.QUEUED,
+                account_id=account.id,
+                priority=50,
+                params={"backup_type": backup_type.value},
+            )
+            db.add(job)
+            await db.flush()
+            await audit.record(
+                db,
+                action="backup.request",
+                outcome=Outcome.SUCCESS,
+                actor_type=ActorType.SYSTEM,
+                actor_name="cli",
+                target_type="account",
+                target_id=account.email,
+                domain_id=account.domain_id,
+                details={"job": str(job.id), "type": backup_type.value},
+            )
+            return str(job.id)
+    finally:
+        await engine.dispose()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-api")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -87,7 +185,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     create.add_argument("--role", choices=[r.value for r in Role], default=Role.SUPER_ADMIN.value)
     sub.add_parser("audit-verify", help="recompute the audit hash chain (exit 1 if broken)")
     sub.add_parser("pki-init", help="create the agents' certificate authority")
+    agent = sub.add_parser("agent-create", help="register an agent, print its enrolment token")
+    agent.add_argument("name")
+    agent.add_argument("hostname")
+    backup = sub.add_parser("backup", help="queue a backup of one account")
+    backup.add_argument("email")
+    backup.add_argument("--full", action="store_true", help="force a full backup")
     args = parser.parse_args(argv)
+    if args.command == "agent-create":
+        agent_id, token = asyncio.run(agent_create(args.name, args.hostname))
+        print(
+            f"agent {agent_id} registered; one-time enrolment token (valid "
+            f"{get_settings().agent_enrollment_minutes} min):\n{token}"
+        )
+        return 0
+    if args.command == "backup":
+        print(f"backup job {asyncio.run(backup_request(args.email, args.full))} queued")
+        return 0
     if args.command == "audit-verify":
         return asyncio.run(audit_verify())
     if args.command == "pki-init":

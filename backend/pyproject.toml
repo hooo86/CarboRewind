@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "carborewind-api"
-version = "0.0.0"
+version = "0.1.0.dev0"
 description = "CarboRewind control-plane REST API"
 readme = "README.md"
 license = "AGPL-3.0-only"
