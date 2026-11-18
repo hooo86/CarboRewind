@@ -5,14 +5,15 @@
 #   PYTHON_DIR  path to a relocatable CPython (python-build-standalone), e.g. obtained with
 #               `uv python install 3.12 --install-dir …`. Built for glibc 2.17+, so the
 #               package runs on Ubuntu 20.04+/Debian 11+/RHEL 8+ (via alien/rpm, untested).
-#   VERSION     package version (default: 0.1.0~dev+<git sha>)
+#   VERSION     package version (default: 0.1.0~dev<commit date>+<git sha>)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OUT="${1:-$ROOT/dist}"
 : "${PYTHON_DIR:?set PYTHON_DIR to a python-build-standalone installation}"
-VERSION="${VERSION:-0.1.0~dev+$(git -C "$ROOT" rev-parse --short HEAD)}"
+# Dev versions sort by commit date (Debian ordering), then name the commit.
+VERSION="${VERSION:-0.1.0~dev$(git -C "$ROOT" log -1 --format=%cd --date=format:%Y%m%d%H%M)+$(git -C "$ROOT" rev-parse --short HEAD)}"
 PREFIX=/opt/carborewind-agent
 
 STAGE="$(mktemp -d)"

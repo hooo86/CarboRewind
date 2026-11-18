@@ -6,7 +6,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 OUT="${1:-$ROOT/dist}"
-VERSION="${VERSION:-0.1.0~dev+$(git -C "$ROOT" rev-parse --short HEAD)}"
+# Dev versions sort by commit date (Debian ordering), then name the commit.
+VERSION="${VERSION:-0.1.0~dev$(git -C "$ROOT" log -1 --format=%cd --date=format:%Y%m%d%H%M)+$(git -C "$ROOT" rev-parse --short HEAD)}"
 NAME="carborewind-server-${VERSION}"
 mkdir -p "$OUT"
 git -C "$ROOT" diff --quiet HEAD -- backend frontend deploy docs \
