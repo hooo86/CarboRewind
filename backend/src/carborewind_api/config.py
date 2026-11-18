@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=list)
     # Sent as Strict-Transport-Security; HTTPS is terminated by the reverse proxy.
     hsts_max_age: int = 63072000
+    # postgresql+psycopg://user:password@host/db — contains a secret, hence SecretStr.
+    database_url: SecretStr | None = None
+    # redis://[:password@]host:port/db
+    redis_url: SecretStr | None = None
+    # Per-dependency timeout of the readiness probe, in seconds.
+    readiness_timeout: float = Field(default=2.0, gt=0, le=30)
 
 
 @lru_cache

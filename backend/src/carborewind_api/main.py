@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from redis.asyncio import Redis
 
 from . import __version__
 from .config import Settings, get_settings
+from .db.session import make_engine
+from .health import Check, database_check, redis_check, run_checks
 from .logging import configure_logging
 
 
@@ -19,6 +23,7 @@ class Health(BaseModel):
 
     status: str
     version: str
+    checks: dict[str, str] = Field(default_factory=dict)
 
 
 def _security_headers(hsts_max_age: int) -> dict[str, str]:
@@ -33,12 +38,32 @@ def _security_headers(hsts_max_age: int) -> dict[str, str]:
     }
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the API. ``settings`` can be injected for tests."""
+def create_app(settings: Settings | None = None, checks: dict[str, Check] | None = None) -> FastAPI:
+    """Build the API. ``settings`` and readiness ``checks`` can be injected for tests."""
     settings = settings or get_settings()
     configure_logging(settings.log_level)
+    readiness: dict[str, Check] = dict(checks or {})
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        engine = redis = None
+        if checks is None and settings.database_url is not None:
+            engine = make_engine(settings.database_url.get_secret_value())
+            readiness["database"] = database_check(engine)
+        if checks is None and settings.redis_url is not None:
+            redis = Redis.from_url(settings.redis_url.get_secret_value())
+            readiness["redis"] = redis_check(redis)
+        app.state.engine = engine
+        try:
+            yield
+        finally:
+            if engine is not None:
+                await engine.dispose()
+            if redis is not None:
+                await redis.aclose()
 
     app = FastAPI(
+        lifespan=lifespan,
         title="CarboRewind API",
         version=__version__,
         description="Hot, point-in-time backup and restore for Carbonio mail servers.",
@@ -75,10 +100,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Liveness probe: the process is up."""
         return Health(status="ok", version=__version__)
 
-    @app.get("/readyz", response_model=Health, tags=["ops"])
-    async def readyz() -> Health:
-        """Readiness probe. Dependency checks (PostgreSQL, Redis) are added in M1."""
-        return Health(status="ready", version=__version__)
+    @app.get(
+        "/readyz",
+        response_model=Health,
+        tags=["ops"],
+        responses={503: {"model": Health, "description": "A dependency is unavailable"}},
+    )
+    async def readyz(response: Response) -> Health:
+        """Readiness probe: PostgreSQL and Redis answer within the configured timeout."""
+        results = await run_checks(readiness, settings.readiness_timeout)
+        ready = all(v == "ok" for v in results.values())
+        if not ready:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return Health(
+            status="ready" if ready else "unavailable", version=__version__, checks=results
+        )
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
