@@ -90,8 +90,8 @@ elif [ ! -f tls/server.crt ]; then
         -keyout tls/server.key -out tls/server.crt 2>/dev/null
     chmod 644 tls/server.crt
 fi
-# The nginx worker (non-root) must read the key through the bind mount.
-chmod 644 tls/server.key
+# The nginx master process reads the key as root at startup: owner-only is enough.
+chmod 600 tls/server.key
 
 say "building images (first run: several minutes)"
 "${COMPOSE[@]}" build --pull
