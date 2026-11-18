@@ -32,3 +32,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   l'injection de formules), vérification de la chaîne (`/api/audit/verify`, CLI
   `audit-verify`), tête de chaîne à ancrer hors base (`/api/audit/head`).
 - `deploy/sql/grants.sql` : rôle applicatif sans DDL et en ajout seul sur l'audit.
+- Agent : dépôt de sauvegarde chiffré (AES-256-GCM, KEK → clé maître → sous-clés HKDF),
+  compressé (zstd), dédupliqué (nom HMAC), écritures atomiques et idempotentes, AAD
+  anti-substitution, verrous, vérification complète ou échantillonnée, rotation de la KEK ;
+  commandes `carborewind-agent repo keygen|init|verify|rotate-key`.
