@@ -19,7 +19,9 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "policies",
-        sa.Column("timezone", sa.String(length=64), server_default=sa.text("'UTC'"), nullable=False),
+        sa.Column(
+            "timezone", sa.String(length=64), server_default=sa.text("'UTC'"), nullable=False
+        ),
     )
     op.add_column("policies", sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("snapshots", sa.Column("purged_at", sa.DateTime(timezone=True), nullable=True))
