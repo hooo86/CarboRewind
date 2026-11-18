@@ -36,3 +36,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   compressé (zstd), dédupliqué (nom HMAC), écritures atomiques et idempotentes, AAD
   anti-substitution, verrous, vérification complète ou échantillonnée, rotation de la KEK ;
   commandes `carborewind-agent repo keygen|init|verify|rotate-key`.
+- Agent : client Carbonio CE (SOAP JSON admin et mail, REST) — authentification admin,
+  délégation par compte, inventaire paginé, `SyncRequest` incrémental avec `MUST_RESYNC`,
+  lecture brute et métadonnées, primitives de restauration ; reprise sur erreurs transitoires ;
+  TLS toujours vérifié ; simulateur Carbonio pour les tests ; commande en lecture seule
+  `carborewind-agent carbonio probe` pour vérifier les hypothèses d'API sur un vrai serveur.
