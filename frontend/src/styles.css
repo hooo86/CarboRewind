@@ -129,7 +129,8 @@ select:focus-visible {
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface);

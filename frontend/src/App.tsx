@@ -10,6 +10,7 @@ import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { RestorePage } from "./pages/RestorePage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 export function AppRoutes() {
   const { t } = useTranslation();
@@ -28,6 +29,7 @@ export function AppRoutes() {
         />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="policies" element={<PoliciesPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -11,6 +11,9 @@ import type {
   Health,
   Job,
   JobStatus,
+  NotificationSettings,
+  NotificationSettingsInput,
+  OutboxEntry,
   Page,
   Policy,
   PolicyInput,
@@ -102,6 +105,18 @@ export const api = {
     request<Policy>("PATCH", `/api/policies/${id}`, body),
   deletePolicy: (id: string) =>
     request<undefined>("DELETE", `/api/policies/${id}`),
+  notificationSettings: () =>
+    request<NotificationSettings>("GET", "/api/settings/notifications"),
+  saveNotificationSettings: (body: NotificationSettingsInput) =>
+    request<NotificationSettings>("PUT", "/api/settings/notifications", body),
+  testNotification: (to?: string) =>
+    request<{ ok: boolean; error: string | null }>(
+      "POST",
+      "/api/settings/notifications/test",
+      to ? { to } : {},
+    ),
+  notificationOutbox: () =>
+    request<OutboxEntry[]>("GET", "/api/settings/notifications/outbox"),
   startBackup: (accountId: string, backupType: BackupType) =>
     request<Job>("POST", "/api/backups", {
       account_id: accountId,

@@ -23,6 +23,8 @@ interface AuthState {
   canRestore: (domainId: string) => boolean;
   /** Manage policies on a domain, or global ones when ``domainId`` is null. */
   canManagePolicies: (domainId: string | null) => boolean;
+  /** Global settings (notifications): super-admins only. */
+  canManageSettings: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -94,8 +96,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const canManageSettings = (user?.roles ?? []).some(
+    (r) => r.role === "super_admin",
+  );
+
   const value = useMemo(
     () => ({
+      canManageSettings,
       user,
       loading,
       login,
@@ -104,7 +111,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canRestore,
       canManagePolicies,
     }),
-    [user, loading, login, logout, canRunBackup, canRestore, canManagePolicies],
+    [
+      user,
+      loading,
+      login,
+      logout,
+      canRunBackup,
+      canRestore,
+      canManagePolicies,
+      canManageSettings,
+    ],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -23,7 +23,7 @@ export function LanguageSelect() {
 
 export function Layout() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, canManageSettings } = useAuth();
   return (
     <div className="shell">
       <header className="topbar">
@@ -35,6 +35,9 @@ export function Layout() {
           <NavLink to="/accounts">{t("nav.accounts")}</NavLink>
           <NavLink to="/jobs">{t("nav.jobs")}</NavLink>
           <NavLink to="/policies">{t("nav.policies")}</NavLink>
+          {canManageSettings && (
+            <NavLink to="/settings">{t("nav.settings")}</NavLink>
+          )}
         </nav>
         <div className="user">
           <LanguageSelect />

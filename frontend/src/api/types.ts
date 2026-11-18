@@ -242,3 +242,35 @@ export interface BulkBackupResult {
   skipped_busy: number;
   skipped_deleted: number;
 }
+
+export interface NotificationSettings {
+  enabled: boolean;
+  host: string;
+  port: number;
+  security: "starttls" | "ssl" | "none";
+  username: string;
+  password_set: boolean;
+  sender: string;
+  recipients: string[];
+  events: Record<string, boolean>;
+  digest_hour: number;
+  timezone: string;
+  language: "fr" | "en";
+  secret_key_configured: boolean;
+}
+
+export type NotificationSettingsInput = Omit<
+  NotificationSettings,
+  "password_set" | "secret_key_configured"
+> & { password: string | null };
+
+export interface OutboxEntry {
+  id: number;
+  event: string;
+  subject: string;
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  error: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
