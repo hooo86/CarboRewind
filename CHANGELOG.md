@@ -28,3 +28,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 - API d'administration des utilisateurs et des rôles (garde-fou du dernier super-admin,
   révocation des sessions au retrait de rôle) et inventaire filtré par domaine.
 - `docs/openapi.json` et `docs/rbac.md` générés depuis le code et vérifiés en test.
+- Audit : consultation filtrée et limitée par domaine, export CSV en flux (protégé contre
+  l'injection de formules), vérification de la chaîne (`/api/audit/verify`, CLI
+  `audit-verify`), tête de chaîne à ancrer hors base (`/api/audit/head`).
+- `deploy/sql/grants.sql` : rôle applicatif sans DDL et en ajout seul sur l'audit.
