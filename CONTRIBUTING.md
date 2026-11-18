@@ -33,8 +33,17 @@ Commits petits et atomiques. Historique linéaire (rebase / squash).
 Avant d'ouvrir une PR :
 
 ```bash
+# PostgreSQL + Redis jetables pour les tests d'intégration du backend (obligatoires :
+# sans eux la plupart des tests sont ignorés et le seuil de couverture n'est pas atteint)
+docker run -d --name cr-pg -p 5432:5432 -e POSTGRES_USER=carborewind \
+  -e POSTGRES_PASSWORD=dev-only -e POSTGRES_DB=carborewind_test postgres:16-alpine
+docker run -d --name cr-redis -p 6379:6379 redis:7-alpine
+export CARBOREWIND_TEST_DATABASE_URL=postgresql+psycopg://carborewind:dev-only@localhost/carborewind_test
+export CARBOREWIND_TEST_REDIS_URL=redis://localhost:6379/0
+
 # backend / agent
 cd backend && pip install -e '.[dev]' && ruff check . && ruff format --check . && mypy && pytest
+python tools/gen_docs.py   # après une modification des modèles, des routes ou du RBAC
 cd agent   && pip install -e '.[dev]' && ruff check . && ruff format --check . && mypy && pytest
 # frontend
 cd frontend && npm ci && npm run lint && npm run typecheck && npm test && npm run build

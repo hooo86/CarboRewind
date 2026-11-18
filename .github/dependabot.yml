@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    target-branch: develop
+    schedule: { interval: weekly }
+    labels: [dependencies, backend]
+    commit-message: { prefix: "build(deps)" }
+  - package-ecosystem: pip
+    directory: /agent
+    target-branch: develop
+    schedule: { interval: weekly }
+    labels: [dependencies, agent]
+    commit-message: { prefix: "build(deps)" }
+  - package-ecosystem: npm
+    directory: /frontend
+    target-branch: develop
+    schedule: { interval: weekly }
+    labels: [dependencies, frontend]
+    commit-message: { prefix: "build(deps)" }
+    groups:
+      dev-tooling:
+        dependency-type: development
+  - package-ecosystem: docker
+    directories: [/backend, /frontend]
+    target-branch: develop
+    schedule: { interval: weekly }
+    labels: [dependencies, deploy]
+    commit-message: { prefix: "build(deps)" }
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule: { interval: weekly }
+    labels: [dependencies, ci]
+    commit-message: { prefix: "ci(deps)" }
