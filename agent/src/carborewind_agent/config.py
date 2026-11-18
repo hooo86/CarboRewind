@@ -42,6 +42,8 @@ class AgentSettings(BaseSettings):
     # Throttling: concurrent mailboxes and bandwidth ceiling (0 = unlimited).
     max_concurrent_accounts: int = Field(default=2, ge=1, le=32)
     max_bandwidth_mbps: int = Field(default=0, ge=0)
+    # Pause reads while the 1-min load average per CPU exceeds this (0 = disabled).
+    max_load_per_cpu: float = Field(default=1.5, ge=0)
 
     def missing_files(self) -> list[Path]:
         """Return the TLS files that do not exist on disk."""
