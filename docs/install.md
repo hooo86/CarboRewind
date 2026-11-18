@@ -230,8 +230,9 @@ Cette pré-version installe le **socle de sauvegarde** (jalons M0 à M2) :
   comptes par domaine avec date de dernière sauvegarde, bouton « Sauvegarder maintenant »
   (incrémentale / complète), suivi des jobs et historique des snapshots d'un compte, en FR/EN.
   Les boutons de sauvegarde ne s'affichent que pour les super-admins et les admins du domaine.
-- ❌ Pas encore de planification automatique (M5) : les sauvegardes se lancent depuis l'interface ou avec
-  `carborewind-api backup`.
+- ✅ **Planification et rétention** : menu **Politiques** (sauvegarde quotidienne / hebdomadaire / cron, fuseau
+  horaire, rétention jours / semaines / mois), service `scheduler`, purge automatique du dépôt
+  (voir `docs/scheduling.md`). **Créez au moins une politique** : sans elle, rien n'est planifié.
 - 🔎 Exécutez `carbonio probe` (§ 4.3) avant toute sauvegarde de données de production.
 - Le paquet `.deb` cible Ubuntu/Debian (amd64). Le Python embarqué fonctionne sur toute distribution à
   glibc 2.17 ou plus récente, mais aucun paquet RPM n'est encore fourni.

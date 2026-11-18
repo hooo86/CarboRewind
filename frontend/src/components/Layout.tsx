@@ -34,6 +34,7 @@ export function Layout() {
           </NavLink>
           <NavLink to="/accounts">{t("nav.accounts")}</NavLink>
           <NavLink to="/jobs">{t("nav.jobs")}</NavLink>
+          <NavLink to="/policies">{t("nav.policies")}</NavLink>
         </nav>
         <div className="user">
           <LanguageSelect />

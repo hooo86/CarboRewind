@@ -8,6 +8,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { PoliciesPage } from "./pages/PoliciesPage";
 import { RestorePage } from "./pages/RestorePage";
 
 export function AppRoutes() {
@@ -26,6 +27,7 @@ export function AppRoutes() {
           element={<RestorePage />}
         />
         <Route path="jobs" element={<JobsPage />} />
+        <Route path="policies" element={<PoliciesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

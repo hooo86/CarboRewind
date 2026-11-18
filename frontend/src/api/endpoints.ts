@@ -9,6 +9,8 @@ import type {
   Job,
   JobStatus,
   Page,
+  Policy,
+  PolicyInput,
   RestoreRequest,
   SessionInfo,
   Snapshot,
@@ -68,6 +70,13 @@ export const api = {
     ),
   startRestore: (body: RestoreRequest) =>
     request<Job>("POST", "/api/restores", body),
+  policies: () => request<Policy[]>("GET", "/api/policies"),
+  createPolicy: (body: PolicyInput) =>
+    request<Policy>("POST", "/api/policies", body),
+  updatePolicy: (id: string, body: Partial<PolicyInput>) =>
+    request<Policy>("PATCH", `/api/policies/${id}`, body),
+  deletePolicy: (id: string) =>
+    request<undefined>("DELETE", `/api/policies/${id}`),
   startBackup: (accountId: string, backupType: BackupType) =>
     request<Job>("POST", "/api/backups", {
       account_id: accountId,

@@ -21,6 +21,8 @@ interface AuthState {
   canRunBackup: (domainId: string) => boolean;
   /** Restore and see item subjects (restore:run, content:preview). */
   canRestore: (domainId: string) => boolean;
+  /** Manage policies on a domain, or global ones when ``domainId`` is null. */
+  canManagePolicies: (domainId: string | null) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -80,9 +82,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const canManagePolicies = useCallback(
+    (domainId: string | null) =>
+      (user?.roles ?? []).some(
+        (r) =>
+          r.role === "super_admin" ||
+          (r.role === "domain_admin" &&
+            (r.domain_id === null ||
+              (domainId !== null && r.domain_id === domainId))),
+      ),
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, canRunBackup, canRestore }),
-    [user, loading, login, logout, canRunBackup, canRestore],
+    () => ({
+      user,
+      loading,
+      login,
+      logout,
+      canRunBackup,
+      canRestore,
+      canManagePolicies,
+    }),
+    [user, loading, login, logout, canRunBackup, canRestore, canManagePolicies],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

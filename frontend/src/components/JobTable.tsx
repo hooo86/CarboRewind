@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import type { Job, RestoreSummary } from "../api/types";
-import { formatDate } from "../utils/format";
+import { formatBytes, formatDate } from "../utils/format";
 import { StatusBadge } from "./common";
 
 /** One-line outcome of a finished restore ("4 restored, 2 already present…"). */
@@ -105,6 +105,22 @@ export function JobTable({
                     <RestoreSummaryText job={job} />
                   </>
                 )}
+                {job.kind === "purge" &&
+                  job.status === "succeeded" &&
+                  job.progress && (
+                    <>
+                      <br />
+                      <span className="summary">
+                        {t("purge.summary", {
+                          blobs: Number(job.progress.blobs ?? 0),
+                          manifests: Number(job.progress.manifests ?? 0),
+                          freed: formatBytes(
+                            Number(job.progress.freed_bytes ?? 0),
+                          ),
+                        })}
+                      </span>
+                    </>
+                  )}
               </td>
               <td>
                 <StatusBadge status={job.status} />

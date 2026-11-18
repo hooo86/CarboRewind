@@ -162,3 +162,40 @@ export interface RestoreSummary {
   failed_count: number;
   folders_created: string[];
 }
+
+export type TargetType = "global" | "domain" | "account";
+
+export interface RetentionRule {
+  last: number;
+  daily: number;
+  weekly: number;
+  monthly: number;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  target_type: TargetType;
+  target_id: string | null;
+  target_name: string | null;
+  backup_type: BackupType;
+  schedule: string;
+  timezone: string;
+  retention: RetentionRule;
+  priority: number;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+}
+
+export interface PolicyInput {
+  name: string;
+  target_type: TargetType;
+  target_id: string | null;
+  backup_type: BackupType;
+  schedule: string;
+  timezone: string;
+  retention: RetentionRule;
+  enabled: boolean;
+}

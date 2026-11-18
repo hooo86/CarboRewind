@@ -1,7 +1,8 @@
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../api/endpoints";
-import type { Dashboard, Job, Page } from "../api/types";
+import type { Dashboard, Job, Page, Policy } from "../api/types";
 import { JobTable } from "../components/JobTable";
 import { LoadView, useLoad } from "../components/common";
 import { formatBytes, formatRelative } from "../utils/format";
@@ -31,10 +32,26 @@ export function DashboardPage() {
     15000,
   );
   const [jobs, reloadJobs] = useLoad<Page<Job>>(() => api.jobs(), [], 5000);
+  const [policies] = useLoad<Policy[]>(() => api.policies(), []);
 
   return (
     <>
       <h1>{t("dashboard.title")}</h1>
+      {policies.state === "ready" && !policies.data.some((p) => p.enabled) && (
+        <p role="alert" className="alert warn">
+          {t("alerts.noPolicy")}{" "}
+          <Link to="/policies">{t("alerts.createPolicy")}</Link>
+        </p>
+      )}
+      {stats.state === "ready" &&
+        stats.data.accounts - stats.data.protected_24h > 0 && (
+          <p role="alert" className="alert warn">
+            {t("alerts.unprotected", {
+              count: stats.data.accounts - stats.data.protected_24h,
+            })}{" "}
+            <Link to="/accounts">{t("alerts.seeAccounts")}</Link>
+          </p>
+        )}
       <LoadView load={stats} reload={reloadStats}>
         {(d) => (
           <>

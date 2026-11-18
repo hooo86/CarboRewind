@@ -6,6 +6,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Planification : politiques de sauvegarde (cron + fuseau, portée globale / domaine / compte), service
+  `scheduler`, rétention grand-père/père/fils, purge du dépôt par l'agent, écran **Politiques**, alertes du
+  tableau de bord (comptes non protégés depuis 24 h, aucune politique). Migration 0004.
 - Restauration point-in-time (agent, API, interface) : compte entier, dossiers ou éléments ; nouveau
   dossier daté ou dossiers d'origine sans doublon ; même compte ou autre compte ; simulation (dry-run) ;
   reprise sur incident ; catalogue d'un snapshot consultable (arborescence, recherche) ; audit complet.

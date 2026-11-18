@@ -98,6 +98,8 @@ const TONE: Record<string, string> = {
   expired: "muted",
   closed: "muted",
   deleted: "bad",
+  disabled: "muted",
+  enabled: "ok",
 };
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {
