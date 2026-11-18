@@ -41,3 +41,7 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   lecture brute et métadonnées, primitives de restauration ; reprise sur erreurs transitoires ;
   TLS toujours vérifié ; simulateur Carbonio pour les tests ; commande en lecture seule
   `carborewind-agent carbonio probe` pour vérifier les hypothèses d'API sur un vrai serveur.
+- Agent : moteur de sauvegarde à chaud par compte — complète ou incrémentale (`SyncRequest`),
+  manifests complets (point-in-time), bascule automatique sur `MUST_RESYNC`, checkpoints et
+  reprise sans relecture, snapshot partiel conservant la version précédente en cas d'erreur,
+  extraction des métadonnées de recherche, limitation de débit et pause sur charge système.
