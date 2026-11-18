@@ -295,6 +295,9 @@ class Agent(Base):
     # SHA-256 of the client certificate (hex). NULL until enrolment completes.
     cert_fingerprint: Mapped[str | None] = mapped_column(String(64), unique=True)
     cert_not_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # One-time enrolment token: only its SHA-256 is stored; cleared once used.
+    enrollment_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    enrollment_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[str | None] = mapped_column(String(64))
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()

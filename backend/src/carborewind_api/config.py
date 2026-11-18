@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr
@@ -61,6 +62,18 @@ class Settings(BaseSettings):
         "(zimbraAccountStatus=active)(|(uid={username})(mail={username})))"
     )
     ldap_timeout: float = Field(default=5.0, gt=0, le=60)
+
+    # --- agents (mTLS terminated by the reverse proxy)
+    pki_dir: Path = Path("/var/lib/carborewind/pki")
+    agent_cert_days: int = Field(default=90, ge=1, le=825)
+    agent_enrollment_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
+    # Headers set by the proxy after verifying the client certificate against our CA
+    # (nginx: $ssl_client_verify and $ssl_client_escaped_cert).
+    agent_verify_header: str = "X-Client-Verify"
+    agent_cert_header: str = "X-Client-Cert"
+    # Only these peers may present those headers (the reverse proxy).
+    agent_proxy_ips: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
+    job_lease_seconds: int = Field(default=300, ge=30, le=3600)
 
     @property
     def ldap_enabled(self) -> bool:

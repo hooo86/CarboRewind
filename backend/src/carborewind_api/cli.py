@@ -20,6 +20,7 @@ from .auth.service import normalise_username
 from .config import get_settings
 from .db.models import ActorType, AuthSource, Outcome, Role, RoleAssignment, User
 from .db.session import make_engine
+from .pki import PkiError, init_ca
 from .security.passwords import WeakPasswordError, hash_password
 
 
@@ -85,9 +86,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     create.add_argument("username")
     create.add_argument("--role", choices=[r.value for r in Role], default=Role.SUPER_ADMIN.value)
     sub.add_parser("audit-verify", help="recompute the audit hash chain (exit 1 if broken)")
+    sub.add_parser("pki-init", help="create the agents' certificate authority")
     args = parser.parse_args(argv)
     if args.command == "audit-verify":
         return asyncio.run(audit_verify())
+    if args.command == "pki-init":
+        directory = get_settings().pki_dir
+        try:
+            init_ca(directory)
+        except PkiError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"CA created in {directory} — configure the proxy with {directory}/ca.crt")
+        return 0
     try:
         asyncio.run(create_user(args.username, Role(args.role), _read_password()))
     except WeakPasswordError as exc:
