@@ -26,6 +26,13 @@ class AgentSettings(BaseSettings):
     # Local Carbonio endpoints.
     soap_admin_url: AnyHttpUrl = AnyHttpUrl("https://localhost:7071/service/admin/soap")
     mailbox_url: AnyHttpUrl = AnyHttpUrl("https://localhost:443")
+    # Dedicated Carbonio admin account used by the agent; its password lives in a 0600 file.
+    carbonio_admin_name: str = "carborewind@localhost"
+    carbonio_admin_password_file: Path = Path("/etc/carborewind/carbonio-admin.password")
+    # CA bundle for Carbonio's certificate (self-signed by default). None = system CAs.
+    # TLS verification is never disabled.
+    carbonio_ca_file: Path | None = None
+    carbonio_timeout: float = Field(default=60.0, gt=0, le=600)
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")

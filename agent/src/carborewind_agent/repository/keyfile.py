@@ -13,16 +13,26 @@ class KeyFileError(Exception):
     pass
 
 
-def read_kek(path: Path) -> bytes:
-    """Load the KEK, refusing a file readable by group or others."""
+def read_secret(path: Path) -> str:
+    """Read a secret file (first line), refusing one accessible by group or others."""
     try:
         mode = path.stat().st_mode
     except FileNotFoundError as exc:
-        raise KeyFileError(f"key file {path} not found") from exc
+        raise KeyFileError(f"secret file {path} not found") from exc
     if mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise KeyFileError(f"key file {path} must not be accessible by group/others (chmod 600)")
+        raise KeyFileError(f"secret file {path} must not be accessible by group/others (chmod 600)")
+    lines = path.read_text().splitlines()
+    value = lines[0].strip() if lines else ""
+    if not value:
+        raise KeyFileError(f"secret file {path} is empty")
+    return value
+
+
+def read_kek(path: Path) -> bytes:
+    """Load the KEK, refusing a file readable by group or others."""
+    text = read_secret(path)
     try:
-        return decode_key(path.read_text())
+        return decode_key(text)
     except ValueError as exc:
         raise KeyFileError(f"key file {path} is invalid: {exc}") from exc
 
