@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from .. import audit
@@ -108,6 +108,76 @@ async def start_backup(
         details={"job": str(job.id), "type": body.backup_type.value},
     )
     return JobOut.of(job, account.email)
+
+
+class BulkBackupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_ids: list[uuid.UUID] = Field(min_length=1, max_length=5000)
+    backup_type: BackupType = BackupType.INCREMENTAL
+    priority: int = 50
+
+
+class BulkBackupOut(BaseModel):
+    queued: int
+    skipped_busy: int
+    skipped_deleted: int
+
+
+@router.post(
+    "/api/backups/bulk", response_model=BulkBackupOut, status_code=status.HTTP_202_ACCEPTED
+)
+async def start_bulk_backup(
+    body: BulkBackupRequest, principal: Runner, db: DbSession, request: Request
+) -> BulkBackupOut:
+    """Back up a selection now. All or nothing on permissions; busy or deleted are skipped."""
+    ids = set(body.account_ids)
+    accounts = list(await db.scalars(select(Account).where(Account.id.in_(ids))))
+    if len(accounts) != len(ids) or not all(
+        principal.access.allows(Permission.BACKUPS_RUN, a.domain_id) for a in accounts
+    ):
+        raise await deny(db, principal, request, Permission.BACKUPS_RUN, accounts=str(len(ids)))
+    busy = set(
+        await db.scalars(
+            select(Job.account_id).where(
+                Job.kind == JobKind.BACKUP,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                Job.account_id.in_(ids),
+            )
+        )
+    )
+    deleted = [a for a in accounts if a.status is AccountStatus.DELETED]
+    todo = [a for a in accounts if a.status is not AccountStatus.DELETED and a.id not in busy]
+    db.add_all(
+        Job(
+            kind=JobKind.BACKUP,
+            status=JobStatus.QUEUED,
+            account_id=a.id,
+            created_by=principal.user.id,
+            priority=body.priority,
+            params={"backup_type": body.backup_type.value},
+        )
+        for a in todo
+    )
+    await db.flush()
+    await audit.record(
+        db,
+        action="backup.request_bulk",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details={
+            "type": body.backup_type.value,
+            "queued": len(todo),
+            "accounts": sorted(a.email for a in todo)[:200],
+        },
+    )
+    return BulkBackupOut(
+        queued=len(todo),
+        skipped_busy=len([a for a in accounts if a.id in busy]),
+        skipped_deleted=len(deleted),
+    )
 
 
 @router.get("/api/jobs", response_model=Page[JobOut])

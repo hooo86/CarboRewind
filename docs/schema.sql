@@ -327,4 +327,46 @@ CREATE INDEX ix_snapshots_expired_unpurged ON snapshots (account_id) WHERE statu
 
 UPDATE alembic_version SET version_num='0004' WHERE alembic_version.version_num = '0003';
 
+-- Running upgrade 0004 -> 0005
+
+ALTER TABLE accounts ADD COLUMN display_name VARCHAR(255);
+
+ALTER TABLE accounts ADD COLUMN first_name VARCHAR(255);
+
+ALTER TABLE accounts ADD COLUMN last_name VARCHAR(255);
+
+ALTER TABLE accounts ADD COLUMN cos VARCHAR(255);
+
+ALTER TABLE accounts ADD COLUMN quota_bytes BIGINT;
+
+ALTER TABLE accounts ADD COLUMN used_bytes BIGINT;
+
+ALTER TABLE accounts ADD COLUMN last_login_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN carbonio_created_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN aliases JSONB DEFAULT '[]'::jsonb NOT NULL;
+
+ALTER TABLE accounts ADD COLUMN is_admin BOOLEAN DEFAULT false NOT NULL;
+
+ALTER TABLE policies DROP CONSTRAINT ck_policies_target_type;
+
+ALTER TABLE policies ADD CONSTRAINT ck_policies_target_type CHECK (target_type IN ('account', 'accounts', 'domain', 'global'));
+
+ALTER TABLE policies DROP CONSTRAINT ck_policies_target_id_matches_type;
+
+ALTER TABLE policies ADD CONSTRAINT ck_policies_target_id_matches_type CHECK ((target_type IN ('global', 'accounts')) = (target_id IS NULL));
+
+CREATE TABLE policy_accounts (
+    policy_id UUID NOT NULL,
+    account_id UUID NOT NULL,
+    CONSTRAINT pk_policy_accounts PRIMARY KEY (policy_id, account_id),
+    CONSTRAINT fk_policy_accounts_policy_id_policies FOREIGN KEY(policy_id) REFERENCES policies (id) ON DELETE CASCADE,
+    CONSTRAINT fk_policy_accounts_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_policy_accounts_account_id ON policy_accounts (account_id);
+
+UPDATE alembic_version SET version_num='0005' WHERE alembic_version.version_num = '0004';
+
 COMMIT;

@@ -41,6 +41,7 @@ from .db.models import (
     JobStatus,
     Outcome,
     Policy,
+    PolicyAccount,
     Snapshot,
     SnapshotStatus,
     TargetType,
@@ -73,6 +74,12 @@ def _accounts_of(policy: Policy) -> Any:
         query = query.where(Account.domain_id == policy.target_id)
     elif policy.target_type is TargetType.ACCOUNT:
         query = query.where(Account.id == policy.target_id)
+    elif policy.target_type is TargetType.ACCOUNTS:
+        query = query.where(
+            Account.id.in_(
+                select(PolicyAccount.account_id).where(PolicyAccount.policy_id == policy.id)
+            )
+        )
     return query
 
 

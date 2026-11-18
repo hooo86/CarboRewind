@@ -13,12 +13,20 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import audit
 from ..authz import Permission
-from ..db.models import Account, BackupType, Domain, Outcome, Policy, TargetType
+from ..db.models import (
+    Account,
+    BackupType,
+    Domain,
+    Outcome,
+    Policy,
+    PolicyAccount,
+    TargetType,
+)
 from ..scheduling import Cron, CronError, Retention, zone
 from .deps import DbSession, Principal, client_ip, deny, require
 
@@ -67,9 +75,14 @@ class PolicyFields(BaseModel):
         return value
 
 
+MAX_SELECTION = 10_000
+
+
 class PolicyIn(PolicyFields):
-    target_type: Literal["global", "domain", "account"]
+    target_type: Literal["global", "domain", "account", "accounts"]
     target_id: uuid.UUID | None = None
+    # For target_type "accounts": the selected accounts (e.g. from the account list).
+    account_ids: list[uuid.UUID] = Field(default_factory=list, max_length=MAX_SELECTION)
 
 
 class PolicyPatch(BaseModel):
@@ -82,6 +95,7 @@ class PolicyPatch(BaseModel):
     retention: RetentionIn | None = None
     priority: int | None = Field(default=None, ge=0, le=1000)
     enabled: bool | None = None
+    account_ids: list[uuid.UUID] | None = Field(default=None, max_length=MAX_SELECTION)
 
     @field_validator("schedule")
     @classmethod
@@ -100,6 +114,7 @@ class PolicyOut(BaseModel):
     target_type: TargetType
     target_id: uuid.UUID | None
     target_name: str | None
+    account_ids: list[uuid.UUID] = Field(default_factory=list)
     backup_type: BackupType
     schedule: str
     timezone: str
@@ -115,9 +130,11 @@ async def _target_domain(
     db: DbSession, target_type: str, target_id: uuid.UUID | None
 ) -> tuple[uuid.UUID | None, str | None]:
     """(domain the target belongs to, display name); raises 422 for a bad target."""
-    if target_type == "global":
+    if target_type in ("global", "accounts"):
         if target_id is not None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "global policy has no target")
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, f"a {target_type} policy has no target_id"
+            )
         return None, None
     if target_id is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "target_id is required")
@@ -128,8 +145,35 @@ async def _target_domain(
     return (account.domain_id, account.email) if account else (uuid.uuid4(), None)
 
 
+async def _selection(db: DbSession, policy_id: uuid.UUID) -> list[uuid.UUID]:
+    return list(
+        await db.scalars(
+            select(PolicyAccount.account_id).where(PolicyAccount.policy_id == policy_id)
+        )
+    )
+
+
+async def _domains_of(db: DbSession, account_ids: list[uuid.UUID]) -> set[uuid.UUID] | None:
+    """Domains of the accounts, or None if one of them does not exist."""
+    if not account_ids:
+        return set()
+    rows = (
+        await db.execute(select(Account.id, Account.domain_id).where(Account.id.in_(account_ids)))
+    ).all()
+    if len(rows) != len(set(account_ids)):
+        return None
+    return {domain for _, domain in rows}
+
+
+def _may_manage_all(principal: Principal, perm: Permission, domains: set[uuid.UUID] | None) -> bool:
+    if principal.access.allows(perm):
+        return True
+    return bool(domains) and all(principal.access.allows(perm, d) for d in domains or ())
+
+
 async def _out(db: DbSession, p: Policy) -> PolicyOut:
     _, name = await _target_domain(db, p.target_type.value, p.target_id)
+    selection = await _selection(db, p.id) if p.target_type is TargetType.ACCOUNTS else []
     now = datetime.now(UTC)
     nxt = None
     if p.enabled:
@@ -140,6 +184,7 @@ async def _out(db: DbSession, p: Policy) -> PolicyOut:
         target_type=p.target_type,
         target_id=p.target_id,
         target_name=name,
+        account_ids=selection,
         backup_type=p.backup_type,
         schedule=p.schedule,
         timezone=p.timezone,
@@ -153,9 +198,16 @@ async def _out(db: DbSession, p: Policy) -> PolicyOut:
 
 
 async def _allowed(db: DbSession, principal: Principal, perm: Permission, p: Policy) -> bool:
-    domain, _ = await _target_domain(db, p.target_type.value, p.target_id)
     if p.target_type is TargetType.GLOBAL:
         return perm is Permission.BACKUPS_READ or principal.access.allows(perm)
+    if p.target_type is TargetType.ACCOUNTS:
+        domains = await _domains_of(db, await _selection(db, p.id))
+        if perm is Permission.BACKUPS_READ:  # readers see a selection touching their domains
+            return principal.access.allows(perm) or any(
+                principal.access.allows(perm, d) for d in domains or ()
+            )
+        return _may_manage_all(principal, perm, domains)
+    domain, _ = await _target_domain(db, p.target_type.value, p.target_id)
     return principal.access.allows(perm, domain)
 
 
@@ -191,11 +243,21 @@ async def create_policy(
     body: PolicyIn, principal: Manager, db: DbSession, request: Request
 ) -> PolicyOut:
     domain, name = await _target_domain(db, body.target_type, body.target_id)
-    allowed = (
-        principal.access.allows(Permission.POLICIES_MANAGE)
-        if body.target_type == "global"
-        else name is not None and principal.access.allows(Permission.POLICIES_MANAGE, domain)
-    )
+    selection = sorted(set(body.account_ids))
+    if body.target_type == "accounts":
+        if not selection:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "select at least one account")
+        allowed = _may_manage_all(
+            principal, Permission.POLICIES_MANAGE, await _domains_of(db, selection)
+        )
+    elif selection:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "account_ids only apply to target_type accounts"
+        )
+    elif body.target_type == "global":
+        allowed = principal.access.allows(Permission.POLICIES_MANAGE)
+    else:
+        allowed = name is not None and principal.access.allows(Permission.POLICIES_MANAGE, domain)
     if not allowed:
         raise await deny(
             db, principal, request, Permission.POLICIES_MANAGE, target=str(body.target_id)
@@ -217,8 +279,18 @@ async def create_policy(
         await db.flush()
     except IntegrityError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "a policy with this name exists") from exc
+    db.add_all(PolicyAccount(policy_id=policy.id, account_id=a) for a in selection)
+    await db.flush()
     await db.refresh(policy)
-    await _audit(db, principal, request, "policy.create", policy, schedule=policy.schedule)
+    await _audit(
+        db,
+        principal,
+        request,
+        "policy.create",
+        policy,
+        schedule=policy.schedule,
+        accounts=len(selection),
+    )
     return await _out(db, policy)
 
 
@@ -237,8 +309,26 @@ async def update_policy(
 ) -> PolicyOut:
     policy = await _editable(db, principal, request, policy_id)
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    selection = changes.pop("account_ids", None)
+    if selection is not None:
+        selection = sorted(set(selection))
+        if policy.target_type is not TargetType.ACCOUNTS or not selection:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "account_ids: a non-empty selection, on an accounts policy only",
+            )
+        if not _may_manage_all(
+            principal, Permission.POLICIES_MANAGE, await _domains_of(db, selection)
+        ):
+            raise await deny(
+                db, principal, request, Permission.POLICIES_MANAGE, policy=str(policy_id)
+            )
+        await db.execute(delete(PolicyAccount).where(PolicyAccount.policy_id == policy.id))
+        db.add_all(PolicyAccount(policy_id=policy.id, account_id=a) for a in selection)
+        changes["account_ids"] = selection
     for key, value in changes.items():
-        setattr(policy, key, value)
+        if key != "account_ids":
+            setattr(policy, key, value)
     if "schedule" in changes or "timezone" in changes or changes.get("enabled") is True:
         policy.last_run_at = datetime.now(UTC)  # restart counting from the change
     try:

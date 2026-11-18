@@ -163,6 +163,35 @@ class AccountIn(BaseModel):
     carbonio_id: str = Field(max_length=64)
     email: str = Field(max_length=320, pattern=r"^[^@\s]+@[^@\s]+$")
     status: str = Field(max_length=32)
+    # Details (optional: older agents send only the three fields above).
+    display_name: str | None = Field(default=None, max_length=255)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
+    aliases: list[str] = Field(default_factory=list, max_length=1000)
+    cos: str | None = Field(default=None, max_length=255)
+    quota_bytes: int | None = Field(default=None, ge=0)
+    used_bytes: int | None = Field(default=None, ge=0)
+    is_admin: bool = False
+    last_login_at: datetime | None = None
+    carbonio_created_at: datetime | None = None
+
+    def details(self) -> dict[str, Any]:
+        out = self.model_dump(
+            include={
+                "display_name",
+                "first_name",
+                "last_name",
+                "cos",
+                "quota_bytes",
+                "is_admin",
+                "last_login_at",
+                "carbonio_created_at",
+            }
+        )
+        out["aliases"] = [a.lower() for a in self.aliases]
+        if "used_bytes" in self.model_fields_set:  # absent = usage unknown, keep the last value
+            out["used_bytes"] = self.used_bytes
+        return out
 
 
 class InventoryIn(BaseModel):
@@ -219,6 +248,7 @@ async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> In
                     carbonio_id=a.carbonio_id,
                     status=status_,
                     last_seen_at=now,
+                    **a.details(),
                 )
             )
             created += 1
@@ -229,6 +259,8 @@ async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> In
                 now,
                 None,
             )
+            for key, value in a.details().items():
+                setattr(row, key, value)
             updated += 1
     deleted = 0
     if body.complete:

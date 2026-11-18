@@ -873,3 +873,37 @@ def _carbonio(engine: Engine, account_id: uuid.UUID) -> str:
         value = s.scalar(select(Account.carbonio_id).where(Account.id == account_id))
         assert value is not None
         return value
+
+
+def test_inventory_stores_account_details(agent: AgentHandle, engine: Engine) -> None:
+    email = f"det@{uuid.uuid4().hex[:6]}.test"
+    cid = uuid.uuid4().hex
+    entry = {
+        "carbonio_id": cid,
+        "email": email,
+        "status": "active",
+        "display_name": "Det Ail",
+        "aliases": ["Alias@Example.test"],
+        "cos": "vip",
+        "quota_bytes": 2000,
+        "used_bytes": 500,
+        "is_admin": True,
+        "last_login_at": "2026-11-18T09:30:00+00:00",
+    }
+    assert agent.post("/inventory", {"accounts": [entry]}).status_code == 200
+    # A later inventory without usage (refused by Carbonio) keeps the last known figure.
+    del entry["used_bytes"]
+    entry["display_name"] = "Det Renamed"
+    assert agent.post("/inventory", {"accounts": [entry]}).status_code == 200
+    with Session(engine) as s:
+        acc = s.scalar(select(Account).where(Account.carbonio_id == cid))
+        assert acc is not None
+        assert (acc.display_name, acc.cos, acc.quota_bytes, acc.used_bytes, acc.is_admin) == (
+            "Det Renamed",
+            "vip",
+            2000,
+            500,
+            True,
+        )
+        assert acc.aliases == ["alias@example.test"]
+        assert acc.last_login_at is not None

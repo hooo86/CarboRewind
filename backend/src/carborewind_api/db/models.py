@@ -112,6 +112,7 @@ class AgentStatus(enum.StrEnum):
 
 class TargetType(enum.StrEnum):
     ACCOUNT = "account"
+    ACCOUNTS = "accounts"  # an explicit selection, see PolicyAccount
     DOMAIN = "domain"
     GLOBAL = "global"
 
@@ -269,6 +270,17 @@ class Account(Base):
     status: Mapped[AccountStatus] = mapped_column(_enum(AccountStatus, "account_status"))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Carbonio details refreshed by every inventory.
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    first_name: Mapped[str | None] = mapped_column(String(255))
+    last_name: Mapped[str | None] = mapped_column(String(255))
+    aliases: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    cos: Mapped[str | None] = mapped_column(String(255))
+    quota_bytes: Mapped[int | None] = mapped_column(BigInteger)  # None or 0: unlimited
+    used_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    is_admin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    carbonio_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -333,12 +345,28 @@ class Policy(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "(target_type = 'global') = (target_id IS NULL)", name="target_id_matches_type"
+            "(target_type IN ('global', 'accounts')) = (target_id IS NULL)",
+            name="target_id_matches_type",
         ),
         CheckConstraint(
             "(window_start IS NULL) = (window_end IS NULL)", name="window_both_or_none"
         ),
     )
+
+
+class PolicyAccount(Base):
+    """Accounts of a policy whose target_type is ``accounts`` (a selection)."""
+
+    __tablename__ = "policy_accounts"
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("policies.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    __table_args__ = (Index("ix_policy_accounts_account_id", "account_id"),)
 
 
 class Job(Base):
