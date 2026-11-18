@@ -13,3 +13,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   dependency review, CodeQL ; release sur tag avec publication ghcr.io ; Dependabot.
 - Templates d'issues et de PR, script `scripts/github-bootstrap.sh` (labels, jalons, protections).
 - Documentation d'architecture et feuille de route.
+- Modèle de données PostgreSQL (SQLAlchemy 2, migrations Alembic) : identités et RBAC,
+  inventaire Carbonio, agents, politiques, jobs (bail, checkpoint, idempotence), snapshots,
+  catalogue temporel (`item_versions` / `folder_versions`), blobs, audit append-only.
+- `/readyz` vérifie PostgreSQL et Redis (503 sans divulgation des erreurs).
+- `docs/data-model.md` (diagramme ER) et `docs/schema.sql` généré et vérifié en test.
