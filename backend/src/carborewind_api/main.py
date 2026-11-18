@@ -10,12 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import __version__
+from .api import auth as auth_api
+from .auth.ldap import LdapAuthenticator
 from .config import Settings, get_settings
 from .db.session import make_engine
 from .health import Check, database_check, redis_check, run_checks
 from .logging import configure_logging
+from .security.ratelimit import MemoryRateLimiter, RedisRateLimiter
 
 
 class Health(BaseModel):
@@ -47,13 +51,21 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = redis = None
-        if checks is None and settings.database_url is not None:
+        if settings.database_url is not None:
             engine = make_engine(settings.database_url.get_secret_value())
-            readiness["database"] = database_check(engine)
-        if checks is None and settings.redis_url is not None:
+            if checks is None:
+                readiness["database"] = database_check(engine)
+        if settings.redis_url is not None:
             redis = Redis.from_url(settings.redis_url.get_secret_value())
-            readiness["redis"] = redis_check(redis)
+            if checks is None:
+                readiness["redis"] = redis_check(redis)
+        app.state.settings = settings
         app.state.engine = engine
+        app.state.sessionmaker = (
+            async_sessionmaker(engine, expire_on_commit=False) if engine is not None else None
+        )
+        app.state.rate_limiter = RedisRateLimiter(redis) if redis else MemoryRateLimiter()
+        app.state.ldap = LdapAuthenticator(settings) if settings.ldap_enabled else None
         try:
             yield
         finally:
@@ -115,6 +127,8 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
         return Health(
             status="ready" if ready else "unavailable", version=__version__, checks=results
         )
+
+    app.include_router(auth_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
