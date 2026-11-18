@@ -204,6 +204,51 @@ def test_run_forever_syncs_inventory_and_stops(
     assert inventory["accounts"][0]["email"] == alice.name
 
 
+def test_inventory_carries_carbonio_attributes(
+    settings: AgentSettings, carbonio: CarbonioClient, engine: AccountBackup, fake: FakeCarbonio
+) -> None:
+    box = fake.add_mailbox(
+        "zoe@example.test",
+        displayName="Zoé Martin",
+        givenName="Zoé",
+        sn="Martin",
+        zimbraCOSId="cos-vip",
+        zimbraMailQuota="1073741824",
+        zimbraIsAdminAccount="TRUE",
+        zimbraLastLogonTimestamp="20261118093000Z",
+        zimbraCreateTimestamp="20250102030405.123Z",
+    )
+    box.attrs["zimbraMailAlias"] = "z@example.test"
+    box.add("m", 2, b"Subject: x\r\n\r\n12345")
+    other = fake.add_mailbox("bad@example.test", zimbraMailQuota="unlimited", zimbraCOSId="gone")
+    api = FakeApi([])
+    worker = _worker(api, settings, carbonio, engine)
+    worker.sync_inventory()
+    accounts = {a["email"]: a for a in api.calls[-1][1]["accounts"]}
+    zoe = accounts["zoe@example.test"]
+    assert zoe == {
+        "carbonio_id": box.id,
+        "email": "zoe@example.test",
+        "status": "active",
+        "display_name": "Zoé Martin",
+        "first_name": "Zoé",
+        "last_name": "Martin",
+        "aliases": ["z@example.test"],
+        "cos": "vip",
+        "quota_bytes": 1073741824,
+        "is_admin": True,
+        "last_login_at": "2026-11-18T09:30:00+00:00",
+        "carbonio_created_at": "2025-01-02T03:04:05+00:00",
+        "used_bytes": len(b"Subject: x\r\n\r\n12345"),
+    }
+    bad = accounts[other.name]
+    assert (bad["quota_bytes"], bad["cos"], bad["last_login_at"]) == (None, "gone", None)
+    # Quota usage refused (restricted admin): inventory still flows, without the figure.
+    fake.quota_denied = True
+    worker.sync_inventory()
+    assert all("used_bytes" not in a for a in api.calls[-1][1]["accounts"])
+
+
 def test_run_forever_survives_api_errors(
     settings: AgentSettings, carbonio: CarbonioClient, engine: AccountBackup
 ) -> None:

@@ -9,7 +9,7 @@ from typing import Any
 
 from .api_client import AgentApi, ApiError
 from .backup import AccountBackup
-from .carbonio import CarbonioClient, SoapFaultError
+from .carbonio import AccountInfo, CarbonioClient, SoapFaultError
 from .purge import run_purge
 from .repository import Repository
 from .restore import AccountRestore, RestoreError
@@ -18,6 +18,44 @@ log = logging.getLogger(__name__)
 
 # Carbonio errors that will not fix themselves by retrying the job.
 PERMANENT_FAULTS = {"account.NO_SUCH_ACCOUNT", "service.PERM_DENIED", "account.AUTH_FAILED"}
+
+
+def _first(attrs: dict[str, list[str]], name: str) -> str | None:
+    values = attrs.get(name)
+    return values[0] or None if values else None
+
+
+def _generalized_time(value: str | None) -> str | None:
+    """LDAP generalized time (``20261118093000Z`` or ``20261118093000.123Z``) -> ISO 8601."""
+    if not value or len(value) < 14 or not value[:14].isdigit():
+        return None
+    v = value[:14]
+    return f"{v[:4]}-{v[4:6]}-{v[6:8]}T{v[8:10]}:{v[10:12]}:{v[12:14]}+00:00"
+
+
+def account_payload(
+    a: AccountInfo, cos: dict[str, str], used: dict[str, int] | None
+) -> dict[str, Any]:
+    """Inventory entry sent to the API (see ``AccountIn``)."""
+    quota = _first(a.attrs, "zimbraMailQuota")
+    cos_id = _first(a.attrs, "zimbraCOSId")
+    payload: dict[str, Any] = {
+        "carbonio_id": a.id,
+        "email": a.name,
+        "status": a.status or "active",
+        "display_name": _first(a.attrs, "displayName"),
+        "first_name": _first(a.attrs, "givenName"),
+        "last_name": _first(a.attrs, "sn"),
+        "aliases": sorted(a.attrs.get("zimbraMailAlias", [])),
+        "cos": cos.get(cos_id, cos_id) if cos_id else None,
+        "quota_bytes": int(quota) if quota and quota.isdigit() else None,
+        "is_admin": _first(a.attrs, "zimbraIsAdminAccount") == "TRUE",
+        "last_login_at": _generalized_time(_first(a.attrs, "zimbraLastLogonTimestamp")),
+        "carbonio_created_at": _generalized_time(_first(a.attrs, "zimbraCreateTimestamp")),
+    }
+    if used is not None:
+        payload["used_bytes"] = used.get(a.id, 0)
+    return payload
 
 
 class Worker:
@@ -47,10 +85,18 @@ class Worker:
         self._stop.set()
 
     def sync_inventory(self) -> dict[str, Any]:
-        accounts = [
-            {"carbonio_id": a.id, "email": a.name, "status": a.status or "active"}
-            for a in self._carbonio.iter_accounts()
-        ]
+        # Optional enrichments: an older Carbonio or a restricted admin may refuse them.
+        try:
+            cos = self._carbonio.cos_names()
+        except SoapFaultError as exc:
+            log.warning("cannot list classes of service: %s", exc)
+            cos = {}
+        try:
+            used: dict[str, int] | None = self._carbonio.quota_usage()
+        except SoapFaultError as exc:
+            log.warning("cannot read quota usage: %s", exc)
+            used = None
+        accounts = [account_payload(a, cos, used) for a in self._carbonio.iter_accounts()]
         return self._api.inventory(accounts, complete=True)
 
     def run_forever(self) -> None:

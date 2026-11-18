@@ -101,6 +101,7 @@ class FakeCarbonio:
         self.uploads: dict[str, bytes] = {}
         self.calls: list[str] = []
         self.fail_next: list[int] = []  # HTTP statuses to return before answering
+        self.quota_denied = False
 
     # ------------------------------------------------------------------ setup helpers
 
@@ -212,6 +213,30 @@ class FakeCarbonio:
             "account": [self._account_entry(m) for m in page],
             "more": offset + limit < len(boxes),
             "searchTotal": len(boxes),
+        }
+
+    def _GetAllCosRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        return {"cos": [{"id": "cos-default", "name": "default"}, {"id": "cos-vip", "name": "vip"}]}
+
+    def _GetQuotaUsageRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if self.quota_denied:
+            raise _Fault("service.PERM_DENIED", "permission denied")
+        boxes = sorted(self.mailboxes.values(), key=lambda m: m.name)
+        offset, limit = int(body.get("offset", 0)), int(body.get("limit", 100))
+        page = boxes[offset : offset + limit]
+        return {
+            "account": [
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "used": sum(len(i.raw) for i in m.items.values()),
+                    "limit": int(q) if (q := m.attrs.get("zimbraMailQuota", "0")).isdigit() else 0,
+                }
+                for m in page
+            ],
+            "more": offset + limit < len(boxes),
         }
 
     def _GetAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:

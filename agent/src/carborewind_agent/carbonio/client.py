@@ -20,6 +20,21 @@ from .soap import NS_ADMIN, NS_MAIL, SoapClient, SoapFaultError, content
 
 MUST_RESYNC = "mail.MUST_RESYNC"
 
+# Account attributes read by the inventory (``SearchDirectoryRequest`` ``attrs``).
+INVENTORY_ATTRS = (
+    "zimbraId",
+    "zimbraAccountStatus",
+    "zimbraCOSId",
+    "zimbraMailQuota",
+    "zimbraMailAlias",
+    "displayName",
+    "givenName",
+    "sn",
+    "zimbraIsAdminAccount",
+    "zimbraLastLogonTimestamp",
+    "zimbraCreateTimestamp",
+)
+
 # Item element names in SyncResponse / folder listings -> our item kinds.
 ITEM_ELEMENTS = {
     "m": "message",
@@ -140,8 +155,7 @@ class CarbonioClient:
                 "types": "accounts",
                 "limit": page,
                 "offset": offset,
-                "attrs": "zimbraId,zimbraAccountStatus,zimbraCOSId,zimbraMailQuota,"
-                "zimbraMailAlias,displayName",
+                "attrs": ",".join(INVENTORY_ATTRS),
             }
             if domain:
                 body["domain"] = domain
@@ -154,6 +168,29 @@ class CarbonioClient:
             offset += len(accounts)
             if not resp.get("more") or not accounts:
                 return
+
+    def cos_names(self) -> dict[str, str]:
+        """Class-of-service id -> name (``GetAllCosRequest``)."""
+        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_auth())
+        return {c["id"]: c.get("name", c["id"]) for c in resp.get("cos", [])}
+
+    def quota_usage(self, page: int = 1000) -> dict[str, int]:
+        """Account id -> bytes used, for every account (``GetQuotaUsageRequest``, paged)."""
+        used: dict[str, int] = {}
+        offset = 0
+        while True:
+            resp = self._admin.invoke(
+                "GetQuotaUsage",
+                NS_ADMIN,
+                {"allServers": 1, "limit": page, "offset": offset, "sortBy": "totalUsed"},
+                token=self._admin_auth(),
+            )
+            accounts = resp.get("account", [])
+            for entry in accounts:
+                used[entry["id"]] = int(entry.get("used", 0))
+            offset += len(accounts)
+            if not resp.get("more") or not accounts:
+                return used
 
     def get_account(self, account_id: str) -> AccountInfo:
         """All attributes of one account (``GetAccountRequest``), for recreating it later."""
