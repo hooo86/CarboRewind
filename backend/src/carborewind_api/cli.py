@@ -61,13 +61,33 @@ async def create_user(username: str, role: Role, password: str) -> None:
         await engine.dispose()
 
 
+async def audit_verify() -> int:
+    settings = get_settings()
+    if settings.database_url is None:
+        raise SystemExit("CARBOREWIND_DATABASE_URL is not set")
+    engine = make_engine(settings.database_url.get_secret_value())
+    try:
+        async with async_sessionmaker(engine)() as db:
+            result = await audit.verify_chain(db)
+    finally:
+        await engine.dispose()
+    if result.ok:
+        print(f"audit chain OK: {result.checked} events, head {result.head_id} {result.head_hash}")
+        return 0
+    print(f"audit chain BROKEN at event {result.broken_id}: {result.reason}", file=sys.stderr)
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-api")
     sub = parser.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create-user", help="create a local user with a global role")
     create.add_argument("username")
     create.add_argument("--role", choices=[r.value for r in Role], default=Role.SUPER_ADMIN.value)
+    sub.add_parser("audit-verify", help="recompute the audit hash chain (exit 1 if broken)")
     args = parser.parse_args(argv)
+    if args.command == "audit-verify":
+        return asyncio.run(audit_verify())
     try:
         asyncio.run(create_user(args.username, Role(args.role), _read_password()))
     except WeakPasswordError as exc:

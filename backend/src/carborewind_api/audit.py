@@ -2,7 +2,10 @@
 
 ``hash = SHA-256(prev_hash || canonical_json(event))`` where the canonical JSON has sorted keys
 and no whitespace. Writers serialise on a transaction-scoped advisory lock so the chain stays
-linear; the lock is released at commit/rollback. Verification and export arrive with #5.
+linear; the lock is released at commit/rollback. See :func:`verify_chain`.
+
+The table owner can still disable the trigger: anchor the head hash outside the database
+(``GET /api/audit/head``, exported regularly) to detect a rewrite of the whole chain.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -86,3 +90,38 @@ async def record(
     db.add(event)
     await db.flush()
     return event
+
+
+@dataclass(frozen=True)
+class VerifyResult:
+    ok: bool
+    checked: int
+    head_id: int | None
+    head_hash: str | None
+    # First event whose prev_hash or hash does not match, if any.
+    broken_id: int | None = None
+    reason: str | None = None
+
+
+async def verify_chain(db: AsyncSession, batch: int = 5000) -> VerifyResult:
+    """Recompute the whole chain in id order, streaming in batches."""
+    prev = GENESIS
+    checked = 0
+    last_id: int | None = None
+    while True:
+        query = select(AuditEvent).order_by(AuditEvent.id).limit(batch)
+        if last_id is not None:
+            query = query.where(AuditEvent.id > last_id)
+        events = list(await db.scalars(query))
+        if not events:
+            break
+        for event in events:
+            if event.prev_hash != prev:
+                return VerifyResult(False, checked, last_id, prev, event.id, "prev_hash mismatch")
+            if chain_hash(event.prev_hash, event_payload(event)) != event.hash:
+                return VerifyResult(False, checked, last_id, prev, event.id, "hash mismatch")
+            prev = event.hash
+            last_id = event.id
+            checked += 1
+        db.expunge_all()  # keep memory flat on long chains
+    return VerifyResult(True, checked, last_id, prev if last_id is not None else None)
