@@ -69,6 +69,13 @@ class Worker:
         if job is None:
             return False
         job_id = job["job_id"]
+        log.info(
+            "job %s claimed: %s of %s (attempt %s)",
+            job_id,
+            job["kind"],
+            job.get("account_email"),
+            job.get("attempt"),
+        )
         if job["kind"] != "backup":
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
@@ -98,6 +105,7 @@ class Worker:
             )
         except SoapFaultError as exc:
             stop_beat.set()
+            log.error("job %s failed: %s", job_id, exc)
             self._api.heartbeat(job_id, latest["checkpoint"])  # keep progress for the retry
             self._api.fail(job_id, str(exc), retryable=exc.code not in PERMANENT_FAULTS)
             return True
@@ -111,4 +119,14 @@ class Worker:
             stop_beat.set()
             beater.join(timeout=5)
         self._api.complete(job_id, result.to_payload())
+        log.info(
+            "job %s done: %s backup of %s, seq %s, %s items, %s new bytes%s",
+            job_id,
+            result.backup_type,
+            job.get("account_email"),
+            result.seq,
+            result.item_count,
+            result.new_bytes,
+            f", {len(result.errors)} item error(s)" if result.errors else "",
+        )
         return True

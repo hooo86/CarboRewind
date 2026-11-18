@@ -127,6 +127,8 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     logging.basicConfig(
         level=logging.INFO, format="%(levelname)s %(name)s %(message)s", stream=sys.stdout
     )
+    # One line per HTTP request (a poll every 10 s) would flood the journal.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     settings = AgentSettings()
     repo = Repository.open(settings.repository_path, read_kek(settings.repository_key_file))
     carbonio = build_client(settings)
