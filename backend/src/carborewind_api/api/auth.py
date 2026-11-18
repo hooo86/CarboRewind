@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import audit
 from ..auth import service
 from ..auth.sessions import create_session, revoke_session
-from ..db.models import AuthSource, Outcome, Role, User
+from ..db.models import Outcome
 from .deps import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -19,6 +17,7 @@ from .deps import (
     DbSession,
     client_ip,
 )
+from .schemas import UserOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -32,35 +31,10 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024, repr=False)
 
 
-class RoleOut(BaseModel):
-    role: Role
-    domain_id: uuid.UUID | None
-
-
-class UserOut(BaseModel):
-    id: uuid.UUID
-    username: str
-    display_name: str | None
-    email: str | None
-    auth_source: AuthSource
-    roles: list[RoleOut]
-
-
 class SessionOut(BaseModel):
     user: UserOut
     csrf_token: str = Field(
         description="Echo this value in the X-CSRF-Token header of every unsafe request"
-    )
-
-
-def _user_out(user: User) -> UserOut:
-    return UserOut(
-        id=user.id,
-        username=user.username,
-        display_name=user.display_name,
-        email=user.email,
-        auth_source=user.auth_source,
-        roles=[RoleOut(role=r.role, domain_id=r.domain_id) for r in user.roles],
     )
 
 
@@ -122,7 +96,7 @@ async def login(
         db, result.user, settings, ip, request.headers.get("user-agent")
     )
     _set_cookies(response, token, session.csrf_token, settings.session_absolute_hours * 3600)
-    return SessionOut(user=_user_out(result.user), csrf_token=session.csrf_token)
+    return SessionOut(user=UserOut.of(result.user), csrf_token=session.csrf_token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -146,4 +120,4 @@ async def logout(
 @router.get("/me", response_model=UserOut)
 async def me(principal: CurrentPrincipal) -> UserOut:
     """Current user and role assignments."""
-    return _user_out(principal.user)
+    return UserOut.of(principal.user)
