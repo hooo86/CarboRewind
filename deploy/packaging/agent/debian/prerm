@@ -3,5 +3,6 @@ set -e
 if [ -d /run/systemd/system ] && [ "$1" = "remove" ]; then
     systemctl stop carborewind-agent.service || true
     systemctl disable carborewind-agent.service || true
+    systemctl disable --now carborewind-storage.path || true
 fi
 exit 0

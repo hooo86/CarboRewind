@@ -143,6 +143,8 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         AccountRestore(carbonio, repo, throttle),
         repo,
         migration=MailboxMigration(carbonio, throttle),
+        storage_dir=settings.storage_dir,
+        replica=settings.replica_path,
     )
     signal.signal(signal.SIGTERM, lambda *_: worker.stop())
     worker.run_forever()
@@ -168,6 +170,14 @@ def storage_command(args: argparse.Namespace) -> int:
             str(AgentSettings.model_fields["repository_path"].default),
         )
     )
+    if args.storage_command == "apply":
+        from .storage_apply import apply_command
+
+        try:
+            return apply_command(env_file=env_file)
+        except (StorageError, KeyError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     try:
         if args.storage_command == "status":
             info = describe(current)
@@ -249,6 +259,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     move.add_argument("--migrate", action="store_true", help="copy the current repository")
     move.add_argument(
         "--start-empty", action="store_true", help="leave the current repository behind"
+    )
+    storage_sub.add_parser(
+        "apply", help="apply the settings chosen in the web interface (root, systemd path unit)"
     )
     local = storage_sub.add_parser("local", help="store the repository on a local directory")
     local.add_argument("path", nargs="?", default="/var/lib/carborewind/repository")

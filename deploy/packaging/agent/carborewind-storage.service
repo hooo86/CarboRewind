@@ -1,0 +1,16 @@
+[Unit]
+Description=CarboRewind: apply storage settings (mount the NAS shares)
+Documentation=https://github.com/hooo86/CarboRewind/blob/main/docs/storage.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root is needed to write mount units and credentials and to mount CIFS shares. The
+# request is validated again here; only two fixed mount points can be used.
+ExecStart=/usr/bin/carborewind-agent storage apply
+UMask=0077
+PrivateTmp=yes
+ProtectHome=yes
+NoNewPrivileges=yes
+TimeoutStartSec=600

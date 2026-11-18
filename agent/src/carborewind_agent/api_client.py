@@ -143,6 +143,22 @@ class AgentApi:
     def restore_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/restore-complete", payload)
 
+    def storage_config(self) -> dict[str, Any] | None:
+        """Storage settings chosen in the interface (with the share passwords)."""
+        response = self._http.get("/api/agent/storage")
+        if response.status_code == 204:
+            return None
+        if response.status_code >= 400:
+            raise ApiError(response.status_code, response.text[:200])
+        result: dict[str, Any] = response.json()
+        return result
+
+    def storage_status(self, storage: dict[str, Any]) -> None:
+        self._post("/storage-status", storage)
+
+    def replicate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/replicate-complete", payload)
+
     def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/migrate-complete", payload)
 
