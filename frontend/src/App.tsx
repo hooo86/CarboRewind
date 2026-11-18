@@ -1,52 +1,38 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
-import { fetchHealth, type Health } from "./api";
-import type { Language } from "./i18n";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { Layout } from "./components/Layout";
+import { AccountPage } from "./pages/AccountPage";
+import { AccountsPage } from "./pages/AccountsPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { JobsPage } from "./pages/JobsPage";
+import { LoginPage } from "./pages/LoginPage";
 
-type ApiState = { kind: "checking" } | { kind: "up"; health: Health } | { kind: "down" };
+export function AppRoutes() {
+  const { t } = useTranslation();
+  const { user, loading } = useAuth();
+  if (loading) return <p className="muted center">{t("loading")}</p>;
+  if (!user) return <LoginPage />;
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="accounts" element={<AccountsPage />} />
+        <Route path="accounts/:id" element={<AccountPage />} />
+        <Route path="jobs" element={<JobsPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
+}
 
 export function App() {
-  const { t, i18n } = useTranslation();
-  const [api, setApi] = useState<ApiState>({ kind: "checking" });
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchHealth(controller.signal)
-      .then((health) => setApi({ kind: "up", health }))
-      .catch(() => {
-        if (!controller.signal.aborted) setApi({ kind: "down" });
-      });
-    return () => controller.abort();
-  }, []);
-
-  const status =
-    api.kind === "checking"
-      ? t("checking")
-      : api.kind === "up"
-        ? t("up", { version: api.health.version })
-        : t("down");
-
   return (
-    <main>
-      <header>
-        <h1>CarboRewind</h1>
-        <p>{t("tagline")}</p>
-        <label>
-          {t("language")}{" "}
-          <select
-            value={i18n.language}
-            onChange={(e) => void i18n.changeLanguage(e.target.value as Language)}
-          >
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-      </header>
-      <section aria-live="polite">
-        <h2>{t("apiStatus")}</h2>
-        <p data-testid="api-status">{status}</p>
-      </section>
-    </main>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

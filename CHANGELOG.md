@@ -6,6 +6,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Interface web (React Router) : connexion locale/LDAP avec CSRF, tableau de bord, comptes par domaine
+  (recherche, pagination, dernière sauvegarde), « Sauvegarder maintenant » incrémentale/complète selon le
+  rôle, suivi des jobs (filtre, rafraîchissement 5 s), fiche compte avec historique des snapshots ; FR/EN,
+  thème clair/sombre.
+- API : `GET /api/dashboard`, `GET /api/accounts/{id}`, `GET /api/accounts/{id}/snapshots`, `GET /api/jobs` ;
+  dernière sauvegarde dans la liste des comptes.
 - Initialisation du dépôt : licence AGPL-3.0, README FR/EN, guides de contribution et de sécurité.
 - Monorepo : squelettes `backend` (FastAPI, en-têtes de sécurité, journaux JSON, `/metrics`),
   `agent` (configuration, `check-config`), `frontend` (React + TypeScript, i18n FR/EN).
