@@ -71,6 +71,13 @@ cd /opt/carborewind/deploy
 sudo docker compose -f docker-compose.prod.yml run --rm api carborewind-api create-user admin
 ```
 
+Mot de passe oublié ou compte verrouillé ? Réinitialisez-le (le compte est déverrouillé et ses
+sessions ouvertes sont fermées) :
+
+```bash
+sudo docker compose -f docker-compose.prod.yml run --rm api carborewind-api set-password admin
+```
+
 Puis enregistrez l'agent du serveur Carbonio. La commande affiche un **jeton à usage unique**, valable 1 h :
 
 ```bash

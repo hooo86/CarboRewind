@@ -10,6 +10,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   (recherche, pagination, dernière sauvegarde), « Sauvegarder maintenant » incrémentale/complète selon le
   rôle, suivi des jobs (filtre, rafraîchissement 5 s), fiche compte avec historique des snapshots ; FR/EN,
   thème clair/sombre.
+- CLI `carborewind-api set-password` (réinitialise, déverrouille, ferme les sessions, audité) ;
+  `create-user` sur un nom existant affiche un message clair au lieu d'une trace.
 - API : `GET /api/dashboard`, `GET /api/accounts/{id}`, `GET /api/accounts/{id}/snapshots`, `GET /api/jobs` ;
   dernière sauvegarde dans la liste des comptes.
 - Initialisation du dépôt : licence AGPL-3.0, README FR/EN, guides de contribution et de sécurité.

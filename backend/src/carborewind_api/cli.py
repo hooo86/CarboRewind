@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import audit
@@ -37,6 +37,7 @@ from .db.models import (
     Role,
     RoleAssignment,
     User,
+    UserSession,
 )
 from .db.session import make_engine
 from .pki import PkiError, init_ca, token_digest
@@ -52,15 +53,26 @@ def _read_password() -> str:
     return first
 
 
+class UserExistsError(Exception):
+    pass
+
+
+class UnknownUserError(Exception):
+    pass
+
+
 async def create_user(username: str, role: Role, password: str) -> None:
     settings = get_settings()
     if settings.database_url is None:
         raise SystemExit("CARBOREWIND_DATABASE_URL is not set")
     engine = make_engine(settings.database_url.get_secret_value())
+    name = normalise_username(username)
     try:
         async with async_sessionmaker(engine)() as db, db.begin():
+            if await db.scalar(select(User.id).where(User.username == name)) is not None:
+                raise UserExistsError(name)
             user = User(
-                username=normalise_username(username),
+                username=name,
                 auth_source=AuthSource.LOCAL,
                 password_hash=hash_password(password),
                 roles=[RoleAssignment(role=role)],
@@ -76,6 +88,38 @@ async def create_user(username: str, role: Role, password: str) -> None:
                 target_type="user",
                 target_id=str(user.id),
                 details={"username": user.username, "role": role.value},
+            )
+    finally:
+        await engine.dispose()
+
+
+async def set_password(username: str, password: str) -> None:
+    """Reset a local user's password, unlock it and revoke its open sessions."""
+    engine, factory = _sessionmaker()
+    name = normalise_username(username)
+    now = datetime.now(UTC)
+    try:
+        async with factory() as db, db.begin():
+            user = await db.scalar(select(User).where(User.username == name).with_for_update())
+            if user is None or user.auth_source != AuthSource.LOCAL:
+                raise UnknownUserError(name)
+            user.password_hash = hash_password(password)
+            user.failed_logins = 0
+            user.locked_until = None
+            await db.execute(
+                update(UserSession)
+                .where(UserSession.user_id == user.id, UserSession.revoked_at.is_(None))
+                .values(revoked_at=now)
+            )
+            await audit.record(
+                db,
+                action="user.password_reset",
+                outcome=Outcome.SUCCESS,
+                actor_type=ActorType.SYSTEM,
+                actor_name="cli",
+                target_type="user",
+                target_id=str(user.id),
+                details={"username": user.username},
             )
     finally:
         await engine.dispose()
@@ -192,6 +236,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     create = sub.add_parser("create-user", help="create a local user with a global role")
     create.add_argument("username")
     create.add_argument("--role", choices=[r.value for r in Role], default=Role.SUPER_ADMIN.value)
+    passwd = sub.add_parser("set-password", help="reset a local user's password (also unlocks it)")
+    passwd.add_argument("username")
     sub.add_parser("audit-verify", help="recompute the audit hash chain (exit 1 if broken)")
     sub.add_parser("pki-init", help="create the agents' certificate authority")
     agent = sub.add_parser("agent-create", help="register an agent, print its enrolment token")
@@ -222,12 +268,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 1
         print(f"CA created in {directory} — configure the proxy with {directory}/ca.crt")
         return 0
+    name = normalise_username(args.username)
     try:
-        asyncio.run(create_user(args.username, Role(args.role), _read_password()))
+        if args.command == "set-password":
+            asyncio.run(set_password(args.username, _read_password()))
+            print(f"password of {name} changed; its sessions were closed")
+        else:
+            asyncio.run(create_user(args.username, Role(args.role), _read_password()))
+            print(f"user {name} created")
     except WeakPasswordError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(f"user {normalise_username(args.username)} created")
+    except UserExistsError:
+        print(
+            f"error: user {name} already exists — to change its password run: "
+            f"carborewind-api set-password {name}",
+            file=sys.stderr,
+        )
+        return 1
+    except UnknownUserError:
+        print(f"error: no local user named {name}", file=sys.stderr)
+        return 1
     return 0
 
 

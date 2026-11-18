@@ -273,6 +273,44 @@ def test_cli_create_user(migrated: str, engine: Engine, monkeypatch: pytest.Monk
     assert cli.main(["create-user", username, "--role", "restore_operator"]) == 0
     monkeypatch.setattr("sys.stdin", io.StringIO("short\n"))
     assert cli.main(["create-user", f"{username}-2"]) == 2
+    monkeypatch.setattr("sys.stdin", io.StringIO(PASSWORD + "\n"))
+    assert cli.main(["create-user", username]) == 1  # already exists, no traceback
+
+    # set-password: resets the hash, unlocks, closes sessions; unknown users refused.
+    with Session(engine) as s:
+        user = s.scalar(select(User).where(User.username == username.lower()))
+        assert user is not None
+        old_hash = user.password_hash
+        user.failed_logins = 7
+        user.locked_until = datetime.now(UTC) + timedelta(hours=1)
+        s.add(
+            UserSession(
+                user_id=user.id,
+                token_hash=uuid.uuid4().hex,
+                csrf_token="x",
+                last_seen_at=datetime.now(UTC),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        s.commit()
+    monkeypatch.setattr("sys.stdin", io.StringIO("Another-Strong-Passw0rd\n"))
+    assert cli.main(["set-password", username]) == 0
+    monkeypatch.setattr("sys.stdin", io.StringIO("short\n"))
+    assert cli.main(["set-password", username]) == 2
+    monkeypatch.setattr("sys.stdin", io.StringIO(PASSWORD + "\n"))
+    assert cli.main(["set-password", "nobody-here"]) == 1
+    with Session(engine) as s:
+        user = s.scalar(select(User).where(User.username == username.lower()))
+        assert user is not None
+        assert user.password_hash != old_hash
+        assert user.failed_logins == 0 and user.locked_until is None
+        sessions = list(s.scalars(select(UserSession).where(UserSession.user_id == user.id)))
+        assert sessions and all(x.revoked_at is not None for x in sessions)
+        assert s.scalar(
+            select(AuditEvent).where(
+                AuditEvent.action == "user.password_reset", AuditEvent.target_id == str(user.id)
+            )
+        )
     get_settings.cache_clear()
     with Session(engine) as s:
         user = s.scalar(select(User).where(User.username == username.lower()))
