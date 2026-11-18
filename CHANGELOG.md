@@ -23,3 +23,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   CSRF double submit, limitation par IP, verrouillage exponentiel, réponses génériques.
 - Journal d'audit chaîné (SHA-256) alimenté par les connexions / déconnexions.
 - CLI `carborewind-api create-user` pour créer le premier super-admin.
+- RBAC : matrice permissions × rôles (`super_admin`, `domain_admin`, `restore_operator`,
+  `viewer`) avec portée par domaine, refus audités (`authz.denied`).
+- API d'administration des utilisateurs et des rôles (garde-fou du dernier super-admin,
+  révocation des sessions au retrait de rôle) et inventaire filtré par domaine.
+- `docs/openapi.json` et `docs/rbac.md` générés depuis le code et vérifiés en test.
