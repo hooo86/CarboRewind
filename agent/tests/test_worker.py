@@ -255,3 +255,43 @@ def test_cli_enroll_reports_errors(
     os.chmod(token, 0o600)
     assert main(["enroll", "--token-file", str(token)]) == 1
     assert "error" in capsys.readouterr().err
+
+
+def test_tls_context_loads_client_certificate(tmp_path: Path) -> None:
+    """Regression: the client certificate must be part of the TLS context itself."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    from carborewind_agent.api_client import tls_context
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "agent")])
+    from datetime import UTC, datetime, timedelta
+
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(1)
+        .not_valid_before(datetime.now(UTC))
+        .not_valid_after(datetime.now(UTC) + timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    crt, pem_key = tmp_path / "a.crt", tmp_path / "a.key"
+    crt.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    pem_key.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    ctx = tls_context(crt, (crt, pem_key))  # self-signed cert doubles as the test CA
+    assert ctx.verify_mode.name == "CERT_REQUIRED"
+    assert ctx.check_hostname
+    assert ctx.cert_store_stats()["x509"] == 1  # the given CA file, not the system store
+    with pytest.raises(FileNotFoundError):
+        tls_context(None, (tmp_path / "missing.crt", pem_key))

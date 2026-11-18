@@ -19,6 +19,8 @@ class AgentSettings(BaseSettings):
 
     # Control-plane API, reached over mTLS (outbound connection only).
     api_url: AnyHttpUrl
+    # CA bundle of the API's server certificate (self-signed install). None = system CAs.
+    api_ca_file: Path | None = None
     tls_cert: Path = Path("/etc/carborewind/agent.crt")
     tls_key: Path = Path("/etc/carborewind/agent.key")
     tls_ca: Path = Path("/etc/carborewind/ca.crt")

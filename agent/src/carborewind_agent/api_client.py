@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import ssl
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,17 @@ class ApiError(Exception):
     def __init__(self, status: int, detail: str) -> None:
         super().__init__(f"HTTP {status}: {detail}")
         self.status = status
+
+
+def tls_context(server_ca: Path | None, client: tuple[Path, Path] | None = None) -> ssl.SSLContext:
+    """TLS context verifying the API (``server_ca`` or system CAs), with the agent's client
+    certificate when given. Built explicitly: httpx ignores ``cert=`` combined with a
+    CA-file ``verify`` in recent versions, which silently dropped the client certificate."""
+    context = ssl.create_default_context(cafile=str(server_ca) if server_ca else None)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    if client is not None:
+        context.load_cert_chain(certfile=str(client[0]), keyfile=str(client[1]))
+    return context
 
 
 def _write_private(path: Path, data: bytes) -> None:
@@ -46,8 +58,9 @@ def enroll(
         .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "carborewind-agent")]))
         .sign(key, hashes.SHA256())
     )
-    verify: str | bool = str(server_ca) if server_ca else True
-    client = http or httpx.Client(base_url=str(settings.api_url), verify=verify, timeout=30)
+    client = http or httpx.Client(
+        base_url=str(settings.api_url), verify=tls_context(server_ca), timeout=30
+    )
     try:
         response = client.post(
             "/api/agent/enroll",
@@ -88,8 +101,7 @@ class AgentApi:
         self._http = http or httpx.Client(
             base_url=str(settings.api_url),
             timeout=60,
-            cert=(str(settings.tls_cert), str(settings.tls_key)),
-            verify=str(server_ca) if server_ca else True,
+            verify=tls_context(server_ca, (settings.tls_cert, settings.tls_key)),
         )
 
     def _post(self, path: str, body: Any = None) -> httpx.Response:

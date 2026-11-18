@@ -69,7 +69,7 @@ def repo_command(args: argparse.Namespace) -> int:
     except FileExistsError:
         print(f"error: {key_file} already exists", file=sys.stderr)
         return 1
-    except (KeyFileError, RepositoryError, IntegrityError) as exc:
+    except (KeyFileError, RepositoryError, IntegrityError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     for blob_id in report.corrupted:
@@ -105,7 +105,8 @@ def enroll_command(args: argparse.Namespace) -> int:
             if args.token_file
             else sys.stdin.readline().strip()
         )
-        agent_id = enroll(settings, token, Path(args.server_ca) if args.server_ca else None)
+        server_ca = Path(args.server_ca) if args.server_ca else settings.api_ca_file
+        agent_id = enroll(settings, token, server_ca)
     except (ValidationError, ApiError, OSError, httpx.HTTPError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -114,6 +115,7 @@ def enroll_command(args: argparse.Namespace) -> int:
 
 
 def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-running service
+    import logging
     import signal
 
     from .api_client import AgentApi
@@ -122,12 +124,16 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     from .throttle import Throttle
     from .worker import Worker
 
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s %(message)s", stream=sys.stdout
+    )
     settings = AgentSettings()
     repo = Repository.open(settings.repository_path, read_kek(settings.repository_key_file))
     carbonio = build_client(settings)
     throttle = Throttle.from_mbps(settings.max_bandwidth_mbps, settings.max_load_per_cpu)
+    server_ca = Path(args.server_ca) if args.server_ca else settings.api_ca_file
     worker = Worker(
-        AgentApi(settings, server_ca=Path(args.server_ca) if args.server_ca else None),
+        AgentApi(settings, server_ca=server_ca),
         carbonio,
         AccountBackup(carbonio, repo, throttle),
     )
