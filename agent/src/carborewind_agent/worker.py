@@ -10,6 +10,7 @@ from typing import Any
 from .api_client import AgentApi, ApiError
 from .backup import AccountBackup
 from .carbonio import CarbonioClient, SoapFaultError
+from .restore import AccountRestore, RestoreError
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ class Worker:
         api: AgentApi,
         carbonio: CarbonioClient,
         engine: AccountBackup,
+        restore: AccountRestore | None = None,
         *,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
@@ -31,6 +33,7 @@ class Worker:
         self._api = api
         self._carbonio = carbonio
         self._engine = engine
+        self._restore = restore
         self._poll = poll_seconds
         self._inventory_every = inventory_every
         self._stop = threading.Event()
@@ -76,7 +79,12 @@ class Worker:
             job.get("account_email"),
             job.get("attempt"),
         )
-        if job["kind"] != "backup":
+        runner: Callable[[dict[str, Any], Callable[[dict[str, Any]], None]], None]
+        if job["kind"] == "backup":
+            runner = self._run_backup
+        elif job["kind"] == "restore" and self._restore is not None:
+            runner = self._run_restore
+        else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
         latest: dict[str, Any] = {"checkpoint": job.get("checkpoint")}
@@ -93,35 +101,40 @@ class Worker:
         beater = threading.Thread(target=beat, daemon=True)
         beater.start()
         try:
-            previous = job.get("previous")
-            result = self._engine.run(
-                job["carbonio_id"],
-                job["account_email"],
-                job["snapshot_id"],
-                int(job["seq"]),
-                (previous["snapshot_id"], previous["token"]) if previous else None,
-                resume=job.get("checkpoint"),
-                checkpoint=lambda state: latest.__setitem__("checkpoint", state),
-            )
-        except SoapFaultError as exc:
+            runner(job, lambda state: latest.__setitem__("checkpoint", state))
+        except (SoapFaultError, RestoreError) as exc:
             stop_beat.set()
             log.error("job %s failed: %s", job_id, exc)
             self._api.heartbeat(job_id, latest["checkpoint"])  # keep progress for the retry
-            self._api.fail(job_id, str(exc), retryable=exc.code not in PERMANENT_FAULTS)
-            return True
+            retryable = isinstance(exc, SoapFaultError) and exc.code not in PERMANENT_FAULTS
+            self._api.fail(job_id, str(exc), retryable=retryable)
         except Exception as exc:  # unexpected: retry, the checkpoint limits the cost
             stop_beat.set()
-            log.exception("backup crashed", extra={"job": job_id})
+            log.exception("job crashed", extra={"job": job_id})
             self._api.heartbeat(job_id, latest["checkpoint"])
             self._api.fail(job_id, repr(exc), retryable=True)
-            return True
         finally:
             stop_beat.set()
             beater.join(timeout=5)
-        self._api.complete(job_id, result.to_payload())
+        return True
+
+    def _run_backup(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        previous = job.get("previous")
+        result = self._engine.run(
+            job["carbonio_id"],
+            job["account_email"],
+            job["snapshot_id"],
+            int(job["seq"]),
+            (previous["snapshot_id"], previous["token"]) if previous else None,
+            resume=job.get("checkpoint"),
+            checkpoint=checkpoint,
+        )
+        self._api.complete(job["job_id"], result.to_payload())
         log.info(
             "job %s done: %s backup of %s, seq %s, %s items, %s new bytes%s",
-            job_id,
+            job["job_id"],
             result.backup_type,
             job.get("account_email"),
             result.seq,
@@ -129,4 +142,32 @@ class Worker:
             result.new_bytes,
             f", {len(result.errors)} item error(s)" if result.errors else "",
         )
-        return True
+
+    def _run_restore(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        assert self._restore is not None  # noqa: S101 - checked by the caller
+        p = job["params"]
+        result = self._restore.run(
+            p["source_carbonio_id"],
+            p["snapshot_id"],
+            job["carbonio_id"],
+            job["account_email"],
+            mode=p.get("mode", "new_folder"),
+            label=p.get("label", "CarboRewind"),
+            folder_ids=p.get("folder_ids") or [],
+            item_ids=p.get("item_ids") or [],
+            dry_run=bool(p.get("dry_run")),
+            resume=job.get("checkpoint"),
+            checkpoint=checkpoint,
+        )
+        self._api.restore_complete(job["job_id"], result.to_payload())
+        log.info(
+            "job %s done: %srestore into %s, %s restored, %s present, %s failed",
+            job["job_id"],
+            "dry-run " if result.dry_run else "",
+            job.get("account_email"),
+            result.restored,
+            result.present,
+            len(result.failed),
+        )

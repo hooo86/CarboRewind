@@ -12,6 +12,7 @@ import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -207,6 +208,26 @@ class CarbonioClient:
         for child in folder.get("folder", []):
             self._walk_folders(child, fid, path if fid != 1 else "", delta)
 
+    def get_folders(self, account_id: str) -> list[FolderInfo]:
+        """Current folder tree of a mailbox (``GetFolderRequest`` from the root)."""
+        resp = self._mail.invoke(
+            "GetFolder", NS_MAIL, {"folder": {"l": "1"}}, token=self.delegate(account_id)
+        )
+        out: list[FolderInfo] = []
+
+        def walk(folder: dict[str, Any], parent: int | None, prefix: str) -> None:
+            fid = int(folder["id"])
+            name = folder.get("name", "")
+            path = f"{prefix}/{name}" if fid != 1 else ""
+            if fid != 1:
+                out.append(FolderInfo(fid, parent, path, folder.get("view", "message"), {}))
+            for child in folder.get("folder", []):
+                walk(child, fid, path)
+
+        for root in resp.get("folder", []):
+            walk(root, None, "")
+        return out
+
     def fetch_raw(self, account_name: str, account_id: str, item_id: int) -> bytes:
         """Raw content of one item via REST (``/home/<account>/?id=<n>``)."""
         response = self._rest.get(
@@ -294,8 +315,9 @@ class CarbonioClient:
         """Import ``.ics`` / ``.vcf`` / ``.tgz`` through REST (``POST ?fmt=…``)."""
         if fmt not in {"ics", "vcf", "tgz"}:
             raise ValueError(f"unsupported format {fmt!r}")
+        segments = "/".join(quote(part, safe="") for part in folder_path.strip("/").split("/"))
         response = self._rest.post(
-            f"/home/{account_name}{folder_path}",
+            f"/home/{quote(account_name, safe='@')}/{segments}",
             params={"fmt": fmt, "resolve": "skip"},
             content=data,
             headers={"Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}"},

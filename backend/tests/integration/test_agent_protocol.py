@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 from carborewind_api.config import Settings
 from carborewind_api.db.models import (
     Account,
+    AccountStatus,
+    AuditEvent,
     AuthSource,
     Domain,
     ItemVersion,
@@ -28,6 +30,7 @@ from carborewind_api.db.models import (
     Role,
     RoleAssignment,
     Snapshot,
+    SnapshotStatus,
     User,
 )
 from carborewind_api.main import create_app
@@ -608,3 +611,203 @@ def test_cli_agent_create_reissues_pending_token_and_protects_enrolled(
             cli.main(["agent-create", name, "evil.example.test"])
     finally:
         get_settings.cache_clear()
+
+
+# ------------------------------------------------------------------ restore
+
+
+def _login_as(
+    api: TestClient, engine: Engine, role: Role, domain: uuid.UUID | None
+) -> dict[str, str]:
+    name = f"r{uuid.uuid4().hex[:8]}"
+    with Session(engine) as s, s.begin():
+        s.add(
+            User(
+                username=name,
+                auth_source=AuthSource.LOCAL,
+                password_hash=hash_password(PASSWORD),
+                roles=[RoleAssignment(role=role, domain_id=domain)],
+            )
+        )
+    api.cookies.clear()
+    r = api.post("/api/auth/login", json={"username": name, "password": PASSWORD})
+    return {"X-CSRF-Token": r.json()["csrf_token"]}
+
+
+def _two_snapshots(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine, email: str
+) -> tuple[uuid.UUID, list[str]]:
+    """Full backup (257, 258 in Inbox, 259 in Sent) then incremental (257 changed, 258 gone)."""
+    _drain(agent)
+    _inventory(agent, email)
+    account_id = _account_id(engine, email)
+    snapshots = []
+    for body in (
+        {
+            "backup_type": "full",
+            "manifest_ref": "m/1",
+            "token": "100",
+            "item_count": 3,
+            "size_bytes": 300,
+            "new_bytes": 300,
+            "folders": FOLDERS,
+            "added": {
+                "257": _item("a", "Facture 1"),
+                "258": _item("b", "Facture 2"),
+                "259": _item("c", "Réponse", 5),
+            },
+        },
+        {
+            "backup_type": "incremental",
+            "manifest_ref": "m/2",
+            "token": "120",
+            "item_count": 2,
+            "size_bytes": 200,
+            "new_bytes": 100,
+            "folders": FOLDERS,
+            "removed": [257, 258],
+            "added": {"257": _item("d", "Facture 1 (lue)")},
+        },
+    ):
+        r = api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+        assert r.status_code == 202, r.text
+        claimed = agent.post("/jobs/claim").json()
+        assert agent.post(f"/jobs/{claimed['job_id']}/complete", body).status_code == 204
+        snapshots.append(claimed["snapshot_id"])
+    return account_id, snapshots
+
+
+def test_snapshot_catalogue_is_point_in_time(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    account_id, (s1, s2) = _two_snapshots(
+        api, admin, agent, engine, f"hugo@{uuid.uuid4().hex[:6]}.test"
+    )
+    base = f"/api/accounts/{account_id}/snapshots"
+    folders = {f["path"]: f for f in api.get(f"{base}/{s1}/folders").json()}
+    assert folders["/Inbox"]["item_count"] == 2 and folders["/Sent"]["item_count"] == 1
+    assert folders["/Inbox"]["view"] == "message"
+    assert api.get(f"{base}/{s2}/folders").json()[0]["item_count"] == 1
+
+    def subjects(snap: str, **params: Any) -> list[str]:
+        page = api.get(f"{base}/{snap}/items", params=params).json()
+        return sorted(i["subject"] for i in page["items"])
+
+    assert subjects(s1) == ["Facture 1", "Facture 2", "Réponse"]
+    assert subjects(s2) == ["Facture 1 (lue)", "Réponse"]
+    assert subjects(s1, q="FACTURE") == ["Facture 1", "Facture 2"]
+    assert subjects(s1, q="%") == []  # wildcards are literal
+    assert subjects(s1, folder_id=5) == ["Réponse"]
+    page = api.get(f"{base}/{s1}/items", params={"limit": 1}).json()
+    assert page["total"] == 3 and len(page["items"]) == 1
+    # A snapshot of another account is refused like an unknown one.
+    other, _ = _two_snapshots(api, admin, agent, engine, f"ines@{uuid.uuid4().hex[:6]}.test")
+    assert api.get(f"/api/accounts/{other}/snapshots/{s1}/folders").status_code == 403
+    assert api.get(f"{base}/{uuid.uuid4()}/items").status_code == 403
+
+
+def test_restore_request_claim_and_result(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    email = f"jade@{uuid.uuid4().hex[:6]}.test"
+    account_id, (s1, _) = _two_snapshots(api, admin, agent, engine, email)
+    r = api.post(
+        "/api/restores",
+        json={"account_id": str(account_id), "snapshot_id": s1, "item_ids": [258, 258]},
+        headers=admin,
+    )
+    assert r.status_code == 202, r.text
+    job = r.json()
+    assert job["kind"] == "restore" and job["status"] == "queued"
+    assert (job["restore_mode"], job["dry_run"], job["snapshot_seq"]) == ("new_folder", False, 1)
+    assert job["source_email"] == job["account_email"] == email
+
+    claimed = agent.post("/jobs/claim").json()
+    assert claimed["job_id"] == job["id"] and claimed["kind"] == "restore"
+    params = claimed["params"]
+    assert params["item_ids"] == [258] and params["snapshot_id"] == s1
+    assert params["label"].startswith("CarboRewind ") and params["label"].endswith(" UTC #1")
+    assert "/" not in params["label"]
+    assert claimed["carbonio_id"] == params["source_carbonio_id"]
+
+    result = {
+        "dry_run": False,
+        "mode": "new_folder",
+        "root": "/" + params["label"],
+        "selected": 1,
+        "restored": 0,
+        "present": 0,
+        "unsupported": 0,
+        "failed": {"258": "mail.MESSAGE_TOO_BIG"},
+        "by_kind": {},
+        "folders_created": ["/" + params["label"], "/" + params["label"] + "/Inbox"],
+    }
+    assert agent.post(f"/jobs/{job['id']}/restore-complete", result).status_code == 204
+    assert agent.post(f"/jobs/{job['id']}/restore-complete", result).status_code == 204
+    done = api.get(f"/api/jobs/{job['id']}").json()
+    assert done["status"] == "succeeded"
+    assert done["error"] == "1 item(s) could not be restored"
+    assert done["progress"]["failed_count"] == 1
+    with Session(engine) as s:
+        event = s.scalar(
+            select(AuditEvent)
+            .where(AuditEvent.action == "restore.complete")
+            .order_by(AuditEvent.id.desc())
+        )
+        assert event is not None and event.outcome == "failure"
+        assert event.details["source"] == email
+
+    # A backup job cannot be completed as a restore.
+    api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+    backup = agent.post("/jobs/claim").json()
+    assert agent.post(f"/jobs/{backup['job_id']}/restore-complete", result).status_code == 422
+
+
+def test_restore_request_validation_and_rbac(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    email = f"kim@{uuid.uuid4().hex[:6]}.test"
+    account_id, (s1, _) = _two_snapshots(api, admin, agent, engine, email)
+    other_email = f"lea@{email.split('@')[1]}"
+    _inventory(agent, other_email)
+    other = _account_id(engine, other_email)
+    base = {"account_id": str(account_id), "snapshot_id": s1}
+
+    def post(body: dict[str, Any], headers: dict[str, str] = admin) -> int:
+        return api.post("/api/restores", json=body, headers=headers).status_code
+
+    assert post({**base, "target_account_id": str(other), "mode": "original"}) == 422
+    assert post({**base, "folder_ids": [2], "item_ids": [257]}) == 422
+    assert post({**base, "mode": "overwrite"}) == 422
+    assert post({**base, "target_account_id": str(uuid.uuid4())}) == 403
+    assert post({**base, "target_account_id": str(other), "dry_run": True}) == 202
+    with Session(engine) as s, s.begin():
+        s.execute(update(Account).where(Account.id == other).values(status=AccountStatus.DELETED))
+    assert post({**base, "target_account_id": str(other)}) == 409
+    with Session(engine) as s, s.begin():
+        s.execute(
+            update(Snapshot)
+            .where(Snapshot.id == uuid.UUID(s1))
+            .values(status=SnapshotStatus.EXPIRED)
+        )
+    assert post(base) == 410
+
+    with Session(engine) as s:
+        domain_id = s.scalar(select(Account.domain_id).where(Account.id == account_id))
+    s2 = api.get(f"/api/accounts/{account_id}/snapshots").json()["items"][0]["id"]
+    ok = {**base, "snapshot_id": s2, "dry_run": True}
+    # Viewers see the folder tree but neither item subjects nor the restore button.
+    viewer = _login_as(api, engine, Role.VIEWER, domain_id)
+    assert api.get(f"/api/accounts/{account_id}/snapshots/{s2}/folders").status_code == 200
+    assert api.get(f"/api/accounts/{account_id}/snapshots/{s2}/items").status_code == 403
+    assert post(ok, viewer) == 403
+    with Session(engine) as s, s.begin():
+        elsewhere = Domain(name=f"x{uuid.uuid4().hex[:6]}.test")
+        s.add(elsewhere)
+        s.flush()
+        elsewhere_id = elsewhere.id
+    outsider = _login_as(api, engine, Role.RESTORE_OPERATOR, elsewhere_id)
+    assert post(ok, outsider) == 403
+    operator = _login_as(api, engine, Role.RESTORE_OPERATOR, domain_id)
+    assert api.get(f"/api/accounts/{account_id}/snapshots/{s2}/items").status_code == 200
+    assert post(ok, operator) == 202

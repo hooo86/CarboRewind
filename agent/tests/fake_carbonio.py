@@ -150,8 +150,19 @@ class FakeCarbonio:
             self.calls.append(f"upload:{account}")
             return httpx.Response(200, text=f"200,'null','{aid}'")
         if request.method == "POST" and path.startswith("/home/"):
-            self.calls.append(f"import:{request.url.params.get('fmt')}")
-            self._cookie_account(request)
+            fmt = request.url.params.get("fmt")
+            self.calls.append(f"import:{fmt}")
+            mbox = self._cookie_account(request)
+            account, _, folder_path = unquote(path.removeprefix("/home/")).partition("/")
+            if account != mbox.name:
+                return httpx.Response(403)
+            folder = self.folder_by_path(mbox, folder_path)
+            if folder is None:
+                return httpx.Response(404)
+            kind = {"vcf": "cn", "ics": "appt"}.get(fmt or "")
+            if kind is None:
+                return httpx.Response(400)
+            mbox.add(kind, folder.id, request.content)
             return httpx.Response(200)
         return httpx.Response(404)
 
@@ -303,6 +314,32 @@ class FakeCarbonio:
             date=int(m.get("d", 0)),
         )
         return {"m": [{"id": str(item.id)}]}
+
+    def _GetFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+
+        def node(fid: int) -> dict[str, Any]:
+            f = mbox.folders[fid]
+            out: dict[str, Any] = {"id": str(fid), "name": f.name, "view": f.view}
+            children = sorted(c.id for c in mbox.folders.values() if c.parent == fid)
+            if children:
+                out["folder"] = [node(c) for c in children]
+            return out
+
+        return {"folder": [node(1)]}
+
+    def folder_by_path(self, mbox: Mailbox, path: str) -> Folder | None:
+        current = mbox.folders[1]
+        for name in [p for p in path.split("/") if p]:
+            match = [
+                f
+                for f in mbox.folders.values()
+                if f.parent == current.id and f.name.lower() == name.lower()
+            ]
+            if not match:
+                return None
+            current = match[0]
+        return current
 
     # ------------------------------------------------------------------ REST
 

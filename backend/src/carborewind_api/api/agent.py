@@ -565,6 +565,63 @@ async def _apply_folders(
             )
 
 
+class RestoreResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool
+    mode: str = Field(max_length=32)
+    root: str | None = Field(default=None, max_length=4096)
+    selected: int = Field(ge=0)
+    restored: int = Field(ge=0)
+    present: int = Field(ge=0)
+    unsupported: int = Field(ge=0)
+    failed: dict[int, str] = Field(default_factory=dict)
+    by_kind: dict[str, int] = Field(default_factory=dict)
+    folders_created: list[str] = Field(default_factory=list)
+
+
+@router.post("/jobs/{job_id}/restore-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def restore_complete(
+    job_id: uuid.UUID, body: RestoreResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Record the outcome of a restore (or of its dry run) on the job."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.RESTORE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a restore job")
+    summary = body.model_dump(mode="json")
+    # Keep the job row small: the full lists are in the agent's log.
+    summary["failed"] = dict(list(summary["failed"].items())[:200])
+    summary["failed_count"] = len(body.failed)
+    summary["folders_created"] = body.folders_created[:200]
+    job.progress = summary
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
+    job.error = f"{len(body.failed)} item(s) could not be restored" if body.failed else None
+    account = await db.get(Account, job.account_id) if job.account_id else None
+    await _audit(
+        db,
+        agent,
+        "restore.dry_run" if body.dry_run else "restore.complete",
+        Outcome.FAILURE if body.failed else Outcome.SUCCESS,
+        target_type="account",
+        target_id=account.email if account else None,
+        domain_id=account.domain_id if account else None,
+        details={
+            "job": str(job.id),
+            "source": job.params.get("source_email"),
+            "seq": job.params.get("seq"),
+            "mode": body.mode,
+            "selected": body.selected,
+            "restored": body.restored,
+            "present": body.present,
+            "unsupported": body.unsupported,
+            "failed": len(body.failed),
+        },
+    )
+
+
 class FailureIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

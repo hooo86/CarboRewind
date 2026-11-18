@@ -31,6 +31,7 @@ from carborewind_agent.backup import AccountBackup  # noqa: E402
 from carborewind_agent.carbonio.factory import build_client  # noqa: E402
 from carborewind_agent.config import AgentSettings  # noqa: E402
 from carborewind_agent.repository import Repository, generate_key  # noqa: E402
+from carborewind_agent.restore import AccountRestore  # noqa: E402
 from carborewind_agent.worker import Worker  # noqa: E402
 from carborewind_api.audit import GENESIS, chain_hash, event_payload  # noqa: E402
 from carborewind_api.config import Settings  # noqa: E402
@@ -106,7 +107,7 @@ class Stack:
         self.repo = Repository.init(tmp / "repo", generate_key())
         self.engine = AccountBackup(client, self.repo, checkpoint_every=2)
         self.worker = Worker(AgentApi(agent_settings, http=proxied), client, self.engine,
-                             sleep=lambda _: True)
+                             AccountRestore(client, self.repo), sleep=lambda _: True)
 
     def request_backup(self, engine: Engine, email: str) -> str:
         with Session(engine) as s:
@@ -204,3 +205,60 @@ def test_backup_incremental_resume_and_audit(tmp_path: Path, engine: Engine,
         assert event.prev_hash == prev
         assert event.hash == chain_hash(event.prev_hash, event_payload(event))
         prev = event.hash
+
+
+def test_point_in_time_restore_of_deleted_mail(tmp_path: Path, engine: Engine) -> None:
+    """Back up, lose mail, browse the old snapshot, dry-run, then restore what was lost."""
+    stack = Stack(tmp_path, engine)
+    box = stack.carbonio.add_mailbox(f"zoe@{uuid.uuid4().hex[:6]}.test")
+    for n in range(4):
+        box.add("m", 2, eml(f"Message {n}"), flags="u")
+    stack.worker.sync_inventory()
+    stack.request_backup(engine, box.name)
+    assert stack.worker.run_once()
+    before = _subjects(box)
+
+    # Two messages are deleted; a new backup records it.
+    lost = sorted(box.items)[:2]
+    for item_id in lost:
+        box.delete(item_id)
+    stack.request_backup(engine, box.name)
+    assert stack.worker.run_once()
+
+    with Session(engine) as s:
+        account_id = s.scalar(select(Account.id).where(Account.email == box.name))
+    snaps = stack.api.get(f"/api/accounts/{account_id}/snapshots").json()["items"]
+    first = next(x for x in snaps if x["seq"] == 1)["id"]
+    items = stack.api.get(f"/api/accounts/{account_id}/snapshots/{first}/items").json()
+    assert sorted(i["subject"] for i in items["items"]) == sorted(before.values())
+
+    def restore(**body: object) -> dict[str, object]:
+        r = stack.api.post("/api/restores", json={"account_id": str(account_id),
+                                                  "snapshot_id": first, **body},
+                           headers=stack.csrf)
+        assert r.status_code == 202, r.text
+        assert stack.worker.run_once()
+        return stack.job(str(r.json()["id"]))
+
+    # Dry run: the plan, nothing written.
+    plan = restore(mode="original", dry_run=True)
+    assert plan["status"] == "succeeded"
+    progress = plan["progress"]
+    assert isinstance(progress, dict)
+    assert (progress["restored"], progress["present"]) == (2, 2)
+    assert len(box.items) == 2
+
+    # Real restore into the original folder: only the two lost messages come back.
+    done = restore(mode="original")
+    assert done["status"] == "succeeded" and done["error"] is None
+    assert sorted(_subjects(box).values()) == sorted(before.values())
+    assert all(item.flags == "u" for item in box.items.values())
+
+    # A copy into a new dated folder never touches the originals.
+    copy = restore()
+    progress = copy["progress"]
+    assert isinstance(progress, dict) and progress["restored"] == 4
+    assert len(box.items) == 8
+    with Session(engine) as s:
+        actions = {e.action for e in s.scalars(select(AuditEvent))}
+    assert {"restore.request", "restore.dry_run", "restore.complete"} <= actions

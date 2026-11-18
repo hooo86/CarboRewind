@@ -37,6 +37,11 @@ class JobOut(BaseModel):
     account_id: uuid.UUID | None
     account_email: str | None = None
     backup_type: str | None = None
+    # Restore jobs: where from, how, and whether it is only a simulation.
+    restore_mode: str | None = None
+    dry_run: bool | None = None
+    source_email: str | None = None
+    snapshot_seq: int | None = None
     attempts: int
     progress: dict[str, Any] | None
     error: str | None
@@ -46,9 +51,15 @@ class JobOut(BaseModel):
 
     @classmethod
     def of(cls, j: Job, account_email: str | None = None) -> JobOut:
+        params = j.params or {}
+        restore = j.kind is JobKind.RESTORE
         return cls(
             account_email=account_email,
-            backup_type=(j.params or {}).get("backup_type"),
+            backup_type=params.get("backup_type"),
+            restore_mode=params.get("mode") if restore else None,
+            dry_run=bool(params.get("dry_run")) if restore else None,
+            source_email=params.get("source_email") if restore else None,
+            snapshot_seq=params.get("seq") if restore else None,
             id=j.id,
             kind=j.kind,
             status=j.status,
