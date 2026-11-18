@@ -235,16 +235,30 @@ def test_key_encoding() -> None:
 # ------------------------------------------------------------------ key file & CLI
 
 
-def test_keyfile_permissions(tmp_path: Path) -> None:
+def _pretend_mode(monkeypatch: pytest.MonkeyPatch, path: Path, mode: int) -> None:
+    """Make ``path.stat()`` report ``mode`` without loosening the real file's permissions."""
+    real_stat = Path.stat
+
+    def fake_stat(self: Path, *args: object, **kwargs: object) -> os.stat_result:
+        result = real_stat(self, *args, **kwargs)  # type: ignore[arg-type]
+        if self == path:
+            return os.stat_result((mode, *tuple(result)[1:]))
+        return result
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+
+def test_keyfile_permissions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "repo.key"
     create_kek(path)
     assert oct(path.stat().st_mode & 0o777) == "0o600"
     assert len(read_kek(path)) == 32
     with pytest.raises(FileExistsError):
         create_kek(path)
-    os.chmod(path, 0o640)  # group-readable is already refused
-    with pytest.raises(KeyFileError, match="group/others"):
-        read_kek(path)
+    with monkeypatch.context() as m:
+        _pretend_mode(m, path, 0o100640)  # group-readable is already refused
+        with pytest.raises(KeyFileError, match="group/others"):
+            read_kek(path)
     with pytest.raises(KeyFileError, match="not found"):
         read_kek(tmp_path / "absent")
     bad = tmp_path / "bad.key"
