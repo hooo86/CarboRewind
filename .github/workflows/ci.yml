@@ -24,6 +24,23 @@ jobs:
     defaults:
       run:
         working-directory: ${{ matrix.component }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: carborewind
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: carborewind_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U carborewind" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      CARBOREWIND_TEST_DATABASE_URL: postgresql+psycopg://carborewind:ci-only-not-a-secret@localhost:5432/carborewind_test
+      CARBOREWIND_TEST_REDIS_URL: redis://localhost:6379/0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
