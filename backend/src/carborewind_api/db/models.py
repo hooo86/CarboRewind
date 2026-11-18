@@ -1,0 +1,528 @@
+"""SQLAlchemy ORM models of the CarboRewind control plane.
+
+Design notes
+------------
+* Primary keys are UUIDv4 except for high-volume append-only tables (catalogue, audit),
+  which use ``BIGINT`` identity columns.
+* Enumerations are stored as ``VARCHAR`` + ``CHECK`` constraint (non-native enums) so that
+  adding a value is a simple migration.
+* The catalogue is **temporal**: a row of :class:`ItemVersion` / :class:`FolderVersion` is valid
+  for the snapshots whose per-account sequence number ``seq`` satisfies
+  ``from_seq <= seq < to_seq`` (``to_seq`` NULL = still present). Listing the content of a
+  mailbox at snapshot *N* therefore needs no per-snapshot copy of the item list, which keeps
+  the catalogue linear in the number of *changes* rather than ``items * snapshots``.
+"""
+
+from __future__ import annotations
+
+import enum
+import uuid
+from datetime import datetime, time
+from typing import Any, ClassVar
+
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Deterministic constraint names: required for reliable Alembic migrations.
+NAMING_CONVENTION = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
+class Base(DeclarativeBase):
+    """Declarative base with naming convention and common type mapping."""
+
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    type_annotation_map: ClassVar[dict[Any, Any]] = {
+        dict[str, Any]: JSONB,
+        uuid.UUID: UUID(as_uuid=True),
+    }
+
+
+def _enum(cls: type[enum.Enum], name: str) -> Enum:
+    return Enum(
+        cls,
+        name=name,
+        native_enum=False,
+        create_constraint=True,
+        length=32,
+        values_callable=lambda e: [m.value for m in e],
+        validate_strings=True,
+    )
+
+
+def _uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(primary_key=True, default=uuid.uuid4)
+
+
+def _created_at() -> Mapped[datetime]:
+    return mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# --------------------------------------------------------------------------- enumerations
+
+
+class AuthSource(enum.StrEnum):
+    LOCAL = "local"
+    LDAP = "ldap"
+    OIDC = "oidc"
+
+
+class Role(enum.StrEnum):
+    SUPER_ADMIN = "super_admin"
+    DOMAIN_ADMIN = "domain_admin"
+    RESTORE_OPERATOR = "restore_operator"
+    VIEWER = "viewer"
+
+
+class AccountStatus(enum.StrEnum):
+    ACTIVE = "active"
+    LOCKED = "locked"
+    CLOSED = "closed"
+    DELETED = "deleted"  # no longer present on Carbonio; restorable from backups
+
+
+class AgentStatus(enum.StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class TargetType(enum.StrEnum):
+    ACCOUNT = "account"
+    DOMAIN = "domain"
+    GLOBAL = "global"
+
+
+class BackupType(enum.StrEnum):
+    FULL = "full"
+    INCREMENTAL = "incremental"
+
+
+class JobKind(enum.StrEnum):
+    BACKUP = "backup"
+    RESTORE = "restore"
+    CONFIG_BACKUP = "config_backup"
+    VERIFY = "verify"
+    PURGE = "purge"
+
+
+class JobStatus(enum.StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class SnapshotStatus(enum.StrEnum):
+    COMPLETE = "complete"
+    PARTIAL = "partial"  # finished with per-item errors, still restorable
+    EXPIRED = "expired"  # retention elapsed, manifest purged
+
+
+class ItemKind(enum.StrEnum):
+    MESSAGE = "message"
+    CONTACT = "contact"
+    APPOINTMENT = "appointment"
+    TASK = "task"
+    DOCUMENT = "document"
+
+
+class ActorType(enum.StrEnum):
+    USER = "user"
+    AGENT = "agent"
+    SYSTEM = "system"
+
+
+class Outcome(enum.StrEnum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    DENIED = "denied"
+
+
+# --------------------------------------------------------------------------- identity & RBAC
+
+
+class User(Base):
+    """Administrator of CarboRewind (not a mailbox user)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    username: Mapped[str] = mapped_column(String(255), unique=True)
+    display_name: Mapped[str | None] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(320))
+    auth_source: Mapped[AuthSource] = mapped_column(_enum(AuthSource, "auth_source"))
+    # Argon2id hash, only for local accounts.
+    password_hash: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    failed_logins: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    roles: Mapped[list[RoleAssignment]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "auth_source <> 'local' OR password_hash IS NOT NULL", name="local_has_password"
+        ),
+    )
+
+
+class RoleAssignment(Base):
+    """Grants a role to a user, globally (``domain_id`` NULL) or on one domain."""
+
+    __tablename__ = "role_assignments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[Role] = mapped_column(_enum(Role, "role"))
+    domain_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("domains.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    user: Mapped[User] = relationship(back_populates="roles")
+
+    __table_args__ = (
+        # NULLS NOT DISTINCT: a global grant (domain_id NULL) cannot be duplicated either.
+        UniqueConstraint(
+            "user_id",
+            "role",
+            "domain_id",
+            name="uq_role_assignments_grant",
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint("role <> 'super_admin' OR domain_id IS NULL", name="super_admin_is_global"),
+    )
+
+
+# --------------------------------------------------------------------------- Carbonio inventory
+
+
+class Domain(Base):
+    __tablename__ = "domains"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(253), unique=True)
+    carbonio_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Account(Base):
+    """A Carbonio mailbox account as last seen by inventory."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    domain_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("domains.id", ondelete="RESTRICT"))
+    email: Mapped[str] = mapped_column(String(320))
+    # zimbraId of the account; stable across renames.
+    carbonio_id: Mapped[str] = mapped_column(String(64), unique=True)
+    status: Mapped[AccountStatus] = mapped_column(_enum(AccountStatus, "account_status"))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        # An address can be reused after deletion: unique among non-deleted accounts only.
+        Index(
+            "uq_accounts_email_live",
+            "email",
+            unique=True,
+            postgresql_where=text("status <> 'deleted'"),
+        ),
+        Index("ix_accounts_domain_id", "domain_id"),
+    )
+
+
+class Agent(Base):
+    """Agent running on a Carbonio node, authenticated by mTLS client certificate."""
+
+    __tablename__ = "agents"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    hostname: Mapped[str] = mapped_column(String(253))
+    status: Mapped[AgentStatus] = mapped_column(_enum(AgentStatus, "agent_status"))
+    # SHA-256 of the client certificate (hex). NULL until enrolment completes.
+    cert_fingerprint: Mapped[str | None] = mapped_column(String(64), unique=True)
+    cert_not_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[str | None] = mapped_column(String(64))
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+# --------------------------------------------------------------------------- policies & jobs
+
+
+class Policy(Base):
+    """Scheduled backup policy."""
+
+    __tablename__ = "policies"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    target_type: Mapped[TargetType] = mapped_column(_enum(TargetType, "target_type"))
+    # Account or domain id depending on target_type; NULL for global.
+    target_id: Mapped[uuid.UUID | None]
+    backup_type: Mapped[BackupType] = mapped_column(_enum(BackupType, "backup_type"))
+    # Standard 5-field cron expression, validated by the API.
+    schedule: Mapped[str] = mapped_column(String(128))
+    window_start: Mapped[time | None] = mapped_column(Time)
+    window_end: Mapped[time | None] = mapped_column(Time)
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("100"))
+    # e.g. {"daily": 14, "weekly": 8, "monthly": 12}
+    retention: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint(
+            "(target_type = 'global') = (target_id IS NULL)", name="target_id_matches_type"
+        ),
+        CheckConstraint(
+            "(window_start IS NULL) = (window_end IS NULL)", name="window_both_or_none"
+        ),
+    )
+
+
+class Job(Base):
+    """Unit of work executed by an agent (or a Celery worker for purge/verify)."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    kind: Mapped[JobKind] = mapped_column(_enum(JobKind, "job_kind"))
+    status: Mapped[JobStatus] = mapped_column(
+        _enum(JobStatus, "job_status"), server_default=JobStatus.QUEUED.value
+    )
+    priority: Mapped[int] = mapped_column(Integer, server_default=text("100"))
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("policies.id", ondelete="SET NULL")
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # Validated, typed parameters (restore mode, target, dry_run…).
+    params: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    # Resume point written by the agent; opaque to the API.
+    checkpoint: Mapped[dict[str, Any] | None]
+    progress: Mapped[dict[str, Any] | None]
+    # Prevents duplicate jobs for the same scheduled run / client request.
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), unique=True)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    max_attempts: Mapped[int] = mapped_column(Integer, server_default=text("3"))
+    # A running job whose lease expired is considered abandoned and can be resumed.
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("attempts >= 0 AND attempts <= max_attempts", name="attempts_bounded"),
+        CheckConstraint(
+            "status <> 'running' OR (agent_id IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            name="running_has_lease",
+        ),
+        # Dispatch query: next queued jobs by priority then age.
+        Index(
+            "ix_jobs_dispatch",
+            "priority",
+            "created_at",
+            postgresql_where=text("status = 'queued'"),
+        ),
+        Index("ix_jobs_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
+        Index("ix_jobs_account_created", "account_id", "created_at"),
+    )
+
+
+# --------------------------------------------------------------------------- backups & catalogue
+
+
+class Snapshot(Base):
+    """Point-in-time state of one account, materialised by a manifest in the repository."""
+
+    __tablename__ = "snapshots"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    # Monotonic per account; used by the temporal catalogue.
+    seq: Mapped[int] = mapped_column(Integer)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    backup_type: Mapped[BackupType] = mapped_column(_enum(BackupType, "backup_type"))
+    status: Mapped[SnapshotStatus] = mapped_column(_enum(SnapshotStatus, "snapshot_status"))
+    taken_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Repository-relative path of the encrypted manifest.
+    manifest_ref: Mapped[str] = mapped_column(String(512))
+    # Carbonio SyncRequest token at the end of this snapshot (next incremental starts here).
+    sync_token: Mapped[str | None] = mapped_column(String(128))
+    item_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    size_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    # Bytes actually added to the repository (after deduplication and compression).
+    new_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    # Account attributes (COS, quota, aliases…) needed to recreate a deleted account.
+    account_attrs: Mapped[dict[str, Any] | None]
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("account_id", "seq", name="uq_snapshots_account_seq"),
+        CheckConstraint("seq >= 1", name="seq_positive"),
+        Index("ix_snapshots_account_taken", "account_id", "taken_at"),
+    )
+
+
+class Blob(Base):
+    """Content-addressed object stored in the repository (encrypted)."""
+
+    __tablename__ = "blobs"
+
+    # HMAC-SHA-256 of the plaintext, hex encoded.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    size: Mapped[int] = mapped_column(BigInteger)
+    stored_size: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (CheckConstraint("id ~ '^[0-9a-f]{64}$'", name="id_is_hex_sha256"),)
+
+
+class FolderVersion(Base):
+    """Folder of an account, valid for snapshots ``from_seq <= seq < to_seq``."""
+
+    __tablename__ = "folder_versions"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    carbonio_folder_id: Mapped[int] = mapped_column(Integer)
+    parent_folder_id: Mapped[int | None] = mapped_column(Integer)
+    path: Mapped[str] = mapped_column(Text)
+    view: Mapped[ItemKind] = mapped_column(_enum(ItemKind, "item_kind"))
+    # Colour, ACL/grants, flags… needed for a faithful restore.
+    attrs: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    from_seq: Mapped[int] = mapped_column(Integer)
+    to_seq: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        CheckConstraint("to_seq IS NULL OR to_seq > from_seq", name="valid_range"),
+        Index("ix_folder_versions_account_range", "account_id", "from_seq", "to_seq"),
+    )
+
+
+class ItemVersion(Base):
+    """Version of a mailbox item, valid for snapshots ``from_seq <= seq < to_seq``.
+
+    A modification closes the current row (sets ``to_seq``) and opens a new one; a deletion
+    only closes it. Searchable metadata is denormalised here; content lives in the blob.
+    """
+
+    __tablename__ = "item_versions"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    carbonio_item_id: Mapped[int] = mapped_column(Integer)
+    carbonio_folder_id: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[ItemKind] = mapped_column(_enum(ItemKind, "item_kind"))
+    content_blob_id: Mapped[str] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    # Flags, tags, IMAP UID, modified sequence… as returned by Carbonio.
+    meta_blob_id: Mapped[str | None] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    subject: Mapped[str | None] = mapped_column(Text)
+    sender: Mapped[str | None] = mapped_column(Text)
+    item_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    size: Mapped[int] = mapped_column(BigInteger)
+    from_seq: Mapped[int] = mapped_column(Integer)
+    to_seq: Mapped[int | None] = mapped_column(Integer)
+
+    __table_args__ = (
+        CheckConstraint("to_seq IS NULL OR to_seq > from_seq", name="valid_range"),
+        # At most one open version per item.
+        Index(
+            "uq_item_versions_open",
+            "account_id",
+            "carbonio_item_id",
+            unique=True,
+            postgresql_where=text("to_seq IS NULL"),
+        ),
+        Index("ix_item_versions_account_range", "account_id", "from_seq", "to_seq"),
+        Index("ix_item_versions_account_date", "account_id", "item_date"),
+        Index("ix_item_versions_content_blob", "content_blob_id"),
+        Index("ix_item_versions_meta_blob", "meta_blob_id"),
+        # Trigram indexes for ILIKE search on subject / sender (pg_trgm).
+        Index(
+            "ix_item_versions_subject_trgm",
+            "subject",
+            postgresql_using="gin",
+            postgresql_ops={"subject": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_item_versions_sender_trgm",
+            "sender",
+            postgresql_using="gin",
+            postgresql_ops={"sender": "gin_trgm_ops"},
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- audit
+
+
+class AuditEvent(Base):
+    """Append-only, hash-chained audit trail.
+
+    ``hash = SHA-256(prev_hash || canonical_json(event))``; UPDATE / DELETE are refused by a
+    database trigger (see the initial migration). Chain computation lives in the audit service.
+    """
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    actor_type: Mapped[ActorType] = mapped_column(_enum(ActorType, "actor_type"))
+    actor_id: Mapped[str | None] = mapped_column(String(64))
+    actor_name: Mapped[str | None] = mapped_column(String(255))
+    action: Mapped[str] = mapped_column(String(128))
+    target_type: Mapped[str | None] = mapped_column(String(64))
+    target_id: Mapped[str | None] = mapped_column(String(255))
+    domain_id: Mapped[uuid.UUID | None]
+    outcome: Mapped[Outcome] = mapped_column(_enum(Outcome, "outcome"))
+    source_ip: Mapped[str | None] = mapped_column(INET)
+    details: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64), unique=True)
+
+    __table_args__ = (
+        Index("ix_audit_events_ts", "ts"),
+        Index("ix_audit_events_actor", "actor_type", "actor_id", "ts"),
+        Index("ix_audit_events_target", "target_type", "target_id"),
+        Index("ix_audit_events_domain_ts", "domain_id", "ts"),
+    )
