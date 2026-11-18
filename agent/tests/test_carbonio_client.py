@@ -219,9 +219,11 @@ def test_content_helper() -> None:
     assert content("plain") == "plain"
 
 
-def test_password_file_must_be_private(tmp_path: Path) -> None:
+def test_password_file_must_be_private(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from .test_repository import _pretend_mode
+
     settings = _settings(tmp_path)
-    os.chmod(settings.carbonio_admin_password_file, 0o640)
+    _pretend_mode(monkeypatch, settings.carbonio_admin_password_file, 0o100640)
     with pytest.raises(KeyFileError, match="group/others"):
         build_client(settings)
 
@@ -274,9 +276,9 @@ def test_cli_probe_runs(
     monkeypatch.setenv(
         "CARBOREWIND_AGENT_CARBONIO_ADMIN_PASSWORD_FILE", str(settings.carbonio_admin_password_file)
     )
-    import carborewind_agent.carbonio.factory as factory
-
-    real = factory.build_client
-    monkeypatch.setattr(factory, "build_client", lambda s: real(s, transport=fake.transport()))
+    monkeypatch.setattr(
+        "carborewind_agent.carbonio.factory.build_client",
+        lambda s: build_client(s, transport=fake.transport()),
+    )
     assert main(["carbonio", "probe", "--account", alice.name]) == 0
     assert "✓ SyncRequest (initial, typed)" in capsys.readouterr().out
