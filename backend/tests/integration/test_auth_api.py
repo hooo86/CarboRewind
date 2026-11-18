@@ -87,7 +87,7 @@ def test_login_me_logout(client: TestClient, engine: Engine) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["user"]["username"] == username
-    assert body["user"]["roles"] == [{"role": "super_admin", "domain_id": None}]
+    assert [(r["role"], r["domain_id"]) for r in body["user"]["roles"]] == [("super_admin", None)]
 
     set_cookie = response.headers.get_list("set-cookie")
     session_cookie = next(c for c in set_cookie if c.startswith(SESSION_COOKIE))
