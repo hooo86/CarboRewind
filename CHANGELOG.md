@@ -6,6 +6,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Restauration point-in-time (agent, API, interface) : compte entier, dossiers ou éléments ; nouveau
+  dossier daté ou dossiers d'origine sans doublon ; même compte ou autre compte ; simulation (dry-run) ;
+  reprise sur incident ; catalogue d'un snapshot consultable (arborescence, recherche) ; audit complet.
 - Interface web (React Router) : connexion locale/LDAP avec CSRF, tableau de bord, comptes par domaine
   (recherche, pagination, dernière sauvegarde), « Sauvegarder maintenant » incrémentale/complète selon le
   rôle, suivi des jobs (filtre, rafraîchissement 5 s), fiche compte avec historique des snapshots ; FR/EN,

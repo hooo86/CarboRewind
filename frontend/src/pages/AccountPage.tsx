@@ -11,7 +11,15 @@ import { LoadView, StatusBadge, useLoad } from "../components/common";
 import { formatBytes, formatDate } from "../utils/format";
 import { NoticeBar, useBackupNotices } from "./AccountsPage";
 
-function SnapshotTable({ snapshots }: { snapshots: Snapshot[] }) {
+function SnapshotTable({
+  snapshots,
+  accountId,
+  restorable,
+}: {
+  snapshots: Snapshot[];
+  accountId: string;
+  restorable: boolean;
+}) {
   const { t } = useTranslation();
   if (snapshots.length === 0)
     return <p className="muted">{t("account.noSnapshot")}</p>;
@@ -27,6 +35,7 @@ function SnapshotTable({ snapshots }: { snapshots: Snapshot[] }) {
             <th className="num">{t("account.items")}</th>
             <th className="num">{t("account.size")}</th>
             <th className="num">{t("account.newBytes")}</th>
+            {restorable && <th>{t("accounts.actions")}</th>}
           </tr>
         </thead>
         <tbody>
@@ -41,6 +50,19 @@ function SnapshotTable({ snapshots }: { snapshots: Snapshot[] }) {
               <td className="num">{s.item_count.toLocaleString()}</td>
               <td className="num">{formatBytes(s.size_bytes)}</td>
               <td className="num">{formatBytes(s.new_bytes)}</td>
+              {restorable && (
+                <td>
+                  {s.status !== "expired" && (
+                    <Link
+                      className="button-link"
+                      to={`/accounts/${accountId}/snapshots/${s.id}/restore`}
+                      aria-label={t("account.restoreTitle", { seq: s.seq })}
+                    >
+                      {t("account.restore")}
+                    </Link>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -52,7 +74,7 @@ function SnapshotTable({ snapshots }: { snapshots: Snapshot[] }) {
 export function AccountPage() {
   const { id = "" } = useParams();
   const { t } = useTranslation();
-  const { canRunBackup } = useAuth();
+  const { canRunBackup, canRestore } = useAuth();
   const [account, reloadAccount] = useLoad<AccountDetail>(
     () => api.account(id),
     [id],
@@ -128,7 +150,15 @@ export function AccountPage() {
       </LoadView>
       <h2>{t("account.snapshots")}</h2>
       <LoadView load={snapshots} reload={reloadSnapshots}>
-        {(page) => <SnapshotTable snapshots={page.items} />}
+        {(page) => (
+          <SnapshotTable
+            snapshots={page.items}
+            accountId={id}
+            restorable={
+              account.state === "ready" && canRestore(account.data.domain_id)
+            }
+          />
+        )}
       </LoadView>
       <h2>{t("account.jobs")}</h2>
       <LoadView load={jobs} reload={reloadJobs}>

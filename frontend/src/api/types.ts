@@ -89,6 +89,10 @@ export interface Job {
   account_id: string | null;
   account_email: string | null;
   backup_type: BackupType | null;
+  restore_mode?: RestoreMode | null;
+  dry_run?: boolean | null;
+  source_email?: string | null;
+  snapshot_seq?: number | null;
   attempts: number;
   progress: Record<string, unknown> | null;
   error: string | null;
@@ -108,4 +112,53 @@ export interface Dashboard {
   stored_bytes: number;
   agents_active: number | null;
   last_agent_heartbeat: string | null;
+}
+
+export type RestoreMode = "new_folder" | "original";
+export type ItemKind =
+  | "message"
+  | "contact"
+  | "appointment"
+  | "task"
+  | "document";
+
+export interface SnapshotFolder {
+  id: number;
+  parent_id: number | null;
+  path: string;
+  view: ItemKind;
+  item_count: number;
+}
+
+export interface SnapshotItem {
+  id: number;
+  folder_id: number;
+  kind: ItemKind;
+  subject: string | null;
+  sender: string | null;
+  date: string | null;
+  size: number;
+}
+
+export interface RestoreRequest {
+  account_id: string;
+  snapshot_id: string;
+  target_account_id?: string;
+  mode: RestoreMode;
+  dry_run: boolean;
+  folder_ids?: number[];
+  item_ids?: number[];
+}
+
+/** `progress` of a finished restore job. */
+export interface RestoreSummary {
+  dry_run: boolean;
+  mode: RestoreMode;
+  root: string | null;
+  selected: number;
+  restored: number;
+  present: number;
+  unsupported: number;
+  failed_count: number;
+  folders_created: string[];
 }

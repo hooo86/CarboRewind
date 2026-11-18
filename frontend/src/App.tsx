@@ -8,6 +8,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RestorePage } from "./pages/RestorePage";
 
 export function AppRoutes() {
   const { t } = useTranslation();
@@ -20,6 +21,10 @@ export function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="accounts" element={<AccountsPage />} />
         <Route path="accounts/:id" element={<AccountPage />} />
+        <Route
+          path="accounts/:id/snapshots/:snapshotId/restore"
+          element={<RestorePage />}
+        />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

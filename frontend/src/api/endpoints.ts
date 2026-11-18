@@ -9,8 +9,11 @@ import type {
   Job,
   JobStatus,
   Page,
+  RestoreRequest,
   SessionInfo,
   Snapshot,
+  SnapshotFolder,
+  SnapshotItem,
   User,
 } from "./types";
 
@@ -46,6 +49,25 @@ export const api = {
       limit: 50,
       ...filters,
     }),
+  job: (id: string) => request<Job>("GET", `/api/jobs/${id}`),
+  snapshotFolders: (accountId: string, snapshotId: string) =>
+    request<SnapshotFolder[]>(
+      "GET",
+      `/api/accounts/${accountId}/snapshots/${snapshotId}/folders`,
+    ),
+  snapshotItems: (
+    accountId: string,
+    snapshotId: string,
+    filters: { folder_id?: number; q?: string; offset?: number } = {},
+  ) =>
+    request<Page<SnapshotItem>>(
+      "GET",
+      `/api/accounts/${accountId}/snapshots/${snapshotId}/items`,
+      undefined,
+      { limit: 50, ...filters },
+    ),
+  startRestore: (body: RestoreRequest) =>
+    request<Job>("POST", "/api/restores", body),
   startBackup: (accountId: string, backupType: BackupType) =>
     request<Job>("POST", "/api/backups", {
       account_id: accountId,

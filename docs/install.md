@@ -221,8 +221,11 @@ Cette pré-version installe le **socle de sauvegarde** (jalons M0 à M2) :
 
 - ✅ Sauvegarde **complète et incrémentale à chaud** d'un compte, dans un dépôt **chiffré** et dédupliqué,
   avec catalogue point-in-time, reprise des jobs interrompus et audit complet.
-- ❌ **Pas encore de restauration** (jalon M3) : les données sont sauvegardées et vérifiables, mais leur
-  remise dans Carbonio arrive dans la prochaine version.
+- ✅ **Restauration point-in-time** depuis l'interface (fiche du compte → snapshot → **Restaurer**) :
+  tout le compte, des dossiers ou des éléments précis (recherche par objet / expéditeur), dans un nouveau
+  dossier daté (rien n'est modifié) ou dans les dossiers d'origine (seuls les éléments manquants sont
+  recréés), dans le même compte ou un autre ; **simulation** préalable possible. Les fichiers (Files) ne
+  sont pas restaurables en CE ; la restauration d'un compte supprimé arrive ensuite.
 - ✅ **Interface web** (`https://<nom>/`) : connexion (compte local ou LDAP), tableau de bord, liste des
   comptes par domaine avec date de dernière sauvegarde, bouton « Sauvegarder maintenant »
   (incrémentale / complète), suivi des jobs et historique des snapshots d'un compte, en FR/EN.

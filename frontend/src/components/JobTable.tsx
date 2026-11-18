@@ -1,9 +1,48 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
-import type { Job } from "../api/types";
+import type { Job, RestoreSummary } from "../api/types";
 import { formatDate } from "../utils/format";
 import { StatusBadge } from "./common";
+
+/** One-line outcome of a finished restore ("4 restored, 2 already present…"). */
+export function RestoreSummaryText({ job }: { job: Job }) {
+  const { t } = useTranslation();
+  const p = job.progress as Partial<RestoreSummary> | null;
+  if (!p || p.restored === undefined) return null;
+  const parts = [
+    t(job.dry_run ? "restore.result.wouldRestore" : "restore.result.restored", {
+      count: p.restored,
+    }),
+  ];
+  if (p.present) parts.push(t("restore.result.present", { count: p.present }));
+  if (p.unsupported)
+    parts.push(t("restore.result.unsupported", { count: p.unsupported }));
+  if (p.failed_count)
+    parts.push(t("restore.result.failed", { count: p.failed_count }));
+  return (
+    <span className="summary">
+      {parts.join(", ")}
+      {p.root && (
+        <>
+          {" "}
+          → <code>{p.root}</code>
+        </>
+      )}
+    </span>
+  );
+}
+
+function kindLabel(job: Job, t: TFunction): string {
+  let label = t(`kind.${job.kind}`, { defaultValue: job.kind });
+  if (job.backup_type) label += ` · ${t(`backupType.${job.backup_type}`)}`;
+  if (job.kind === "restore") {
+    if (job.dry_run) label += ` · ${t("restore.simulation")}`;
+    if (job.snapshot_seq) label += ` · #${job.snapshot_seq}`;
+  }
+  return label;
+}
 
 function duration(job: Job): string {
   if (!job.started_at) return "—";
@@ -59,8 +98,13 @@ export function JobTable({
                 </td>
               )}
               <td>
-                {t(`kind.${job.kind}`, { defaultValue: job.kind })}
-                {job.backup_type && ` · ${t(`backupType.${job.backup_type}`)}`}
+                {kindLabel(job, t)}
+                {job.kind === "restore" && job.status === "succeeded" && (
+                  <>
+                    <br />
+                    <RestoreSummaryText job={job} />
+                  </>
+                )}
               </td>
               <td>
                 <StatusBadge status={job.status} />

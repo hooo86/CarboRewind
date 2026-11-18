@@ -35,15 +35,18 @@ passer les 🔎 en ✅.
 | Agir sur une boîte | `DelegateAuthRequest` (`account by=id`, `duration`) → jeton valable pour le compte cible | admin 7071 | ✅ |
 | Inventaire paginé | `SearchDirectoryRequest` (`types=accounts`, `limit`, `offset`, `domain`, `attrs`) → `account[]`, `more` | admin 7071 | 🔎 attributs de pagination |
 | Attributs d'un compte | `GetAccountRequest` (`account by=id`) → `a[] {n, _content}` | admin 7071 | 🔎 |
-| Détection des changements | `SyncRequest` (`urn:zimbraMail`, `token` absent lors du premier appel, `typed`, `changeLimit`, `deleteLimit`) | `https://localhost/service/soap` | ✅ requête, 🔎 forme de la réponse |
-| Arborescence initiale | réponse de `SyncRequest` sans token : `folder[]` imbriqués, chacun avec `m/cn/appt/task/doc: [{ids: "1,2"}]` | — | 🔎 |
+| Détection des changements | `SyncRequest` (`urn:zimbraMail`, `token` absent lors du premier appel, `typed`, `changeLimit`, `deleteLimit`) | `https://localhost/service/soap` | ✅ (sauvegarde complète réussie sur un serveur CE de production) |
+| Arborescence initiale | réponse de `SyncRequest` sans token : `folder[]` imbriqués, chacun avec `m/cn/appt/task/doc: [{ids: "1,2"}]` | — | ✅ |
 | Deltas | `m[]`, `cn[]`… modifiés, `deleted: [{ids: "…"}]`, `token`, `more` | — | 🔎 |
 | Jeton trop ancien | erreur `mail.MUST_RESYNC`, qui déclenche une sauvegarde complète du compte | — | 🔎 |
-| Contenu brut | REST `GET /home/<compte>/?id=<n>` avec le cookie `ZM_AUTH_TOKEN` (jeton délégué) | 443 | ✅ API REST, 🔎 authentification par cookie |
-| Métadonnées | `GetItemRequest` (`item id`) → `f` (drapeaux), `tn` (tags), `l` (dossier), `d` (date) | 443 | 🔎 |
+| Contenu brut | REST `GET /home/<compte>/?id=<n>` avec le cookie `ZM_AUTH_TOKEN` (jeton délégué) | 443 | ✅ |
+| Métadonnées | `GetItemRequest` (`item id`) → `f` (drapeaux), `tn` (tags), `l` (dossier), `d` (date) | 443 | ✅ |
+| Arborescence actuelle (restauration) | `GetFolderRequest` (`folder {l: "1"}`) → `folder[]` imbriqués | 443 | 🔎 |
+| Existence d'un élément (mode « dossiers d'origine ») | `GetItemRequest` ; `mail.NO_SUCH_ITEM` ⇒ à restaurer | 443 | 🔎 code d'erreur |
 | Restauration de dossier | `CreateFolderRequest` (`l`, `name`, `view`, `fie=1` : idempotent) | 443 | 🔎 |
 | Restauration de mail | `AddMsgRequest` (`m {l, f, tn, d, content}`). Contenu 8 bits : envoi préalable à `/service/upload?fmt=raw`, puis `aid` | 443 | 🔎 réponse du servlet d'upload `200,'null','<aid>'` |
-| Import contacts et agendas | REST `POST /home/<compte>/<dossier>?fmt=ics|vcf&resolve=skip` | 443 | ✅ (forum Zextras : `postRestURL "/?fmt=tgz&resolve=skip"`) |
+| Import contacts et agendas | REST `POST /home/<compte>/<dossier>?fmt=ics|vcf&resolve=skip` | 443 | ✅ (forum Zextras : `postRestURL "/?fmt=tgz&resolve=skip"`) ; 🔎 contenu renvoyé par `?id=` pour un rendez-vous (iCalendar attendu) |
+| Fichiers (Files / `doc`) | non restaurables par ce chemin en CE : signalés « non pris en charge » | — | limite connue |
 | Export complet de contrôle | REST `GET /home/<compte>/?fmt=tgz` | 443 | ✅ |
 
 Format d'enveloppe JSON 🔎 :

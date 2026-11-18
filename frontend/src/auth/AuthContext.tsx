@@ -19,6 +19,8 @@ interface AuthState {
   logout: () => Promise<void>;
   /** True if the user may start backups on this domain (the API enforces it anyway). */
   canRunBackup: (domainId: string) => boolean;
+  /** Restore and see item subjects (restore:run, content:preview). */
+  canRestore: (domainId: string) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -67,9 +69,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
+  const canRestore = useCallback(
+    (domainId: string) =>
+      (user?.roles ?? []).some(
+        (r) =>
+          r.role === "super_admin" ||
+          ((r.role === "domain_admin" || r.role === "restore_operator") &&
+            (r.domain_id === null || r.domain_id === domainId)),
+      ),
+    [user],
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, logout, canRunBackup }),
-    [user, loading, login, logout, canRunBackup],
+    () => ({ user, loading, login, logout, canRunBackup, canRestore }),
+    [user, loading, login, logout, canRunBackup, canRestore],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
