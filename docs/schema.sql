@@ -402,4 +402,69 @@ ALTER TABLE agents ADD COLUMN storage JSONB;
 
 UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
 
+-- Running upgrade 0006 -> 0007
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate'));
+
+CREATE TABLE migration_sources (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(253) NOT NULL,
+    port INTEGER NOT NULL,
+    security VARCHAR(32) NOT NULL,
+    verify_tls BOOLEAN DEFAULT true NOT NULL,
+    auth_mode VARCHAR(32) NOT NULL,
+    master_username VARCHAR(320),
+    master_password_enc TEXT,
+    master_separator VARCHAR(8) DEFAULT '*' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_sources PRIMARY KEY (id),
+    CONSTRAINT ck_migration_sources_port_range CHECK (port BETWEEN 1 AND 65535),
+    CONSTRAINT uq_migration_sources_name UNIQUE (name),
+    CONSTRAINT ck_migration_sources_imap_security CHECK (security IN ('ssl', 'starttls', 'none')),
+    CONSTRAINT ck_migration_sources_migration_auth CHECK (auth_mode IN ('password', 'master_plain', 'master_login'))
+);
+
+CREATE TABLE migration_batches (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    source_id UUID NOT NULL,
+    options JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_batches PRIMARY KEY (id),
+    CONSTRAINT fk_migration_batches_source_id_migration_sources FOREIGN KEY(source_id) REFERENCES migration_sources (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_migration_batches_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT uq_migration_batches_name UNIQUE (name)
+);
+
+CREATE TABLE migration_mailboxes (
+    id UUID NOT NULL,
+    batch_id UUID NOT NULL,
+    source_email VARCHAR(320) NOT NULL,
+    source_login VARCHAR(320),
+    password_enc TEXT,
+    target_account_id UUID,
+    match VARCHAR(16),
+    root VARCHAR(128),
+    last_job_id UUID,
+    state JSONB DEFAULT '{}'::jsonb NOT NULL,
+    stats JSONB,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_mailboxes PRIMARY KEY (id),
+    CONSTRAINT fk_migration_mailboxes_batch_id_migration_batches FOREIGN KEY(batch_id) REFERENCES migration_batches (id) ON DELETE CASCADE,
+    CONSTRAINT fk_migration_mailboxes_target_account_id_accounts FOREIGN KEY(target_account_id) REFERENCES accounts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_migration_mailboxes_last_job_id_jobs FOREIGN KEY(last_job_id) REFERENCES jobs (id) ON DELETE SET NULL,
+    CONSTRAINT uq_migration_mailboxes_pair UNIQUE NULLS NOT DISTINCT (batch_id, source_email, target_account_id)
+);
+
+CREATE INDEX ix_migration_mailboxes_batch_id ON migration_mailboxes (batch_id);
+
+CREATE INDEX ix_migration_mailboxes_target ON migration_mailboxes (target_account_id);
+
+UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
+
 COMMIT;

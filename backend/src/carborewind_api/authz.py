@@ -28,11 +28,18 @@ class Permission(enum.StrEnum):
     USERS_MANAGE = "users:manage"
     AGENTS_MANAGE = "agents:manage"
     SETTINGS_MANAGE = "settings:manage"
+    MIGRATIONS_MANAGE = "migrations:manage"
 
 
 # Permissions that only make sense globally: a domain-scoped grant never confers them.
 GLOBAL_ONLY = frozenset(
-    {Permission.USERS_MANAGE, Permission.AGENTS_MANAGE, Permission.SETTINGS_MANAGE}
+    {
+        Permission.USERS_MANAGE,
+        Permission.AGENTS_MANAGE,
+        Permission.SETTINGS_MANAGE,
+        # Source credentials and writes into any mailbox: global administrators only.
+        Permission.MIGRATIONS_MANAGE,
+    }
 )
 
 MATRIX: dict[Role, frozenset[Permission]] = {

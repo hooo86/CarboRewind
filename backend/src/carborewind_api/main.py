@@ -21,6 +21,7 @@ from .api import audit as audit_api
 from .api import auth as auth_api
 from .api import backups as backups_api
 from .api import inventory as inventory_api
+from .api import migrations as migrations_api
 from .api import policies as policies_api
 from .api import restores as restores_api
 from .api import settings_api
@@ -151,6 +152,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(restores_api.router)
     app.include_router(policies_api.router)
     app.include_router(settings_api.router)
+    app.include_router(migrations_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

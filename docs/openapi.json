@@ -938,6 +938,147 @@
         "title": "BackupType",
         "type": "string"
       },
+      "BatchDetail": {
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/MigrationAuth"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mailboxes": {
+            "items": {
+              "$ref": "#/components/schemas/MailboxOut"
+            },
+            "title": "Mailboxes",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source_id",
+          "source_name",
+          "auth_mode",
+          "options",
+          "created_at",
+          "counts",
+          "mailboxes"
+        ],
+        "title": "BatchDetail",
+        "type": "object"
+      },
+      "BatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/Options"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "source_id"
+        ],
+        "title": "BatchIn",
+        "type": "object"
+      },
+      "BatchOut": {
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/MigrationAuth"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source_id",
+          "source_name",
+          "auth_mode",
+          "options",
+          "created_at",
+          "counts"
+        ],
+        "title": "BatchOut",
+        "type": "object"
+      },
       "BulkBackupOut": {
         "properties": {
           "queued": {
@@ -988,6 +1129,19 @@
           "account_ids"
         ],
         "title": "BulkBackupRequest",
+        "type": "object"
+      },
+      "CancelResult": {
+        "properties": {
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "title": "CancelResult",
         "type": "object"
       },
       "ClaimedJob": {
@@ -1053,6 +1207,18 @@
           "lease_seconds": {
             "title": "Lease Seconds",
             "type": "integer"
+          },
+          "migration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migration"
           },
           "params": {
             "additionalProperties": true,
@@ -1485,6 +1651,56 @@
         "title": "Heartbeat",
         "type": "object"
       },
+      "ImapSecurity": {
+        "enum": [
+          "ssl",
+          "starttls",
+          "none"
+        ],
+        "title": "ImapSecurity",
+        "type": "string"
+      },
+      "ImportReport": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "matched": {
+            "title": "Matched",
+            "type": "integer"
+          },
+          "unmatched": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Unmatched",
+            "type": "array"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "updated",
+          "matched",
+          "unmatched",
+          "errors"
+        ],
+        "title": "ImportReport",
+        "type": "object"
+      },
       "InventoryIn": {
         "additionalProperties": false,
         "properties": {
@@ -1704,7 +1920,8 @@
           "restore",
           "config_backup",
           "verify",
-          "purge"
+          "purge",
+          "migrate"
         ],
         "title": "JobKind",
         "type": "string"
@@ -1904,6 +2121,397 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MailboxOut": {
+        "properties": {
+          "dry_run": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dry Run"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "match": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match"
+          },
+          "password_set": {
+            "title": "Password Set",
+            "type": "boolean"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "source_email": {
+            "title": "Source Email",
+            "type": "string"
+          },
+          "source_login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Login"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stats"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Account Id"
+          },
+          "target_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Email"
+          },
+          "target_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "source_email",
+          "source_login",
+          "password_set",
+          "target_account_id",
+          "target_email",
+          "target_status",
+          "match",
+          "root",
+          "status",
+          "dry_run",
+          "progress",
+          "stats",
+          "error",
+          "last_run_at"
+        ],
+        "title": "MailboxOut",
+        "type": "object"
+      },
+      "MailboxPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "clear_target": {
+            "default": false,
+            "title": "Clear Target",
+            "type": "boolean"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "source_login": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Login"
+          },
+          "target_email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Email"
+          }
+        },
+        "title": "MailboxPatch",
+        "type": "object"
+      },
+      "MatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "all": {
+            "default": false,
+            "title": "All",
+            "type": "boolean"
+          },
+          "target_domain": {
+            "anyOf": [
+              {
+                "maxLength": 253,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Domain"
+          }
+        },
+        "title": "MatchRequest",
+        "type": "object"
+      },
+      "MigrationAuth": {
+        "enum": [
+          "password",
+          "master_plain",
+          "master_login"
+        ],
+        "title": "MigrationAuth",
+        "type": "string"
+      },
+      "MigrationFolderIn": {
+        "properties": {
+          "copied": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Copied",
+            "type": "integer"
+          },
+          "duplicates": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "new": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "New",
+            "type": "integer"
+          },
+          "source": {
+            "maxLength": 1024,
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 4096,
+            "title": "Target",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "MigrationFolderIn",
+        "type": "object"
+      },
+      "MigrationResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "cancelled": {
+            "default": false,
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "copied": {
+            "minimum": 0.0,
+            "title": "Copied",
+            "type": "integer"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "duplicates": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicates",
+            "type": "integer"
+          },
+          "failed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 500,
+            "title": "Failed",
+            "type": "object"
+          },
+          "failed_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "folders": {
+            "items": {
+              "$ref": "#/components/schemas/MigrationFolderIn"
+            },
+            "maxItems": 20000,
+            "title": "Folders",
+            "type": "array"
+          },
+          "folders_created": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Folders Created",
+            "type": "array"
+          },
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          }
+        },
+        "required": [
+          "dry_run",
+          "copied"
+        ],
+        "title": "MigrationResultIn",
         "type": "object"
       },
       "NotificationOut": {
@@ -2161,6 +2769,57 @@
         ],
         "title": "NotificationStatus",
         "type": "string"
+      },
+      "Options": {
+        "additionalProperties": false,
+        "properties": {
+          "before": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "exclude_folders": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Exclude Folders",
+            "type": "array"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "title": "Options",
+        "type": "object"
       },
       "Outcome": {
         "enum": [
@@ -3021,6 +3680,99 @@
         "title": "RoleOut",
         "type": "object"
       },
+      "RowIn": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "root": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root"
+          },
+          "source_email": {
+            "maxLength": 320,
+            "title": "Source Email",
+            "type": "string"
+          },
+          "source_login": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Login"
+          },
+          "target_email": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Email"
+          }
+        },
+        "required": [
+          "source_email"
+        ],
+        "title": "RowIn",
+        "type": "object"
+      },
+      "RowsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RowIn"
+            },
+            "maxItems": 5000,
+            "title": "Rows",
+            "type": "array"
+          },
+          "target_domain": {
+            "anyOf": [
+              {
+                "maxLength": 253,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Domain"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "RowsIn",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "csrf_token": {
@@ -3095,6 +3847,200 @@
         ],
         "title": "SnapshotStatus",
         "type": "string"
+      },
+      "SourceIn": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/MigrationAuth",
+            "default": "password"
+          },
+          "host": {
+            "maxLength": 253,
+            "title": "Host",
+            "type": "string"
+          },
+          "master_password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Password"
+          },
+          "master_separator": {
+            "default": "*",
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Master Separator",
+            "type": "string"
+          },
+          "master_username": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Username"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "port": {
+            "default": 993,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "security": {
+            "$ref": "#/components/schemas/ImapSecurity",
+            "default": "ssl"
+          },
+          "verify_tls": {
+            "default": true,
+            "title": "Verify Tls",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "host"
+        ],
+        "title": "SourceIn",
+        "type": "object"
+      },
+      "SourceOut": {
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/MigrationAuth"
+          },
+          "batches": {
+            "default": 0,
+            "title": "Batches",
+            "type": "integer"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "master_password_set": {
+            "title": "Master Password Set",
+            "type": "boolean"
+          },
+          "master_separator": {
+            "title": "Master Separator",
+            "type": "string"
+          },
+          "master_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master Username"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "security": {
+            "$ref": "#/components/schemas/ImapSecurity"
+          },
+          "verify_tls": {
+            "title": "Verify Tls",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "host",
+          "port",
+          "security",
+          "verify_tls",
+          "auth_mode",
+          "master_username",
+          "master_password_set",
+          "master_separator"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "StartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "mailbox_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 5000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailbox Ids"
+          }
+        },
+        "title": "StartRequest",
+        "type": "object"
+      },
+      "StartResult": {
+        "properties": {
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "skipped": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Skipped",
+            "type": "array"
+          }
+        },
+        "required": [
+          "queued",
+          "skipped"
+        ],
+        "title": "StartResult",
+        "type": "object"
       },
       "StorageIn": {
         "properties": {
@@ -4207,6 +5153,53 @@
         ]
       }
     },
+    "/api/agent/jobs/{job_id}/migrate-complete": {
+      "post": {
+        "description": "Record a mailbox copy: its incremental state first, so that the next run (even after\na cancellation) starts where this one stopped.",
+        "operationId": "migrate_complete_api_agent_jobs__job_id__migrate_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Migrate Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/jobs/{job_id}/purge-complete": {
       "post": {
         "description": "Forget what the agent deleted from the repository.",
@@ -5227,6 +6220,795 @@
         "summary": "Get Job",
         "tags": [
           "backups"
+        ]
+      }
+    },
+    "/api/migrations/batches": {
+      "get": {
+        "operationId": "list_batches_api_migrations_batches_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BatchOut"
+                  },
+                  "title": "Response List Batches Api Migrations Batches Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Batches",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "post": {
+        "operationId": "create_batch_api_migrations_batches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Batch",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}": {
+      "delete": {
+        "operationId": "delete_batch_api_migrations_batches__batch_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Batch",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "get": {
+        "operationId": "get_batch_api_migrations_batches__batch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Batch",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "put": {
+        "operationId": "update_batch_api_migrations_batches__batch_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Batch",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/cancel": {
+      "post": {
+        "description": "Cancel queued copies; running ones stop at the next message (state is kept).",
+        "operationId": "cancel_api_migrations_batches__batch_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/forget-passwords": {
+      "post": {
+        "operationId": "forget_passwords_api_migrations_batches__batch_id__forget_passwords_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forget Passwords",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/import": {
+      "post": {
+        "description": "Import an ``.xlsx`` or ``.csv`` file sent as the raw request body (5 MB max).",
+        "operationId": "import_file_api_migrations_batches__batch_id__import_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 253,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target Domain"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Import File",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/mailboxes": {
+      "post": {
+        "description": "Add mailboxes typed by hand; the destination is matched when not given.",
+        "operationId": "add_mailboxes_api_migrations_batches__batch_id__mailboxes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RowsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Mailboxes",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/match": {
+      "post": {
+        "description": "Match again (after new accounts appeared in Carbonio, or with a domain).",
+        "operationId": "rematch_api_migrations_batches__batch_id__match_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rematch",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/batches/{batch_id}/start": {
+      "post": {
+        "description": "Queue one copy (or connection test with ``dry_run``) per mailbox.",
+        "operationId": "start_api_migrations_batches__batch_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/mailboxes/{mailbox_id}": {
+      "delete": {
+        "operationId": "delete_mailbox_api_migrations_mailboxes__mailbox_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailbox_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mailbox Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Mailbox",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "patch": {
+        "operationId": "update_mailbox_api_migrations_mailboxes__mailbox_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mailbox_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mailbox Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailboxPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailboxOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Mailbox",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/sources": {
+      "get": {
+        "operationId": "list_sources_api_migrations_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceOut"
+                  },
+                  "title": "Response List Sources Api Migrations Sources Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Sources",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "post": {
+        "operationId": "create_source_api_migrations_sources_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Source",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/sources/{source_id}": {
+      "delete": {
+        "operationId": "delete_source_api_migrations_sources__source_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Source",
+        "tags": [
+          "migrations"
+        ]
+      },
+      "put": {
+        "operationId": "update_source_api_migrations_sources__source_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Source",
+        "tags": [
+          "migrations"
+        ]
+      }
+    },
+    "/api/migrations/template": {
+      "get": {
+        "description": "Blank list to fill in (Excel or CSV).",
+        "operationId": "template_api_migrations_template_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "xlsx",
+              "enum": [
+                "xlsx",
+                "csv"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.ms-excel": {},
+              "text/csv": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Template",
+        "tags": [
+          "migrations"
         ]
       }
     },

@@ -128,6 +128,7 @@ class JobKind(enum.StrEnum):
     CONFIG_BACKUP = "config_backup"
     VERIFY = "verify"
     PURGE = "purge"
+    MIGRATE = "migrate"  # copy a mailbox from a remote IMAP server
 
 
 class JobStatus(enum.StrEnum):
@@ -156,6 +157,18 @@ class NotificationStatus(enum.StrEnum):
     PENDING = "pending"
     SENT = "sent"
     FAILED = "failed"
+
+
+class ImapSecurity(enum.StrEnum):
+    SSL = "ssl"  # implicit TLS (993)
+    STARTTLS = "starttls"  # 143 + STARTTLS
+    NONE = "none"  # clear text: only on a trusted network
+
+
+class MigrationAuth(enum.StrEnum):
+    PASSWORD = "password"  # noqa: S105 - each mailbox's own password (a mode, not a secret)
+    MASTER_PLAIN = "master_plain"  # AUTHENTICATE PLAIN, admin acting for the mailbox
+    MASTER_LOGIN = "master_login"  # LOGIN mailbox<separator>master (Dovecot master user)
 
 
 class ActorType(enum.StrEnum):
@@ -561,6 +574,90 @@ class ItemVersion(Base):
             postgresql_using="gin",
             postgresql_ops={"sender": "gin_trgm_ops"},
         ),
+    )
+
+
+# --------------------------------------------------------------------------- migrations
+
+
+class MigrationSource(Base):
+    """Remote IMAP server mailboxes are copied from. Passwords are Fernet-encrypted."""
+
+    __tablename__ = "migration_sources"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    host: Mapped[str] = mapped_column(String(253))
+    port: Mapped[int] = mapped_column(Integer)
+    security: Mapped[ImapSecurity] = mapped_column(_enum(ImapSecurity, "imap_security"))
+    verify_tls: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    auth_mode: Mapped[MigrationAuth] = mapped_column(_enum(MigrationAuth, "migration_auth"))
+    master_username: Mapped[str | None] = mapped_column(String(320))
+    master_password_enc: Mapped[str | None] = mapped_column(Text)
+    master_separator: Mapped[str] = mapped_column(String(8), server_default=text("'*'"))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (CheckConstraint("port BETWEEN 1 AND 65535", name="port_range"),)
+
+
+class MigrationBatch(Base):
+    """A set of mailboxes copied from one source with the same options."""
+
+    __tablename__ = "migration_batches"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("migration_sources.id", ondelete="RESTRICT")
+    )
+    # root folder, excluded folders, date range (validated by the API).
+    options: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+
+class MigrationMailbox(Base):
+    """One source mailbox -> one Carbonio account. A source may appear several times
+    (copied into several accounts) and several sources may target one account."""
+
+    __tablename__ = "migration_mailboxes"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("migration_batches.id", ondelete="CASCADE")
+    )
+    source_email: Mapped[str] = mapped_column(String(320))
+    # IMAP login when it differs from the address.
+    source_login: Mapped[str | None] = mapped_column(String(320))
+    password_enc: Mapped[str | None] = mapped_column(Text)
+    target_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    # How the target was chosen: exact, alias, local_part, manual (NULL: no match yet).
+    match: Mapped[str | None] = mapped_column(String(16))
+    # Folder below which this mailbox is copied (overrides the batch option).
+    root: Mapped[str | None] = mapped_column(String(128))
+    last_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL")
+    )
+    # Incremental state written by the agent: per folder UIDVALIDITY / last UID / failed UIDs.
+    state: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    stats: Mapped[dict[str, Any] | None]
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "batch_id",
+            "source_email",
+            "target_account_id",
+            name="uq_migration_mailboxes_pair",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_migration_mailboxes_batch_id", "batch_id"),
+        Index("ix_migration_mailboxes_target", "target_account_id"),
     )
 
 

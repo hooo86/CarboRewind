@@ -9,7 +9,8 @@
   mail server never blocks the API or loses a message. A ``dedup_key`` sends each digest or
   alert once.
 * **Events**: a job that failed for good, a backup finished with item errors, a restore with
-  failed items, an agent silent for 30 minutes, and a daily digest of unprotected accounts.
+  failed items, an agent silent for 30 minutes, a daily digest of unprotected accounts, and
+  the end of a migration batch.
 """
 
 from __future__ import annotations
@@ -48,7 +49,14 @@ from .scheduling import zone
 log = logging.getLogger(__name__)
 
 SMTP_KEY = "smtp"
-EVENTS = ("job_failed", "backup_partial", "restore_failed", "agent_offline", "daily_digest")
+EVENTS = (
+    "job_failed",
+    "backup_partial",
+    "restore_failed",
+    "agent_offline",
+    "daily_digest",
+    "migration_done",
+)
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
 Security = Literal["starttls", "ssl", "none"]
@@ -152,6 +160,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "daily_digest_body": (
             "{count} compte(s) actif(s) n'ont pas de sauvegarde réussie depuis 24 h :\n\n{list}\n"
         ),
+        "migration_done": "[CarboRewind] Migration « {batch} » terminée",
+        "migration_done_body": (
+            "Le lot de migration « {batch} » n'a plus de tâche en cours.\n\n"
+            "Boîtes copiées : {done}\nBoîtes en échec : {failed}\n"
+            "Messages copiés : {copied}\nMessages non copiés : {errors}\n"
+        ),
         "test": "[CarboRewind] E-mail de test",
         "test_body": "Les notifications de CarboRewind fonctionnent.\n",
         "never": "jamais",
@@ -179,6 +193,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "daily_digest": "[CarboRewind] {count} account(s) without a backup for 24 h",
         "daily_digest_body": (
             "{count} active account(s) have no successful backup in the last 24 h:\n\n{list}\n"
+        ),
+        "migration_done": '[CarboRewind] Migration "{batch}" finished',
+        "migration_done_body": (
+            'Migration batch "{batch}" has no job left running.\n\n'
+            "Mailboxes copied: {done}\nMailboxes failed: {failed}\n"
+            "Messages copied: {copied}\nMessages not copied: {errors}\n"
         ),
         "test": "[CarboRewind] Test e-mail",
         "test_body": "CarboRewind notifications work.\n",

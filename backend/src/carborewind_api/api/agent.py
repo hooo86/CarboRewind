@@ -35,10 +35,12 @@ from ..db.models import (
     Job,
     JobKind,
     JobStatus,
+    MigrationMailbox,
     Outcome,
     Snapshot,
     SnapshotStatus,
 )
+from ..migration_jobs import MigrationSpecError, job_spec, notify_batch_done, record_result
 from ..notifications import notify
 from ..pki import CertificateAuthority, PkiError, fingerprint_pem, token_digest
 from ..scheduler import orphan_blobs_query, purge_plan
@@ -324,6 +326,8 @@ class ClaimedJob(BaseModel):
     snapshot_id: uuid.UUID | None
     seq: int | None
     previous: PreviousSnapshot | None
+    # migrate jobs: IMAP source (with its credentials), options and incremental state.
+    migration: dict[str, Any] | None = None
 
 
 @router.post(
@@ -354,6 +358,7 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
         job.error = "lease expired too many times"
         job.lease_expires_at = None
         await _notify_failure(db, job)
+        await notify_batch_done(db, job)
         await db.flush()
         # Commit even though we answer "nothing to do": the job must stay failed.
         await db.commit()
@@ -388,6 +393,18 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
         )
         if prev is not None and params.get("backup_type") != BackupType.FULL.value:
             previous = PreviousSnapshot(snapshot_id=prev.id, token=prev.sync_token)
+    migration = None
+    if job.kind is JobKind.MIGRATE:
+        try:
+            migration = await job_spec(db, settings, job)
+        except MigrationSpecError as exc:
+            job.status, job.finished_at, job.lease_expires_at = JobStatus.FAILED, now, None
+            job.error = str(exc)
+            await _notify_failure(db, job)
+            await notify_batch_done(db, job)
+            await db.flush()
+            await db.commit()
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
     if job.kind is JobKind.PURGE and "blobs" not in params:
         # Fixed at first claim (the agent is idle, so nothing deduplicates against them).
         params.update(await purge_plan(db))
@@ -416,6 +433,7 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
         snapshot_id=uuid.UUID(params["snapshot_id"]) if "snapshot_id" in params else None,
         seq=params.get("seq"),
         previous=previous,
+        migration=migration,
     )
 
 
@@ -747,6 +765,79 @@ async def purge_complete(
     )
 
 
+class MigrationFolderIn(BaseModel):
+    source: str = Field(max_length=1024)
+    target: str = Field(max_length=4096)
+    total: int = Field(default=0, ge=0)
+    new: int = Field(default=0, ge=0)
+    copied: int = Field(default=0, ge=0)
+    duplicates: int = Field(default=0, ge=0)
+    failed: int = Field(default=0, ge=0)
+    error: str | None = Field(default=None, max_length=300)
+
+
+class MigrationResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool
+    cancelled: bool = False
+    copied: int = Field(ge=0)
+    duplicates: int = Field(default=0, ge=0)
+    bytes: int = Field(default=0, ge=0)
+    failed: dict[str, str] = Field(default_factory=dict, max_length=500)
+    failed_count: int = Field(default=0, ge=0)
+    folders: list[MigrationFolderIn] = Field(default_factory=list, max_length=20_000)
+    folders_created: list[str] = Field(default_factory=list, max_length=500)
+    state: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/jobs/{job_id}/migrate-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def migrate_complete(
+    job_id: uuid.UUID, body: MigrationResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Record a mailbox copy: its incremental state first, so that the next run (even after
+    a cancellation) starts where this one stopped."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is None or job.agent_id != agent.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "job not found")
+    if job.kind is not JobKind.MIGRATE:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a migration job")
+    if job.status is JobStatus.SUCCEEDED:
+        return  # idempotent
+    if job.status not in (JobStatus.RUNNING, JobStatus.CANCELLED):
+        raise HTTPException(status.HTTP_409_CONFLICT, f"job is {job.status.value}")
+    now = datetime.now(UTC)
+    mailbox = await db.get(MigrationMailbox, uuid.UUID(str(job.params.get("mailbox_id"))))
+    summary = body.model_dump(mode="json", exclude={"state"})
+    summary["folders"] = summary["folders"][:300]
+    if mailbox is not None:
+        record_result(mailbox, body.model_dump(mode="json"), now)
+    job.progress = summary
+    job.error = f"{body.failed_count} message(s) not copied" if body.failed_count else None
+    if job.status is JobStatus.RUNNING:
+        job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, now, None
+    account = await db.get(Account, job.account_id) if job.account_id else None
+    await _audit(
+        db,
+        agent,
+        "migration.dry_run" if body.dry_run else "migration.complete",
+        Outcome.FAILURE if body.failed_count else Outcome.SUCCESS,
+        target_type="account",
+        target_id=account.email if account else None,
+        domain_id=account.domain_id if account else None,
+        details={
+            "job": str(job.id),
+            "source": job.params.get("source_email"),
+            "copied": body.copied,
+            "duplicates": body.duplicates,
+            "failed": body.failed_count,
+            "bytes": body.bytes,
+            "cancelled": body.cancelled,
+        },
+    )
+    await notify_batch_done(db, job)
+
+
 async def _notify_failure(db: DbSession, job: Job) -> None:
     account = await db.get(Account, job.account_id) if job.account_id else None
     await notify(
@@ -777,6 +868,7 @@ async def fail(job_id: uuid.UUID, body: FailureIn, agent: CurrentAgent, db: DbSe
     else:
         job.status, job.finished_at = JobStatus.FAILED, datetime.now(UTC)
         await _notify_failure(db, job)
+        await notify_batch_done(db, job)
     account = await db.get(Account, job.account_id) if job.account_id else None
     await _audit(
         db,

@@ -30,6 +30,7 @@ from carborewind_agent.api_client import AgentApi, enroll  # noqa: E402
 from carborewind_agent.backup import AccountBackup  # noqa: E402
 from carborewind_agent.carbonio.factory import build_client  # noqa: E402
 from carborewind_agent.config import AgentSettings  # noqa: E402
+from carborewind_agent.migrate import MailboxMigration  # noqa: E402
 from carborewind_agent.repository import Repository, generate_key  # noqa: E402
 from carborewind_agent.restore import AccountRestore  # noqa: E402
 from carborewind_agent.worker import Worker  # noqa: E402
@@ -74,7 +75,7 @@ class Stack:
         init_ca(tmp / "pki")
         settings = Settings(  # type: ignore[call-arg]
             environment="test", database_url=DB_URL, pki_dir=tmp / "pki",
-            agent_proxy_ips=["testclient"],
+            agent_proxy_ips=["testclient"], secret_key="e2e-secret-key-" + "x" * 32,
         )
         self.api = TestClient(create_app(settings), base_url="https://testserver").__enter__()
         username = f"root{uuid.uuid4().hex[:6]}"
@@ -106,8 +107,10 @@ class Stack:
         client = build_client(agent_settings, transport=self.carbonio.transport())
         self.repo = Repository.init(tmp / "repo", generate_key())
         self.engine = AccountBackup(client, self.repo, checkpoint_every=2)
+        self.client = client
         self.worker = Worker(AgentApi(agent_settings, http=proxied), client, self.engine,
-                             AccountRestore(client, self.repo), self.repo, sleep=lambda _: True)
+                             AccountRestore(client, self.repo), self.repo,
+                             migration=MailboxMigration(client), sleep=lambda _: True)
 
     def request_backup(self, engine: Engine, email: str) -> str:
         with Session(engine) as s:

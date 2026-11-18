@@ -53,12 +53,13 @@ class JobOut(BaseModel):
     def of(cls, j: Job, account_email: str | None = None) -> JobOut:
         params = j.params or {}
         restore = j.kind is JobKind.RESTORE
+        copies = restore or j.kind is JobKind.MIGRATE
         return cls(
             account_email=account_email,
             backup_type=params.get("backup_type"),
             restore_mode=params.get("mode") if restore else None,
-            dry_run=bool(params.get("dry_run")) if restore else None,
-            source_email=params.get("source_email") if restore else None,
+            dry_run=bool(params.get("dry_run")) if copies else None,
+            source_email=params.get("source_email") if copies else None,
             snapshot_seq=params.get("seq") if restore else None,
             id=j.id,
             kind=j.kind,
