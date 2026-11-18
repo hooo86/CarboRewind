@@ -29,6 +29,8 @@ class AgentSettings(BaseSettings):
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")
+    # KEK protecting the repository master key: base64 of 32 bytes, file mode 0600/0400.
+    repository_key_file: Path = Path("/etc/carborewind/repository.key")
 
     # Throttling: concurrent mailboxes and bandwidth ceiling (0 = unlimited).
     max_concurrent_accounts: int = Field(default=2, ge=1, le=32)
