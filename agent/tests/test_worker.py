@@ -222,7 +222,6 @@ def _settings_dummy() -> AgentSettings:
 
 
 def test_api_error_carries_status() -> None:
-    api = FakeApi([])
     client = AgentApi(
         _settings_dummy(),
         http=httpx.Client(
@@ -233,7 +232,6 @@ def test_api_error_carries_status() -> None:
     with pytest.raises(ApiError) as exc:
         client.heartbeat("j", None)
     assert exc.value.status == 409
-    del api
 
 
 def test_enroll_writes_private_files(settings: AgentSettings) -> None:
