@@ -93,6 +93,49 @@ def carbonio_command(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def enroll_command(args: argparse.Namespace) -> int:
+    import httpx
+
+    from .api_client import ApiError, enroll
+
+    try:
+        settings = AgentSettings()
+        token = (
+            Path(args.token_file).read_text().strip()
+            if args.token_file
+            else sys.stdin.readline().strip()
+        )
+        agent_id = enroll(settings, token, Path(args.server_ca) if args.server_ca else None)
+    except (ValidationError, ApiError, OSError, httpx.HTTPError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"agent {agent_id} enrolled; certificate written to {settings.tls_cert}")
+    return 0
+
+
+def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-running service
+    import signal
+
+    from .api_client import AgentApi
+    from .backup import AccountBackup
+    from .carbonio.factory import build_client
+    from .throttle import Throttle
+    from .worker import Worker
+
+    settings = AgentSettings()
+    repo = Repository.open(settings.repository_path, read_kek(settings.repository_key_file))
+    carbonio = build_client(settings)
+    throttle = Throttle.from_mbps(settings.max_bandwidth_mbps, settings.max_load_per_cpu)
+    worker = Worker(
+        AgentApi(settings, server_ca=Path(args.server_ca) if args.server_ca else None),
+        carbonio,
+        AccountBackup(carbonio, repo, throttle),
+    )
+    signal.signal(signal.SIGTERM, lambda *_: worker.stop())
+    worker.run_forever()
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-agent", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -112,7 +155,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     carbonio_sub = carbonio.add_subparsers(dest="carbonio_command", required=True)
     probe = carbonio_sub.add_parser("probe", help="read-only check of the Carbonio API contract")
     probe.add_argument("--account", help="account to probe (default: first one listed)")
+    enroll_p = sub.add_parser("enroll", help="obtain the client certificate (one-time token)")
+    enroll_p.add_argument("--token-file", help="file holding the token (default: read stdin)")
+    enroll_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
+    run_p = sub.add_parser("run", help="run the agent service (systemd)")
+    run_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
     args = parser.parse_args(argv)
+    if args.command == "enroll":
+        return enroll_command(args)
+    if args.command == "run":  # pragma: no cover
+        return run_command(args)
     if args.command == "carbonio":
         return carbonio_command(args)
     if args.command == "check-config":

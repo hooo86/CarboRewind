@@ -49,6 +49,7 @@ class ItemEntry:
     blob: str
     meta_blob: str
     size: int
+    meta_size: int = 0
     subject: str | None = None
     sender: str | None = None
     date: str | None = None  # ISO 8601
@@ -81,6 +82,26 @@ class BackupResult:
     @property
     def partial(self) -> bool:
         return bool(self.errors)
+
+    def to_payload(self) -> dict[str, Any]:
+        """Body of ``POST /api/agent/jobs/{id}/complete``."""
+        added = {}
+        for item_id, entry in self.added.items():
+            data = entry.to_json()
+            data.pop("mod", None)
+            added[str(item_id)] = data
+        return {
+            "backup_type": self.backup_type,
+            "manifest_ref": self.manifest_ref,
+            "token": self.token,
+            "item_count": self.item_count,
+            "size_bytes": self.size_bytes,
+            "new_bytes": self.new_bytes,
+            "errors": {str(k): v for k, v in self.errors.items()},
+            "added": added,
+            "removed": self.removed,
+            "folders": self.folders,
+        }
 
 
 _HEADER_PARSER = email.parser.BytesHeaderParser(policy=email.policy.default)
@@ -329,6 +350,7 @@ class AccountBackup:
             blob=content.blob_id,
             meta_blob=meta_blob.blob_id,
             size=len(raw),
+            meta_size=meta_blob.size,
             subject=fields["subject"],
             sender=fields["sender"],
             date=fields["date"],
