@@ -41,10 +41,10 @@ passer les 🔎 en ✅.
 | Jeton trop ancien | erreur `mail.MUST_RESYNC`, qui déclenche une sauvegarde complète du compte | — | 🔎 |
 | Contenu brut | REST `GET /home/<compte>/?id=<n>` avec le cookie `ZM_AUTH_TOKEN` (jeton délégué) | 443 | ✅ |
 | Métadonnées | `GetItemRequest` (`item id`) → `f` (drapeaux), `tn` (tags), `l` (dossier), `d` (date) | 443 | ✅ |
-| Arborescence actuelle (restauration) | `GetFolderRequest` (`folder {l: "1"}`) → `folder[]` imbriqués | 443 | 🔎 |
+| Arborescence actuelle (restauration) | `GetFolderRequest` (`folder {l: "1"}`) → `folder[]` imbriqués | 443 | ✅ |
 | Existence d'un élément (mode « dossiers d'origine ») | `GetItemRequest` ; `mail.NO_SUCH_ITEM` ⇒ à restaurer | 443 | 🔎 code d'erreur |
-| Restauration de dossier | `CreateFolderRequest` (`l`, `name`, `view`, `fie=1` : idempotent) | 443 | 🔎 |
-| Restauration de mail | `AddMsgRequest` (`m {l, f, tn, d, content}`). Contenu 8 bits : envoi préalable à `/service/upload?fmt=raw`, puis `aid` | 443 | 🔎 réponse du servlet d'upload `200,'null','<aid>'` |
+| Restauration de dossier | `CreateFolderRequest` (`l`, `name`, `view`, `fie=1` : idempotent) | 443 | ✅ (restauration réussie sur un serveur CE de production) |
+| Restauration de mail | `AddMsgRequest` (`m {l, f, tn, d, content}`). Contenu 8 bits : envoi préalable à `/service/upload?fmt=raw`, puis `aid` | 443 | ✅ `AddMsgRequest` ; 🔎 réponse du servlet d'upload `200,'null','<aid>'` (mails non UTF-8) |
 | Import contacts et agendas | REST `POST /home/<compte>/<dossier>?fmt=ics|vcf&resolve=skip` | 443 | ✅ (forum Zextras : `postRestURL "/?fmt=tgz&resolve=skip"`) ; 🔎 contenu renvoyé par `?id=` pour un rendez-vous (iCalendar attendu) |
 | Fichiers (Files / `doc`) | non restaurables par ce chemin en CE : signalés « non pris en charge » | — | limite connue |
 | Export complet de contrôle | REST `GET /home/<compte>/?fmt=tgz` | 443 | ✅ |
