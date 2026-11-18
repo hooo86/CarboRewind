@@ -6,13 +6,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
 
 from .. import audit
 from ..authz import Permission
 from ..db.models import Account, AccountStatus, BackupType, Job, JobKind, JobStatus, Outcome
 from .deps import DbSession, Principal, client_ip, deny, require
+from .schemas import MAX_PAGE, Page
 
 router = APIRouter(tags=["backups"])
 
@@ -33,6 +35,8 @@ class JobOut(BaseModel):
     kind: JobKind
     status: JobStatus
     account_id: uuid.UUID | None
+    account_email: str | None = None
+    backup_type: str | None = None
     attempts: int
     progress: dict[str, Any] | None
     error: str | None
@@ -41,8 +45,10 @@ class JobOut(BaseModel):
     finished_at: datetime | None
 
     @classmethod
-    def of(cls, j: Job) -> JobOut:
+    def of(cls, j: Job, account_email: str | None = None) -> JobOut:
         return cls(
+            account_email=account_email,
+            backup_type=(j.params or {}).get("backup_type"),
             id=j.id,
             kind=j.kind,
             status=j.status,
@@ -90,7 +96,35 @@ async def start_backup(
         source_ip=client_ip(request),
         details={"job": str(job.id), "type": body.backup_type.value},
     )
-    return JobOut.of(job)
+    return JobOut.of(job, account.email)
+
+
+@router.get("/api/jobs", response_model=Page[JobOut])
+async def list_jobs(
+    principal: Reader,
+    db: DbSession,
+    status_: Annotated[JobStatus | None, Query(alias="status")] = None,
+    account_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Page[JobOut]:
+    """Jobs on the caller's domains, most recent first."""
+    query = select(Job, Account.email).join(Account, Account.id == Job.account_id)
+    scope = principal.access.domains(Permission.BACKUPS_READ)
+    if scope is not None:
+        query = query.where(Account.domain_id.in_(scope))
+    if status_ is not None:
+        query = query.where(Job.status == status_)
+    if account_id is not None:
+        query = query.where(Job.account_id == account_id)
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = await db.execute(query.order_by(Job.created_at.desc()).limit(limit).offset(offset))
+    return Page(
+        items=[JobOut.of(job, email) for job, email in rows.tuples()],
+        total=total or 0,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/api/jobs/{job_id}", response_model=JobOut)
@@ -100,4 +134,4 @@ async def get_job(job_id: uuid.UUID, principal: Reader, db: DbSession, request: 
     domain = account.domain_id if account else None
     if job is None or not principal.access.allows(Permission.BACKUPS_READ, domain):
         raise await deny(db, principal, request, Permission.BACKUPS_READ, job=str(job_id))
-    return JobOut.of(job)
+    return JobOut.of(job, account.email if account else None)

@@ -13,6 +13,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import __version__
+from .api import accounts as accounts_api
 from .api import agent as agent_api
 from .api import agents as agents_api
 from .api import audit as audit_api
@@ -141,6 +142,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(agents_api.router)
     app.include_router(agent_api.router)
     app.include_router(backups_api.router)
+    app.include_router(accounts_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

@@ -8,10 +8,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
 from ..authz import Permission
-from ..db.models import Account, AccountStatus, Domain
+from ..db.models import Account, AccountStatus, BackupType, Domain, Snapshot, SnapshotStatus
+from .accounts import latest_snapshots
 from .deps import DbSession, Principal, deny, require
 from .schemas import MAX_PAGE, Page
 
@@ -31,6 +32,10 @@ class AccountOut(BaseModel):
     email: str
     status: AccountStatus
     last_seen_at: datetime | None
+    # Latest snapshot (None if the account was never backed up).
+    last_backup_at: datetime | None = None
+    last_backup_status: SnapshotStatus | None = None
+    last_backup_type: BackupType | None = None
 
 
 @router.get("", response_model=Page[DomainOut])
@@ -88,13 +93,31 @@ async def list_accounts(
         literal = q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         where.append(func.lower(Account.email).like(f"%{literal}%", escape="\\"))
     total = await db.scalar(select(func.count()).select_from(Account).where(*where))
-    accounts = await db.scalars(
-        select(Account).where(*where).order_by(Account.email).limit(limit).offset(offset)
+    latest = latest_snapshots().subquery()
+    rows = await db.execute(
+        select(Account, Snapshot)
+        .outerjoin(latest, latest.c.account_id == Account.id)
+        .outerjoin(
+            Snapshot,
+            and_(Snapshot.account_id == Account.id, Snapshot.seq == latest.c.seq),
+        )
+        .where(*where)
+        .order_by(Account.email)
+        .limit(limit)
+        .offset(offset)
     )
     return Page(
         items=[
-            AccountOut(id=a.id, email=a.email, status=a.status, last_seen_at=a.last_seen_at)
-            for a in accounts
+            AccountOut(
+                id=a.id,
+                email=a.email,
+                status=a.status,
+                last_seen_at=a.last_seen_at,
+                last_backup_at=s.taken_at if s else None,
+                last_backup_status=s.status if s else None,
+                last_backup_type=s.backup_type if s else None,
+            )
+            for a, s in rows.tuples()
         ],
         total=total or 0,
         limit=limit,
