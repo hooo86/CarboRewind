@@ -305,4 +305,14 @@ CREATE INDEX ix_user_sessions_user_id ON user_sessions (user_id);
 
 UPDATE alembic_version SET version_num='0002' WHERE alembic_version.version_num = '0001';
 
+-- Running upgrade 0002 -> 0003
+
+ALTER TABLE agents ADD COLUMN enrollment_token_hash VARCHAR(64);
+
+ALTER TABLE agents ADD COLUMN enrollment_expires_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE agents ADD CONSTRAINT uq_agents_enrollment_token_hash UNIQUE (enrollment_token_hash);
+
+UPDATE alembic_version SET version_num='0003' WHERE alembic_version.version_num = '0002';
+
 COMMIT;

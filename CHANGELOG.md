@@ -45,3 +45,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   manifests complets (point-in-time), bascule automatique sur `MUST_RESYNC`, checkpoints et
   reprise sans relecture, snapshot partiel conservant la version précédente en cas d'erreur,
   extraction des métadonnées de recherche, limitation de débit et pause sur charge système.
+- Protocole agent ↔ API : CA interne (`carborewind-api pki-init`), enrôlement par jeton à
+  usage unique et CSR, authentification mTLS via le reverse proxy (en-têtes acceptés du seul
+  proxy), révocation, inventaire, jobs avec bail / heartbeat / checkpoint / reprise /
+  idempotence, ingestion transactionnelle du catalogue ; `POST /api/backups`,
+  `GET /api/jobs/{id}` ; agent : `enroll` et service `run`.
+- Test de bout en bout (agent + API + PostgreSQL + dépôt chiffré) exécuté en CI.
