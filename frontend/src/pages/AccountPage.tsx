@@ -9,7 +9,7 @@ import { BackupButtons } from "../components/BackupButtons";
 import { JobTable } from "../components/JobTable";
 import { LoadView, StatusBadge, useLoad } from "../components/common";
 import { formatBytes, formatDate } from "../utils/format";
-import { NoticeBar, useBackupNotices } from "./AccountsPage";
+import { NoticeBar, useBackupNotices } from "../components/notices";
 
 function SnapshotTable({
   snapshots,

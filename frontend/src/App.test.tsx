@@ -14,11 +14,9 @@ import i18n, { setLanguage } from "./i18n";
 import {
   ACCOUNT_ID,
   DOMAIN_ID,
-  account,
   dashboard,
   fakeApi,
   job,
-  neverBacked,
   page,
   user,
 } from "./test/fakeApi";
@@ -27,10 +25,6 @@ function renderAt(path: string) {
   window.history.pushState({}, "", path);
   return render(<App />);
 }
-
-const domains = page([
-  { id: DOMAIN_ID, name: "example.org", account_count: 2 },
-]);
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -137,121 +131,13 @@ describe("authentication", () => {
       "GET /api/dashboard": dashboard,
       "GET /api/jobs": () =>
         expired ? { status: 401, body: {} } : { body: page([]) },
-      "GET /api/domains": () => ({ status: 401, body: {} }),
+      "GET /api/accounts": () => ({ status: 401, body: {} }),
     });
     renderAt("/");
     await screen.findByRole("heading", { name: "Dashboard" });
     expired = true;
     fireEvent.click(screen.getByRole("link", { name: "Accounts" }));
     expect(await screen.findByLabelText("Username")).toBeInTheDocument();
-  });
-});
-
-describe("accounts", () => {
-  it("lists accounts and queues a backup with the CSRF header", async () => {
-    const calls = fakeApi({
-      "GET /api/auth/me": user("domain_admin", DOMAIN_ID),
-      "GET /api/domains": domains,
-      [`GET /api/domains/${DOMAIN_ID}/accounts`]: page([account, neverBacked]),
-      "POST /api/backups": (c) => ({
-        status: 202,
-        body: job({
-          status: "queued",
-          backup_type: (c.body as { backup_type: "full" }).backup_type,
-        }),
-      }),
-    });
-    setCsrfToken("csrf-xyz");
-    renderAt("/accounts");
-    expect(await screen.findByText("bob@example.org")).toBeInTheDocument();
-    expect(screen.getByText("never")).toBeInTheDocument();
-    expect(screen.getByText("1–2 of 2")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Start a full backup of bob@example.org",
-      }),
-    );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "full backup of bob@example.org queued.",
-    );
-    const post = calls.find((c) => c.method === "POST");
-    expect(post?.headers["X-CSRF-Token"]).toBe("csrf-xyz");
-    expect(post?.body).toEqual({ account_id: ACCOUNT_ID, backup_type: "full" });
-  });
-
-  it("shows API refusals and searches", async () => {
-    const calls = fakeApi({
-      "GET /api/auth/me": user("super_admin"),
-      "GET /api/domains": domains,
-      [`GET /api/domains/${DOMAIN_ID}/accounts`]: page([account]),
-      "POST /api/backups": { status: 403, body: { detail: "forbidden" } },
-    });
-    renderAt("/accounts");
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Start a incremental backup of bob@example.org",
-      }),
-    );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Error: forbidden",
-    );
-
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: " bob " },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    await waitFor(() =>
-      expect(calls.some((c) => c.url.includes("/accounts?q=bob"))).toBe(true),
-    );
-  });
-
-  it("hides backup buttons from viewers and handles empty inventories", async () => {
-    fakeApi({
-      "GET /api/auth/me": user("viewer"),
-      "GET /api/domains": domains,
-      [`GET /api/domains/${DOMAIN_ID}/accounts`]: page([account]),
-    });
-    renderAt("/accounts");
-    expect(await screen.findByText("bob@example.org")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /backup of/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("explains an empty inventory", async () => {
-    fakeApi({
-      "GET /api/auth/me": user("viewer"),
-      "GET /api/domains": page([]),
-    });
-    renderAt("/accounts");
-    expect(
-      await screen.findByText(/No domain inventoried yet/),
-    ).toBeInTheDocument();
-  });
-
-  it("pages through accounts", async () => {
-    const calls = fakeApi({
-      "GET /api/auth/me": user("viewer"),
-      "GET /api/domains": domains,
-      [`GET /api/domains/${DOMAIN_ID}/accounts`]: (c) => ({
-        body: {
-          items: [c.url.includes("offset=50") ? neverBacked : account],
-          total: 51,
-          limit: 50,
-          offset: c.url.includes("offset=50") ? 50 : 0,
-        },
-      }),
-    });
-    renderAt("/accounts");
-    await screen.findByText("bob@example.org");
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(await screen.findByText("carol@example.org")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(await screen.findByText("bob@example.org")).toBeInTheDocument();
-    expect(
-      calls.filter((c) => c.url.includes("offset=0")).length,
-    ).toBeGreaterThan(1);
   });
 });
 

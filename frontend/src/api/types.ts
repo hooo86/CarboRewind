@@ -163,7 +163,7 @@ export interface RestoreSummary {
   folders_created: string[];
 }
 
-export type TargetType = "global" | "domain" | "account";
+export type TargetType = "global" | "domain" | "account" | "accounts";
 
 export interface RetentionRule {
   last: number;
@@ -178,6 +178,7 @@ export interface Policy {
   target_type: TargetType;
   target_id: string | null;
   target_name: string | null;
+  account_ids: string[];
   backup_type: BackupType;
   schedule: string;
   timezone: string;
@@ -193,9 +194,51 @@ export interface PolicyInput {
   name: string;
   target_type: TargetType;
   target_id: string | null;
+  account_ids?: string[];
   backup_type: BackupType;
   schedule: string;
   timezone: string;
   retention: RetentionRule;
   enabled: boolean;
+}
+
+/** Row of ``GET /api/accounts`` (all fields, see the column picker). */
+export interface AccountItem {
+  id: string;
+  email: string;
+  domain_id: string;
+  domain: string;
+  status: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  aliases: string[];
+  cos: string | null;
+  quota_bytes: number | null;
+  used_bytes: number | null;
+  usage_pct: number | null;
+  is_admin: boolean;
+  last_login_at: string | null;
+  carbonio_created_at: string | null;
+  last_seen_at: string | null;
+  last_backup_at: string | null;
+  last_backup_status: SnapshotStatus | null;
+  last_backup_type: BackupType | null;
+  snapshot_count: number;
+  stored_bytes: number | null;
+  policies: string[];
+}
+
+export type FieldType = "text" | "number" | "date" | "choice" | "boolean";
+
+export interface AccountFacets {
+  domains: { id: string; name: string }[];
+  cos: string[];
+  fields: Record<string, FieldType>;
+}
+
+export interface BulkBackupResult {
+  queued: number;
+  skipped_busy: number;
+  skipped_deleted: number;
 }

@@ -1,6 +1,9 @@
 import { request } from "./client";
 import type {
   AccountDetail,
+  AccountFacets,
+  AccountItem,
+  BulkBackupResult,
   AccountRow,
   BackupType,
   Dashboard,
@@ -39,6 +42,28 @@ export const api = {
         offset,
       },
     ),
+  accountList: (params: {
+    q?: string;
+    filters: string[];
+    sort: string;
+    order: "asc" | "desc";
+    limit: number;
+    offset: number;
+  }) =>
+    request<Page<AccountItem>>("GET", "/api/accounts", undefined, {
+      q: params.q,
+      f: params.filters,
+      sort: params.sort,
+      order: params.order,
+      limit: params.limit,
+      offset: params.offset,
+    }),
+  accountFacets: () => request<AccountFacets>("GET", "/api/accounts/facets"),
+  bulkBackup: (accountIds: string[], backupType: BackupType) =>
+    request<BulkBackupResult>("POST", "/api/backups/bulk", {
+      account_ids: accountIds,
+      backup_type: backupType,
+    }),
   account: (id: string) => request<AccountDetail>("GET", `/api/accounts/${id}`),
   snapshots: (id: string) =>
     request<Page<Snapshot>>("GET", `/api/accounts/${id}/snapshots`, undefined, {

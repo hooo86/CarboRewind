@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -98,14 +99,18 @@ const EMPTY: PolicyInput = {
   enabled: true,
 };
 
+export type Preselection = { accountIds: string[]; emails: string[] };
+
 function PolicyForm({
   initial,
   domains,
+  preselection,
   onSaved,
   onCancel,
 }: {
   initial: Policy | null;
   domains: Domain[];
+  preselection?: Preselection | null;
   onSaved: () => void;
   onCancel: () => void;
 }) {
@@ -116,16 +121,24 @@ function PolicyForm({
         name: initial.name,
         target_type: initial.target_type,
         target_id: initial.target_id,
+        account_ids: initial.account_ids,
         backup_type: initial.backup_type,
         schedule: initial.schedule,
         timezone: initial.timezone,
         retention: initial.retention,
         enabled: initial.enabled,
       }
-    : {
-        ...EMPTY,
-        target_id: domains.find((d) => canManagePolicies(d.id))?.id ?? null,
-      };
+    : preselection
+      ? {
+          ...EMPTY,
+          target_type: "accounts",
+          target_id: null,
+          account_ids: preselection.accountIds,
+        }
+      : {
+          ...EMPTY,
+          target_id: domains.find((d) => canManagePolicies(d.id))?.id ?? null,
+        };
   const [form, setForm] = useState<PolicyInput>(start);
   const parsed = readSchedule(start.schedule);
   const [preset, setPreset] = useState<Preset>(parsed.preset);
@@ -172,14 +185,24 @@ function PolicyForm({
     setError(null);
     const body: PolicyInput = {
       ...form,
-      target_id: form.target_type === "global" ? null : form.target_id,
+      target_id:
+        form.target_type === "global" || form.target_type === "accounts"
+          ? null
+          : form.target_id,
       schedule: buildSchedule(preset, time, day, custom),
     };
+    if (form.target_type !== "accounts") delete body.account_ids;
     try {
       if (initial) {
-        const { target_type: _tt, target_id: _ti, ...patch } = body;
+        const {
+          target_type: _tt,
+          target_id: _ti,
+          account_ids: _ai,
+          ...patch
+        } = body;
         void _tt;
         void _ti;
+        void _ai;
         await api.updatePolicy(initial.id, patch);
       } else {
         await api.createPolicy(body);
@@ -226,8 +249,27 @@ function PolicyForm({
               )}
               <option value="domain">{t("policies.targets.domain")}</option>
               <option value="account">{t("policies.targets.account")}</option>
+              {form.target_type === "accounts" && (
+                <option value="accounts">
+                  {t("policies.targets.accounts")}
+                </option>
+              )}
             </select>
           </label>
+          {form.target_type === "accounts" && (
+            <p className="selection-summary">
+              {t("policies.selectionCount", {
+                count: form.account_ids?.length ?? 0,
+              })}
+              {preselection && (
+                <span className="muted">
+                  {" "}
+                  ({preselection.emails.slice(0, 5).join(", ")}
+                  {preselection.emails.length > 5 ? ", …" : ""})
+                </span>
+              )}
+            </p>
+          )}
           {form.target_type === "domain" && (
             <label>
               {t("accounts.domain")}
@@ -405,7 +447,12 @@ function PolicyForm({
       <div className="actions">
         <button
           type="submit"
-          disabled={busy || (form.target_type !== "global" && !form.target_id)}
+          disabled={
+            busy ||
+            (form.target_type === "accounts"
+              ? !form.account_ids?.length
+              : form.target_type !== "global" && !form.target_id)
+          }
         >
           {t("policies.save")}
         </button>
@@ -422,7 +469,14 @@ export function PoliciesPage() {
   const { canManagePolicies } = useAuth();
   const [policies, reload] = useLoad<Policy[]>(() => api.policies(), []);
   const [domains] = useLoad<Page<Domain>>(() => api.domains(), []);
-  const [editing, setEditing] = useState<Policy | "new" | null>(null);
+  const location = useLocation();
+  const incoming = (location.state as Preselection | null) ?? null;
+  const [preselection, setPreselection] = useState<Preselection | null>(
+    incoming?.accountIds?.length ? incoming : null,
+  );
+  const [editing, setEditing] = useState<Policy | "new" | null>(
+    incoming?.accountIds?.length ? "new" : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const domainList = domains.state === "ready" ? domains.data.items : [];
   const canCreate =
@@ -433,12 +487,15 @@ export function PoliciesPage() {
   const owns = (p: Policy, ownDomains: Domain[]) =>
     p.target_type === "global"
       ? canManagePolicies(null)
-      : canManagePolicies(null) ||
-        ownDomains.some(
-          (d) =>
-            canManagePolicies(d.id) &&
-            (p.target_id === d.id || p.target_name?.endsWith(`@${d.name}`)),
-        );
+      : p.target_type === "accounts"
+        ? canManagePolicies(null) ||
+          ownDomains.some((d) => canManagePolicies(d.id))
+        : canManagePolicies(null) ||
+          ownDomains.some(
+            (d) =>
+              canManagePolicies(d.id) &&
+              (p.target_id === d.id || p.target_name?.endsWith(`@${d.name}`)),
+          );
 
   async function remove(p: Policy) {
     if (!window.confirm(t("policies.confirmDelete", { name: p.name }))) return;
@@ -478,12 +535,17 @@ export function PoliciesPage() {
       {editing !== null && (
         <PolicyForm
           initial={editing === "new" ? null : editing}
+          preselection={editing === "new" ? preselection : null}
           domains={domainList}
           onSaved={() => {
             setEditing(null);
+            setPreselection(null);
             reload();
           }}
-          onCancel={() => setEditing(null)}
+          onCancel={() => {
+            setEditing(null);
+            setPreselection(null);
+          }}
         />
       )}
       <LoadView load={policies} reload={reload}>
@@ -512,7 +574,11 @@ export function PoliciesPage() {
                       <td className="wrap">
                         {p.target_type === "global"
                           ? t("policies.targets.global")
-                          : (p.target_name ?? "—")}
+                          : p.target_type === "accounts"
+                            ? t("policies.selectionCount", {
+                                count: p.account_ids.length,
+                              })
+                            : (p.target_name ?? "—")}
                       </td>
                       <td>
                         {scheduleLabel(p, t)}

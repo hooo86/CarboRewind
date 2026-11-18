@@ -40,11 +40,13 @@ export async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  query?: Record<string, string | number | boolean | undefined>,
+  query?: Record<string, string | number | boolean | string[] | undefined>,
 ): Promise<T> {
   const url = new URL(path, window.location.origin);
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value !== undefined && value !== "")
+    if (Array.isArray(value))
+      value.forEach((v) => url.searchParams.append(key, v));
+    else if (value !== undefined && value !== "")
       url.searchParams.set(key, String(value));
   }
   const headers: Record<string, string> = { Accept: "application/json" };

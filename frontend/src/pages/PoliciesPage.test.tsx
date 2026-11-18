@@ -33,6 +33,7 @@ function policy(over: Partial<Policy> = {}): Policy {
     target_type: "domain",
     target_id: DOMAIN_ID,
     target_name: "example.org",
+    account_ids: [],
     backup_type: "incremental",
     schedule: "0 1 * * *",
     timezone: "Africa/Algiers",
