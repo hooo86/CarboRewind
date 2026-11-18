@@ -1,0 +1,47 @@
+name: 🐛 Bug
+description: Signaler un dysfonctionnement / Report a bug
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **Vulnérabilité de sécurité ?** N'utilisez pas ce formulaire : voir SECURITY.md.
+        Ne collez **aucun** secret, mot de passe ni donnée de boîte aux lettres réelle.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Composant / Component
+      options: [backend, agent, frontend, deploy, docs]
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Version CarboRewind (tag ou commit)
+    validations: { required: true }
+  - type: input
+    id: carbonio
+    attributes:
+      label: Édition et version Carbonio / Carbonio edition & version
+      placeholder: "CE 25.x / Advanced 25.x"
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes de reproduction / Steps to reproduce
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Résultat attendu vs obtenu / Expected vs actual
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Journaux (anonymisés) / Logs (redacted)
+      render: json
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: Risque de perte de données ? / Data loss risk?
+      options: ["Non / No", "Oui / Yes", "Je ne sais pas / Unsure"]
+    validations: { required: true }

@@ -1,0 +1,13 @@
+Package: carborewind-agent
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: amd64
+Maintainer: CarboRewind maintainers <noreply@github.com>
+Depends: adduser, util-linux, ca-certificates
+Installed-Size: @SIZE@
+Homepage: https://github.com/hooo86/CarboRewind
+Description: CarboRewind backup agent for Carbonio mail servers
+ Hot, point-in-time backups of Carbonio CE mailboxes into an encrypted,
+ deduplicated repository, driven by the CarboRewind server over mutual TLS.
+ Ships its own Python runtime under /opt/carborewind-agent.

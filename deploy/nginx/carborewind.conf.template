@@ -1,0 +1,70 @@
+# Rendered by the nginx image (envsubst replaces only SERVER_NAME and PROXY_SECRET).
+limit_req_zone $binary_remote_addr zone=login:10m rate=10r/m;
+
+server {
+    listen 80;
+    server_name ${SERVER_NAME};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${SERVER_NAME};
+    server_tokens off;
+
+    ssl_certificate     /etc/nginx/tls/server.crt;
+    ssl_certificate_key /etc/nginx/tls/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+
+    # Agents present a client certificate signed by the CarboRewind CA; browsers do not.
+    ssl_client_certificate /pki/ca.crt;
+    ssl_verify_client optional;
+    ssl_verify_depth 1;
+
+    client_max_body_size 64m;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+
+    # Agent protocol: forward the verified client certificate and the proxy secret.
+    location ^~ /api/agent/ {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Client-Verify $ssl_client_verify;
+        proxy_set_header X-Client-Cert $ssl_client_escaped_cert;
+        proxy_set_header X-Proxy-Auth "${PROXY_SECRET}";
+        proxy_read_timeout 300s;
+        proxy_pass http://api:8000;
+    }
+
+    location = /api/auth/login {
+        limit_req zone=login burst=5 nodelay;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Client-Verify "";
+        proxy_set_header X-Client-Cert "";
+        proxy_set_header X-Proxy-Auth "";
+        proxy_pass http://api:8000;
+    }
+
+    # Everything else from browsers: never forward certificate headers or the secret.
+    location ~ ^/(api|healthz|readyz)(/|$) {
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Client-Verify "";
+        proxy_set_header X-Client-Cert "";
+        proxy_set_header X-Proxy-Auth "";
+        proxy_pass http://api:8000;
+    }
+
+    location = /metrics { return 404; }
+
+    location / {
+        proxy_set_header Host $host;
+        proxy_pass http://frontend:8080;
+    }
+}
