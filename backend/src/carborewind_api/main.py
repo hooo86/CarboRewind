@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import __version__
 from .api import auth as auth_api
+from .api import inventory as inventory_api
+from .api import users as users_api
 from .auth.ldap import LdapAuthenticator
 from .config import Settings, get_settings
 from .db.session import make_engine
@@ -129,6 +131,8 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
         )
 
     app.include_router(auth_api.router)
+    app.include_router(users_api.router)
+    app.include_router(inventory_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
