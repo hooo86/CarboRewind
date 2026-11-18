@@ -49,12 +49,17 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: bundled Python
         run: uv python install 3.12 --install-dir "$RUNNER_TEMP/py"
+      - name: version
+        # v0.1.0-dev.1 -> 0.1.0~dev.1 (Debian: "~" sorts a pre-release before the release)
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          echo "VERSION=${V/-/\~}" >> "$GITHUB_ENV"
       - name: agent .deb
         run: |
           export PYTHON_DIR="$(ls -d "$RUNNER_TEMP"/py/cpython-3.12.*-linux-x86_64-gnu | head -1)"
-          VERSION="${GITHUB_REF_NAME#v}" deploy/packaging/agent/build-deb.sh dist
+          deploy/packaging/agent/build-deb.sh dist
       - name: server bundle
-        run: VERSION="${GITHUB_REF_NAME#v}" deploy/packaging/server/build-bundle.sh dist
+        run: deploy/packaging/server/build-bundle.sh dist
       - name: smoke test of the package
         run: |
           sudo apt-get install -y ./dist/carborewind-agent_*_amd64.deb
