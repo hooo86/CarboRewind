@@ -247,6 +247,11 @@ def test_keyfile_permissions(tmp_path: Path) -> None:
         read_kek(path)
     with pytest.raises(KeyFileError, match="not found"):
         read_kek(tmp_path / "absent")
+    empty = tmp_path / "empty.key"
+    empty.write_text("")
+    os.chmod(empty, 0o600)
+    with pytest.raises(KeyFileError, match="empty"):
+        read_kek(empty)
     bad = tmp_path / "bad.key"
     bad.write_text("not base64!!")
     os.chmod(bad, 0o600)
