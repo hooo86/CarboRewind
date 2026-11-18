@@ -1163,6 +1163,14 @@
             "title": "Protected 24H",
             "type": "integer"
           },
+          "storage": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Storage",
+            "type": "array"
+          },
           "stored_bytes": {
             "title": "Stored Bytes",
             "type": "integer"
@@ -1492,6 +1500,16 @@
             "default": false,
             "title": "Complete",
             "type": "boolean"
+          },
+          "storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3077,6 +3095,89 @@
         ],
         "title": "SnapshotStatus",
         "type": "string"
+      },
+      "StorageIn": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "free_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Bytes"
+          },
+          "fstype": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fstype"
+          },
+          "kind": {
+            "enum": [
+              "local",
+              "network"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Bytes"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "StorageIn",
+        "type": "object"
       },
       "TargetType": {
         "enum": [

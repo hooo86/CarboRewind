@@ -13,6 +13,7 @@ from .carbonio import AccountInfo, CarbonioClient, SoapFaultError
 from .purge import run_purge
 from .repository import Repository
 from .restore import AccountRestore, RestoreError
+from .storage import describe
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +98,8 @@ class Worker:
             log.warning("cannot read quota usage: %s", exc)
             used = None
         accounts = [account_payload(a, cos, used) for a in self._carbonio.iter_accounts()]
-        return self._api.inventory(accounts, complete=True)
+        storage = describe(self._repo.root) if self._repo is not None else None
+        return self._api.inventory(accounts, complete=True, storage=storage)
 
     def run_forever(self) -> None:
         loops = 0

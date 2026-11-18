@@ -110,10 +110,16 @@ class AgentApi:
             raise ApiError(response.status_code, response.text[:200])
         return response
 
-    def inventory(self, accounts: list[dict[str, str]], complete: bool) -> dict[str, Any]:
-        result: dict[str, Any] = self._post(
-            "/inventory", {"accounts": accounts, "complete": complete}
-        ).json()
+    def inventory(
+        self,
+        accounts: list[dict[str, Any]],
+        complete: bool,
+        storage: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"accounts": accounts, "complete": complete}
+        if storage is not None:
+            body["storage"] = storage
+        result: dict[str, Any] = self._post("/inventory", body).json()
         return result
 
     def claim(self) -> dict[str, Any] | None:

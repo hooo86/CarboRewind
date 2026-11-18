@@ -953,3 +953,24 @@ def test_failures_and_partial_backups_are_notified(
     finally:
         with Session(engine) as s, s.begin():
             s.query(AppSetting).delete()
+
+
+def test_inventory_storage_report_reaches_the_dashboard(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle
+) -> None:
+    report = {
+        "path": "/var/lib/carborewind/nas/repository",
+        "kind": "network",
+        "fstype": "cifs",
+        "source": "//nas/backups",
+        "total_bytes": 4_000,
+        "free_bytes": 1_000,
+    }
+    r = agent.post("/inventory", {"accounts": [], "storage": report})
+    assert r.status_code == 200, r.text
+    storage = api.get("/api/dashboard").json()["storage"]
+    mine = next(s for s in storage if s["path"] == report["path"])
+    assert mine["kind"] == "network" and mine["free_bytes"] == 1_000
+    assert mine["agent"].startswith("mx-") and mine["reported_at"]
+    bad = {**report, "kind": "tape"}
+    assert agent.post("/inventory", {"accounts": [], "storage": bad}).status_code == 422

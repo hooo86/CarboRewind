@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, select
 
 from ..authz import Permission
@@ -67,6 +67,8 @@ class Dashboard(BaseModel):
     stored_bytes: int  # sum of new bytes written (after deduplication)
     agents_active: int | None  # global readers only
     last_agent_heartbeat: datetime | None
+    # Repository location and free space per active agent (global readers only).
+    storage: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -217,11 +219,20 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
         )
     )
     agents_active = last_heartbeat = None
+    storage: list[dict[str, Any]] = []
     if scope is None:
         agents_active = await db.scalar(
             select(func.count()).select_from(Agent).where(Agent.status == AgentStatus.ACTIVE)
         )
         last_heartbeat = await db.scalar(select(func.max(Agent.last_heartbeat_at)))
+        storage = [
+            {"agent": name, **report}
+            for name, report in await db.execute(
+                select(Agent.name, Agent.storage).where(
+                    Agent.status == AgentStatus.ACTIVE, Agent.storage.is_not(None)
+                )
+            )
+        ]
     return Dashboard(
         accounts=accounts or 0,
         protected_24h=protected or 0,
@@ -233,4 +244,5 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
         stored_bytes=int(stored or 0),
         agents_active=agents_active,
         last_agent_heartbeat=last_heartbeat,
+        storage=storage,
     )

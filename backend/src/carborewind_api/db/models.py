@@ -318,6 +318,8 @@ class Agent(Base):
     enrollment_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[str | None] = mapped_column(String(64))
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Repository location and free space, reported with each inventory.
+    storage: Mapped[dict[str, Any] | None]
     created_at: Mapped[datetime] = _created_at()
 
 

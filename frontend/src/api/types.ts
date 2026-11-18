@@ -112,6 +112,7 @@ export interface Dashboard {
   stored_bytes: number;
   agents_active: number | null;
   last_agent_heartbeat: string | null;
+  storage?: StorageReport[];
 }
 
 export type RestoreMode = "new_folder" | "original";
@@ -273,4 +274,16 @@ export interface OutboxEntry {
   error: string | null;
   created_at: string;
   sent_at: string | null;
+}
+
+export interface StorageReport {
+  agent: string;
+  path: string;
+  kind: "local" | "network";
+  fstype: string | null;
+  source: string | null;
+  total_bytes?: number | null;
+  free_bytes?: number | null;
+  error?: string | null;
+  reported_at: string;
 }

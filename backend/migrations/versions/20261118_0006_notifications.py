@@ -1,4 +1,4 @@
-"""notifications: settings store and e-mail outbox
+"""notifications: settings store and e-mail outbox; agent storage report
 
 Revision ID: 0006
 Revises: 0005
@@ -81,9 +81,13 @@ def upgrade() -> None:
         sa.UniqueConstraint("dedup_key", name=op.f("uq_notifications_dedup_key")),
     )
     op.create_index("ix_notifications_pending", "notifications", ["status", "next_attempt_at"])
+    op.add_column(
+        "agents", sa.Column("storage", postgresql.JSONB(astext_type=sa.Text()), nullable=True)
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("agents", "storage")
     op.drop_index("ix_notifications_pending", table_name="notifications")
     op.drop_table("notifications")
     op.drop_table("app_settings")

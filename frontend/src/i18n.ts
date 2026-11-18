@@ -150,6 +150,12 @@ export const resources = {
         stored: "Volume stocké",
         agents: "Agents actifs",
         heartbeat: "Dernier signal agent : {{when}}",
+        storageLocal:
+          "Stockage de {{agent}} : disque local {{where}} ({{fstype}}) —",
+        storageNetwork:
+          "Stockage de {{agent}} : partage réseau {{where}} ({{fstype}}) —",
+        storageFree: "{{free}} libres sur {{total}}",
+        storageUnreachable: "inaccessible !",
         recentJobs: "Jobs récents",
       },
       accounts: {
@@ -547,6 +553,12 @@ export const resources = {
         stored: "Stored data",
         agents: "Active agents",
         heartbeat: "Last agent heartbeat: {{when}}",
+        storageLocal:
+          "Storage of {{agent}}: local disk {{where}} ({{fstype}}) —",
+        storageNetwork:
+          "Storage of {{agent}}: network share {{where}} ({{fstype}}) —",
+        storageFree: "{{free}} free of {{total}}",
+        storageUnreachable: "unreachable!",
         recentJobs: "Recent jobs",
       },
       accounts: {

@@ -147,6 +147,67 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     return 0
 
 
+def storage_command(args: argparse.Namespace) -> int:
+    from .storage import (
+        SmbRequest,
+        StorageError,
+        configure_local,
+        configure_smb,
+        describe,
+        read_env,
+        read_password,
+    )
+
+    env_file = Path(args.env_file)
+    current = Path(
+        read_env(
+            env_file,
+            "CARBOREWIND_AGENT_REPOSITORY_PATH",
+            str(AgentSettings.model_fields["repository_path"].default),
+        )
+    )
+    try:
+        if args.storage_command == "status":
+            info = describe(current)
+            for key, value in info.items():
+                print(f"{key}: {value}")
+            return 0 if "error" not in info else 1
+        if args.storage_command == "local":
+            configure_local(Path(args.path), env_file)
+            print(
+                f"repository: {args.path} — restart the agent: systemctl restart carborewind-agent"
+            )
+            return 0
+        done = configure_smb(
+            SmbRequest(
+                share=args.share,
+                username=args.username,
+                password=read_password(args.password_file),
+                domain=args.domain or "",
+                mount_point=Path(args.mount_point),
+                seal=args.seal,
+                migrate=args.migrate,
+                start_empty=args.start_empty,
+            ),
+            env_file,
+            current,
+        )
+    except (StorageError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"mounted by {done['unit']}; repository: {done['repository']}")
+    if done["copied_files"]:
+        print(f"{done['copied_files']} file(s) copied from the previous repository")
+    if not done["initialised"]:
+        print(
+            "next: sudo -u carborewind carborewind-agent repo init, "
+            "then systemctl restart carborewind-agent"
+        )
+    else:
+        print("next: systemctl restart carborewind-agent")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-agent", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -169,6 +230,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     enroll_p = sub.add_parser("enroll", help="obtain the client certificate (one-time token)")
     enroll_p.add_argument("--token-file", help="file holding the token (default: read stdin)")
     enroll_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
+    storage = sub.add_parser("storage", help="where the repository lives (local or SMB share)")
+    storage.add_argument(
+        "--env-file", default="/etc/carborewind/agent.env", help="agent environment file"
+    )
+    storage_sub = storage.add_subparsers(dest="storage_command", required=True)
+    storage_sub.add_parser("status", help="show location, file system and free space")
+    smb = storage_sub.add_parser("smb", help="store the repository on an SMB/CIFS share (root)")
+    smb.add_argument("share", help="//server/share[/folder]")
+    smb.add_argument("--username", required=True)
+    smb.add_argument("--domain", help="Windows domain / workgroup")
+    smb.add_argument("--password-file", help="file holding the password (default: prompt)")
+    smb.add_argument("--mount-point", default="/var/lib/carborewind/nas")
+    smb.add_argument("--seal", action="store_true", help="require SMB 3 transport encryption")
+    move = smb.add_mutually_exclusive_group()
+    move.add_argument("--migrate", action="store_true", help="copy the current repository")
+    move.add_argument(
+        "--start-empty", action="store_true", help="leave the current repository behind"
+    )
+    local = storage_sub.add_parser("local", help="store the repository on a local directory")
+    local.add_argument("path", nargs="?", default="/var/lib/carborewind/repository")
     run_p = sub.add_parser("run", help="run the agent service (systemd)")
     run_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
     args = parser.parse_args(argv)
@@ -182,6 +263,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return check_config()
     if args.command == "repo":
         return repo_command(args)
+    if args.command == "storage":
+        return storage_command(args)
     return 2  # pragma: no cover - argparse rejects unknown commands
 
 

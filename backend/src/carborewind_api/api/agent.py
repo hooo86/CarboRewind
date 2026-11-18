@@ -11,7 +11,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -195,12 +195,23 @@ class AccountIn(BaseModel):
         return out
 
 
+class StorageIn(BaseModel):
+    path: str = Field(max_length=4096)
+    kind: Literal["local", "network"]
+    fstype: str | None = Field(default=None, max_length=64)
+    source: str | None = Field(default=None, max_length=1024)
+    total_bytes: int | None = Field(default=None, ge=0)
+    free_bytes: int | None = Field(default=None, ge=0)
+    error: str | None = Field(default=None, max_length=200)
+
+
 class InventoryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     accounts: list[AccountIn] = Field(max_length=100_000)
     # True when the list is the whole server: accounts missing from it are marked deleted.
     complete: bool = False
+    storage: StorageIn | None = None
 
 
 class InventoryOut(BaseModel):
@@ -221,6 +232,8 @@ _STATUS_MAP = {
 @router.post("/inventory", response_model=InventoryOut)
 async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> InventoryOut:
     now = datetime.now(UTC)
+    if body.storage is not None:
+        agent.storage = {**body.storage.model_dump(), "reported_at": now.isoformat()}
     domain_names = {a.email.split("@")[1].lower() for a in body.accounts}
     existing = {
         d.name: d for d in await db.scalars(select(Domain).where(Domain.name.in_(domain_names)))

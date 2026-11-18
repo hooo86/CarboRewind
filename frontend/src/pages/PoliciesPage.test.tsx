@@ -331,6 +331,50 @@ describe("policies page", () => {
   });
 });
 
+describe("dashboard storage", () => {
+  it("shows where backups are stored and warns when space is low", async () => {
+    fakeApi({
+      "GET /api/auth/me": user("super_admin"),
+      "GET /api/dashboard": {
+        ...dashboard,
+        storage: [
+          {
+            agent: "mx1",
+            path: "/var/lib/carborewind/nas/repository",
+            kind: "network",
+            fstype: "cifs",
+            source: "//nas/backups",
+            total_bytes: 100 * 1024 ** 3,
+            free_bytes: 5 * 1024 ** 3,
+            reported_at: "2026-11-18T09:00:00Z",
+          },
+          {
+            agent: "mx2",
+            path: "/srv/repo",
+            kind: "local",
+            fstype: null,
+            source: null,
+            error: "unreachable",
+            reported_at: "2026-11-18T09:00:00Z",
+          },
+        ],
+      },
+      "GET /api/jobs": page([]),
+      "GET /api/policies": [policy()],
+    });
+    window.history.pushState({}, "", "/");
+    render(<App />);
+    const nas = await screen.findByText(
+      /network share \/\/nas\/backups \(cifs\)/,
+    );
+    expect(nas).toHaveTextContent("5 GB free of 100 GB");
+    expect(nas).toHaveClass("warn");
+    expect(screen.getByText(/local disk \/srv\/repo/)).toHaveTextContent(
+      "unreachable!",
+    );
+  });
+});
+
 describe("dashboard alerts", () => {
   it("warns about unprotected accounts and missing policies", async () => {
     fakeApi({

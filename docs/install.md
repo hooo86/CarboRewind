@@ -230,6 +230,11 @@ Cette pré-version installe le **socle de sauvegarde** (jalons M0 à M2) :
   comptes par domaine avec date de dernière sauvegarde, bouton « Sauvegarder maintenant »
   (incrémentale / complète), suivi des jobs et historique des snapshots d'un compte, en FR/EN.
   Les boutons de sauvegarde ne s'affichent que pour les super-admins et les admins du domaine.
+- ✅ **Liste des comptes enrichie** : tous les champs Carbonio (nom, alias, classe de service, quota,
+  utilisation, dernière connexion…) et de sauvegarde, colonnes au choix, filtres sur tous les champs,
+  sélection multiple pour lancer une sauvegarde ou créer une politique.
+- ✅ **Notifications par e-mail** (SMTP) : voir `docs/notifications.md`.
+- ✅ **Dépôt sur un partage réseau SMB/CIFS** (NAS) avec identifiant et mot de passe : voir `docs/storage.md`.
 - ✅ **Planification et rétention** : menu **Politiques** (sauvegarde quotidienne / hebdomadaire / cron, fuseau
   horaire, rétention jours / semaines / mois), service `scheduler`, purge automatique du dépôt
   (voir `docs/scheduling.md`). **Créez au moins une politique** : sans elle, rien n'est planifié.

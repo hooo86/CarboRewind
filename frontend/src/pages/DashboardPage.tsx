@@ -98,6 +98,37 @@ export function DashboardPage() {
                 })}
               </p>
             )}
+            {(d.storage ?? []).map((st) => {
+              const low =
+                st.total_bytes &&
+                st.free_bytes !== undefined &&
+                st.free_bytes !== null
+                  ? st.free_bytes / st.total_bytes < 0.1
+                  : false;
+              return (
+                <p
+                  key={st.agent + st.path}
+                  className={st.error || low ? "alert warn" : "muted"}
+                >
+                  {t(
+                    st.kind === "network"
+                      ? "dashboard.storageNetwork"
+                      : "dashboard.storageLocal",
+                    {
+                      agent: st.agent,
+                      where: st.source ?? st.path,
+                      fstype: st.fstype ?? "?",
+                    },
+                  )}{" "}
+                  {st.error
+                    ? t("dashboard.storageUnreachable")
+                    : t("dashboard.storageFree", {
+                        free: formatBytes(st.free_bytes ?? 0),
+                        total: formatBytes(st.total_bytes ?? 0),
+                      })}
+                </p>
+              );
+            })}
           </>
         )}
       </LoadView>

@@ -398,6 +398,8 @@ CREATE TABLE notifications (
 
 CREATE INDEX ix_notifications_pending ON notifications (status, next_attempt_at);
 
+ALTER TABLE agents ADD COLUMN storage JSONB;
+
 UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
 
 COMMIT;

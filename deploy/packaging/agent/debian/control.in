@@ -5,6 +5,7 @@ Priority: optional
 Architecture: amd64
 Maintainer: CarboRewind maintainers <noreply@github.com>
 Depends: adduser, util-linux, ca-certificates
+Recommends: cifs-utils
 Installed-Size: @SIZE@
 Homepage: https://github.com/hooo86/CarboRewind
 Description: CarboRewind backup agent for Carbonio mail servers

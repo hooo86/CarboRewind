@@ -6,6 +6,14 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Liste des comptes : détails Carbonio (nom, prénom, alias, classe de service, quota, espace utilisé, admin,
+  dernière connexion, création) et de sauvegarde ; choix des colonnes ; filtres à la Odoo (prédéfinis et
+  personnalisés sur tous les champs) ; tri ; sélection multiple → sauvegarde groupée ou politique sur la
+  sélection (`target_type = accounts`).
+- Notifications SMTP : paramètres chiffrés, e-mail de test, file d'envoi avec reprises, alertes (échec,
+  sauvegarde partielle, restauration incomplète, agent silencieux, résumé quotidien).
+- Stockage du dépôt sur partage SMB/CIFS : `carborewind-agent storage smb|local|status`, montage systemd,
+  migration du dépôt existant, espace libre au tableau de bord. Migrations 0005 et 0006.
 - Planification : politiques de sauvegarde (cron + fuseau, portée globale / domaine / compte), service
   `scheduler`, rétention grand-père/père/fils, purge du dépôt par l'agent, écran **Politiques**, alertes du
   tableau de bord (comptes non protégés depuis 24 h, aucune politique). Migration 0004.
