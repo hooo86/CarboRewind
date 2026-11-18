@@ -10,6 +10,8 @@ from typing import Any
 from .api_client import AgentApi, ApiError
 from .backup import AccountBackup
 from .carbonio import AccountInfo, CarbonioClient, SoapFaultError
+from .imap import ImapError, ImapSettings, ImapSource
+from .migrate import MailboxMigration, MigrationError
 from .purge import run_purge
 from .repository import Repository
 from .restore import AccountRestore, RestoreError
@@ -68,6 +70,7 @@ class Worker:
         restore: AccountRestore | None = None,
         repo: Repository | None = None,
         *,
+        migration: MailboxMigration | None = None,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
         sleep: Callable[[float], bool] | None = None,
@@ -77,6 +80,9 @@ class Worker:
         self._engine = engine
         self._restore = restore
         self._repo = repo
+        self._migration = migration
+        # Set when the API answers 409 to a heartbeat: the job was cancelled meanwhile.
+        self._cancelled = threading.Event()
         self._poll = poll_seconds
         self._inventory_every = inventory_every
         self._stop = threading.Event()
@@ -138,29 +144,42 @@ class Worker:
             runner = self._run_restore
         elif job["kind"] == "purge" and self._repo is not None:
             runner = self._run_purge
+        elif job["kind"] == "migrate" and self._migration is not None:
+            runner = self._run_migrate
         else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
         latest: dict[str, Any] = {"checkpoint": job.get("checkpoint")}
         stop_beat = threading.Event()
+        self._cancelled.clear()
+
+        def progress() -> dict[str, Any] | None:
+            cp = latest["checkpoint"]
+            value = cp.get("progress") if isinstance(cp, dict) else None
+            return value if isinstance(value, dict) else None
 
         def beat() -> None:
             interval = max(5.0, job["lease_seconds"] / 3)
             while not stop_beat.wait(interval):
                 try:
-                    self._api.heartbeat(job_id, latest["checkpoint"])
+                    self._api.heartbeat(job_id, latest["checkpoint"], progress())
                 except ApiError as exc:
+                    if exc.status == 409:
+                        self._cancelled.set()
                     log.warning("heartbeat failed", extra={"job": job_id, "error": str(exc)})
 
         beater = threading.Thread(target=beat, daemon=True)
         beater.start()
         try:
             runner(job, lambda state: latest.__setitem__("checkpoint", state))
-        except (SoapFaultError, RestoreError) as exc:
+        except (SoapFaultError, RestoreError, MigrationError, ImapError) as exc:
             stop_beat.set()
             log.error("job %s failed: %s", job_id, exc)
             self._api.heartbeat(job_id, latest["checkpoint"])  # keep progress for the retry
-            retryable = isinstance(exc, SoapFaultError) and exc.code not in PERMANENT_FAULTS
+            if isinstance(exc, SoapFaultError):
+                retryable = exc.code not in PERMANENT_FAULTS
+            else:
+                retryable = isinstance(exc, ImapError) and exc.retryable
             self._api.fail(job_id, str(exc), retryable=retryable)
         except Exception as exc:  # unexpected: retry, the checkpoint limits the cost
             stop_beat.set()
@@ -236,4 +255,34 @@ class Worker:
             result.restored,
             result.present,
             len(result.failed),
+        )
+
+    def _run_migrate(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        assert self._migration is not None  # noqa: S101 - checked by the caller
+        spec = job.get("migration") or {}
+        if "imap" not in spec:
+            raise MigrationError("migration job without source settings")
+        imap = ImapSettings.from_job(spec["imap"])
+        result = self._migration.run(
+            lambda: ImapSource(imap),
+            job["carbonio_id"],
+            options=spec.get("options"),
+            state=spec.get("state"),
+            dry_run=bool(spec.get("dry_run")),
+            resume=job.get("checkpoint"),
+            checkpoint=checkpoint,
+            should_stop=self._cancelled.is_set,
+        )
+        self._api.migrate_complete(job["job_id"], result.to_payload())
+        log.info(
+            "job %s done: %smigration into %s, %s copied, %s duplicate(s), %s failed%s",
+            job["job_id"],
+            "dry-run " if result.dry_run else "",
+            job.get("account_email"),
+            result.copied,
+            result.duplicates,
+            len(result.failed),
+            " (cancelled)" if result.cancelled else "",
         )

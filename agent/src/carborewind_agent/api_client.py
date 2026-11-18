@@ -143,6 +143,9 @@ class AgentApi:
     def restore_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/restore-complete", payload)
 
+    def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/migrate-complete", payload)
+
     def fail(self, job_id: str, error: str, retryable: bool) -> None:
         self._post(f"/jobs/{job_id}/fail", {"error": error[:2000], "retryable": retryable})
 

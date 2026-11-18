@@ -121,6 +121,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     from .api_client import AgentApi
     from .backup import AccountBackup
     from .carbonio.factory import build_client
+    from .migrate import MailboxMigration
     from .restore import AccountRestore
     from .throttle import Throttle
     from .worker import Worker
@@ -141,6 +142,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         AccountBackup(carbonio, repo, throttle),
         AccountRestore(carbonio, repo, throttle),
         repo,
+        migration=MailboxMigration(carbonio, throttle),
     )
     signal.signal(signal.SIGTERM, lambda *_: worker.stop())
     worker.run_forever()

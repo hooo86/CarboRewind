@@ -288,6 +288,21 @@ class CarbonioClient:
                 return item
         raise SoapFaultError("mail.NO_SUCH_ITEM", f"item {item_id} not found")
 
+    def has_message_id(self, account_id: str, folder_id: int, message_id: str) -> bool:
+        """True if the folder already holds a message with this Message-ID header.
+
+        ``SearchRequest`` with the ``msgid:`` operator; used by migrations to avoid
+        duplicates when a folder has no incremental state.
+        """
+        escaped = message_id.replace("\\", "\\\\").replace('"', '\\"')
+        resp = self._mail.invoke(
+            "Search",
+            NS_MAIL,
+            {"query": f'inid:{folder_id} msgid:"{escaped}"', "types": "message", "limit": 1},
+            token=self.delegate(account_id),
+        )
+        return bool(resp.get("m"))
+
     # ------------------------------------------------------------------ restore primitives
 
     def create_folder(

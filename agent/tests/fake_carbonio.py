@@ -11,8 +11,10 @@ end-to-end tests; it does not replace a check against a real server
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from dataclasses import dataclass, field
+from email.parser import BytesHeaderParser
 from typing import Any
 from urllib.parse import unquote
 
@@ -339,6 +341,23 @@ class FakeCarbonio:
             date=int(m.get("d", 0)),
         )
         return {"m": [{"id": str(item.id)}]}
+
+    def _SearchRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        """Only ``inid:<folder> msgid:"<id>"`` (what migrations use)."""
+        mbox = self._mailbox_for(token)
+        m = re.fullmatch(r'inid:(\d+) msgid:"((?:\\.|[^"\\])*)"', body["query"])
+        if not m:
+            raise _Fault("mail.QUERY_PARSE_ERROR", body["query"])
+        folder = int(m.group(1))
+        wanted = m.group(2).replace('\\"', '"').replace("\\\\", "\\")
+        hits = []
+        for item in mbox.items.values():
+            if item.kind != "m" or item.folder != folder:
+                continue
+            head = BytesHeaderParser().parsebytes(item.raw)
+            if " ".join(str(head.get("Message-ID", "")).split()) == wanted:
+                hits.append({"id": str(item.id)})
+        return {"m": hits[: int(body.get("limit", 100))]} if hits else {}
 
     def _GetFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
