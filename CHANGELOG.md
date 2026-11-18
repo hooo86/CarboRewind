@@ -18,3 +18,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   catalogue temporel (`item_versions` / `folder_versions`), blobs, audit append-only.
 - `/readyz` vérifie PostgreSQL et Redis (503 sans divulgation des erreurs).
 - `docs/data-model.md` (diagramme ER) et `docs/schema.sql` généré et vérifié en test.
+- Authentification : comptes locaux (Argon2id) et LDAP Carbonio (TLS obligatoire, filtre échappé,
+  provisionnement sans rôle), sessions serveur (`__Host-` cookies, inactivité 30 min, absolue 12 h),
+  CSRF double submit, limitation par IP, verrouillage exponentiel, réponses génériques.
+- Journal d'audit chaîné (SHA-256) alimenté par les connexions / déconnexions.
+- CLI `carborewind-api create-user` pour créer le premier super-admin.
