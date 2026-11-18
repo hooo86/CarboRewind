@@ -195,6 +195,27 @@ class User(Base):
     )
 
 
+class UserSession(Base):
+    """Server-side login session. Only the SHA-256 of the bearer token is stored."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    # Double-submit CSRF token bound to this session (not secret from the browser).
+    csrf_token: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _created_at()
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Absolute expiry; idle expiry is computed from last_seen_at.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_ip: Mapped[str | None] = mapped_column(INET)
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+
+    __table_args__ = (Index("ix_user_sessions_user_id", "user_id"),)
+
+
 class RoleAssignment(Base):
     """Grants a role to a user, globally (``domain_id`` NULL) or on one domain."""
 

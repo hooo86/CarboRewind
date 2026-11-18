@@ -283,4 +283,26 @@ CREATE TRIGGER audit_events_no_truncate
 
 INSERT INTO alembic_version (version_num) VALUES ('0001') RETURNING alembic_version.version_num;
 
+-- Running upgrade 0001 -> 0002
+
+CREATE TABLE user_sessions (
+    id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    token_hash VARCHAR(64) NOT NULL,
+    csrf_token VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    source_ip INET,
+    user_agent VARCHAR(512),
+    CONSTRAINT pk_user_sessions PRIMARY KEY (id),
+    CONSTRAINT fk_user_sessions_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_user_sessions_token_hash UNIQUE (token_hash)
+);
+
+CREATE INDEX ix_user_sessions_user_id ON user_sessions (user_id);
+
+UPDATE alembic_version SET version_num='0002' WHERE alembic_version.version_num = '0001';
+
 COMMIT;
