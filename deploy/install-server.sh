@@ -115,6 +115,9 @@ fi
 
 say "starting the whole stack"
 "${COMPOSE[@]}" up -d --wait
+# nginx keeps the certificate it loaded at startup: reload it so a new or renewed
+# certificate (re-run with another --server-name or --tls-cert) is actually served.
+"${COMPOSE[@]}" restart proxy
 
 say "health check"
 for _ in $(seq 1 30); do
