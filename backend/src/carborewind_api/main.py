@@ -13,8 +13,11 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from . import __version__
+from .api import agent as agent_api
+from .api import agents as agents_api
 from .api import audit as audit_api
 from .api import auth as auth_api
+from .api import backups as backups_api
 from .api import inventory as inventory_api
 from .api import users as users_api
 from .auth.ldap import LdapAuthenticator
@@ -135,6 +138,9 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(users_api.router)
     app.include_router(inventory_api.router)
     app.include_router(audit_api.router)
+    app.include_router(agents_api.router)
+    app.include_router(agent_api.router)
+    app.include_router(backups_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
