@@ -1,0 +1,43 @@
+[Unit]
+Description=CarboRewind backup agent (Carbonio)
+Documentation=https://github.com/hooo86/CarboRewind
+After=network-online.target carbonio.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=carborewind
+Group=carborewind
+EnvironmentFile=/etc/carborewind/agent.env
+ExecStart=/usr/bin/carborewind-agent run
+Restart=on-failure
+RestartSec=30
+# The agent only needs: read its config, write the repository, talk HTTPS.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/carborewind
+ReadOnlyPaths=/etc/carborewind
+UMask=0077
+# Be gentle with the mail server.
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

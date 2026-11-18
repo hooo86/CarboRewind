@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+# The backup repository, keys and certificates are NEVER deleted automatically, even on
+# purge: losing them would make every backup unrecoverable. Remove them by hand if needed.
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+if [ "$1" = "purge" ]; then
+    echo "Kept: /etc/carborewind and /var/lib/carborewind (repository, keys). Delete manually if intended."
+fi
+exit 0
