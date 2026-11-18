@@ -907,3 +907,49 @@ def test_inventory_stores_account_details(agent: AgentHandle, engine: Engine) ->
         )
         assert acc.aliases == ["alias@example.test"]
         assert acc.last_login_at is not None
+
+
+def test_failures_and_partial_backups_are_notified(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    from carborewind_api.db.models import AppSetting, Notification
+    from carborewind_api.notifications import SmtpConfig
+
+    _drain(agent)
+    cfg = SmtpConfig(enabled=True, host="smtp", sender="a@b.c", recipients=["ops@b.c"])
+    with Session(engine) as s, s.begin():
+        s.merge(AppSetting(key="smtp", value=cfg.to_json()))
+    try:
+        email = f"note@{uuid.uuid4().hex[:6]}.test"
+        _inventory(agent, email)
+        account_id = _account_id(engine, email)
+        # A retryable failure is not notified; the final one is.
+        api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+        job = agent.post("/jobs/claim").json()
+        agent.post(f"/jobs/{job['job_id']}/fail", {"error": "busy", "retryable": True})
+        job = agent.post("/jobs/claim").json()
+        agent.post(f"/jobs/{job['job_id']}/fail", {"error": "no such account", "retryable": False})
+        # A partial backup is notified.
+        api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+        job = agent.post("/jobs/claim").json()
+        partial = {
+            "backup_type": "full",
+            "manifest_ref": "m/p",
+            "token": "1",
+            "item_count": 1,
+            "size_bytes": 100,
+            "new_bytes": 100,
+            "folders": FOLDERS,
+            "errors": {"300": "mail.NO_SUCH_BLOB"},
+            "added": {"257": _item("a", "x")},
+        }
+        assert agent.post(f"/jobs/{job['job_id']}/complete", partial).status_code == 204
+        with Session(engine) as s:
+            notes = s.scalars(select(Notification).order_by(Notification.id)).all()
+            mine = [n for n in notes if email in n.subject]
+            assert [n.event for n in mine] == ["job_failed", "backup_partial"]
+            assert "no such account" in mine[0].body
+            assert mine[0].recipients == ["ops@b.c"]
+    finally:
+        with Session(engine) as s, s.begin():
+            s.query(AppSetting).delete()

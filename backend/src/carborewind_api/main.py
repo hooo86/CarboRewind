@@ -23,6 +23,7 @@ from .api import backups as backups_api
 from .api import inventory as inventory_api
 from .api import policies as policies_api
 from .api import restores as restores_api
+from .api import settings_api
 from .api import users as users_api
 from .auth.ldap import LdapAuthenticator
 from .config import Settings, get_settings
@@ -149,6 +150,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(accounts_api.router)
     app.include_router(restores_api.router)
     app.include_router(policies_api.router)
+    app.include_router(settings_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:

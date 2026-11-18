@@ -76,6 +76,12 @@ else
     say "keeping existing .env"
     sed -i "s/^SERVER_NAME=.*/SERVER_NAME=$SERVER_NAME/" .env
 fi
+# Encrypts secrets stored in the database (SMTP password…). Added to older installs too;
+# losing it means re-entering those secrets, never losing backups.
+if ! grep -q '^CARBOREWIND_SECRET_KEY=' .env; then
+    say "generating CARBOREWIND_SECRET_KEY"
+    echo "CARBOREWIND_SECRET_KEY=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 48)" >> .env
+fi
 chmod 600 .env
 
 mkdir -p tls

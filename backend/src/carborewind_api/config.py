@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     # redis://[:password@]host:port/db
     redis_url: SecretStr | None = None
+    # Key encrypting secrets kept in the database (SMTP password). At least 32 characters.
+    secret_key: SecretStr | None = None
     # Per-dependency timeout of the readiness probe, in seconds.
     readiness_timeout: float = Field(default=2.0, gt=0, le=30)
 

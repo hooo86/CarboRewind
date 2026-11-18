@@ -255,7 +255,7 @@ async def run_scheduler(interval: float, once: bool) -> int:
         for sig in (signal.SIGTERM, signal.SIGINT):  # pragma: no cover
             loop.add_signal_handler(sig, stop.set)
         scheduler_log.info("scheduler started")  # pragma: no cover
-        await run_forever(factory, interval=interval, stop=stop)  # pragma: no cover
+        await run_forever(factory, get_settings(), interval=interval, stop=stop)  # pragma: no cover
         return 0  # pragma: no cover
     finally:
         await engine.dispose()

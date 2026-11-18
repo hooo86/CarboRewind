@@ -39,6 +39,7 @@ from ..db.models import (
     Snapshot,
     SnapshotStatus,
 )
+from ..notifications import notify
 from ..pki import CertificateAuthority, PkiError, fingerprint_pem, token_digest
 from ..scheduler import orphan_blobs_query, purge_plan
 from .deps import AppSettings, DbSession, client_ip
@@ -339,6 +340,7 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
         job.status, job.finished_at = JobStatus.FAILED, now
         job.error = "lease expired too many times"
         job.lease_expires_at = None
+        await _notify_failure(db, job)
         await db.flush()
         # Commit even though we answer "nothing to do": the job must stay failed.
         await db.commit()
@@ -547,6 +549,14 @@ async def complete(
         for item_id, i in body.added.items()
     )
     await _apply_folders(db, account.id, seq, body.folders)
+    if body.errors:
+        await notify(
+            db,
+            "backup_partial",
+            account=account.email,
+            seq=seq,
+            errors=len(body.errors),
+        )
     job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
     job.progress = {"items": body.item_count, "errors": len(body.errors)}
     await db.flush()
@@ -637,6 +647,14 @@ async def restore_complete(
     job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
     job.error = f"{len(body.failed)} item(s) could not be restored" if body.failed else None
     account = await db.get(Account, job.account_id) if job.account_id else None
+    if body.failed and not body.dry_run:
+        await notify(
+            db,
+            "restore_failed",
+            account=account.email if account else "?",
+            failed=len(body.failed),
+            restored=body.restored,
+        )
     await _audit(
         db,
         agent,
@@ -716,6 +734,18 @@ async def purge_complete(
     )
 
 
+async def _notify_failure(db: DbSession, job: Job) -> None:
+    account = await db.get(Account, job.account_id) if job.account_id else None
+    await notify(
+        db,
+        "job_failed",
+        kind=job.kind.value,
+        account=account.email if account else "-",
+        error=job.error or "?",
+        job=str(job.id),
+    )
+
+
 class FailureIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -733,6 +763,7 @@ async def fail(job_id: uuid.UUID, body: FailureIn, agent: CurrentAgent, db: DbSe
         job.status, job.agent_id = JobStatus.QUEUED, None
     else:
         job.status, job.finished_at = JobStatus.FAILED, datetime.now(UTC)
+        await _notify_failure(db, job)
     account = await db.get(Account, job.account_id) if job.account_id else None
     await _audit(
         db,

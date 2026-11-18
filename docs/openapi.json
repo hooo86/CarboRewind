@@ -1888,6 +1888,262 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "NotificationOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NotificationStatus"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event",
+          "subject",
+          "status",
+          "attempts",
+          "error",
+          "created_at",
+          "sent_at"
+        ],
+        "title": "NotificationOut",
+        "type": "object"
+      },
+      "NotificationSettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "digest_hour": {
+            "default": 8,
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Digest Hour",
+            "type": "integer"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Events",
+            "type": "object"
+          },
+          "host": {
+            "default": "",
+            "maxLength": 253,
+            "title": "Host",
+            "type": "string"
+          },
+          "language": {
+            "default": "fr",
+            "enum": [
+              "fr",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "port": {
+            "default": 587,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "format": "email",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Recipients",
+            "type": "array"
+          },
+          "security": {
+            "default": "starttls",
+            "enum": [
+              "starttls",
+              "ssl",
+              "none"
+            ],
+            "title": "Security",
+            "type": "string"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "default": "",
+            "title": "Sender"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          },
+          "username": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "title": "NotificationSettingsIn",
+        "type": "object"
+      },
+      "NotificationSettingsOut": {
+        "properties": {
+          "digest_hour": {
+            "title": "Digest Hour",
+            "type": "integer"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Events",
+            "type": "object"
+          },
+          "host": {
+            "title": "Host",
+            "type": "string"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "password_set": {
+            "title": "Password Set",
+            "type": "boolean"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "secret_key_configured": {
+            "title": "Secret Key Configured",
+            "type": "boolean"
+          },
+          "security": {
+            "title": "Security",
+            "type": "string"
+          },
+          "sender": {
+            "title": "Sender",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "host",
+          "port",
+          "security",
+          "username",
+          "password_set",
+          "sender",
+          "recipients",
+          "events",
+          "digest_hour",
+          "timezone",
+          "language",
+          "secret_key_configured"
+        ],
+        "title": "NotificationSettingsOut",
+        "type": "object"
+      },
+      "NotificationStatus": {
+        "enum": [
+          "pending",
+          "sent",
+          "failed"
+        ],
+        "title": "NotificationStatus",
+        "type": "string"
+      },
       "Outcome": {
         "enum": [
           "success",
@@ -2831,6 +3087,49 @@
         ],
         "title": "TargetType",
         "type": "string"
+      },
+      "TestRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "title": "TestRequest",
+        "type": "object"
+      },
+      "TestResult": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "TestResult",
+        "type": "object"
       },
       "UserCreate": {
         "additionalProperties": false,
@@ -5019,6 +5318,133 @@
         "summary": "Start Restore",
         "tags": [
           "restores"
+        ]
+      }
+    },
+    "/api/settings/notifications": {
+      "get": {
+        "operationId": "get_notification_settings_api_settings_notifications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Notification Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_notification_settings_api_settings_notifications_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Notification Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/notifications/outbox": {
+      "get": {
+        "operationId": "outbox_api_settings_notifications_outbox_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationOut"
+                  },
+                  "title": "Response Outbox Api Settings Notifications Outbox Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Outbox",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/notifications/test": {
+      "post": {
+        "description": "Send a test e-mail now with the saved settings (to ``to`` or every recipient).",
+        "operationId": "test_notification_api_settings_notifications_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Notification",
+        "tags": [
+          "settings"
         ]
       }
     },

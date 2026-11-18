@@ -152,6 +152,12 @@ class ItemKind(enum.StrEnum):
     DOCUMENT = "document"
 
 
+class NotificationStatus(enum.StrEnum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"
+
+
 class ActorType(enum.StrEnum):
     USER = "user"
     AGENT = "agent"
@@ -589,3 +595,40 @@ class AuditEvent(Base):
         Index("ix_audit_events_target", "target_type", "target_id"),
         Index("ix_audit_events_domain_ts", "domain_id", "ts"),
     )
+
+
+class AppSetting(Base):
+    """Settings edited from the web interface (key -> JSON). Secrets inside are encrypted."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    updated_at: Mapped[datetime] = _created_at()
+
+
+class Notification(Base):
+    """Outbox of e-mail notifications, delivered by the scheduler with retries."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    event: Mapped[str] = mapped_column(String(64))
+    subject: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    recipients: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    status: Mapped[NotificationStatus] = mapped_column(
+        _enum(NotificationStatus, "notification_status"),
+        server_default=NotificationStatus.PENDING.value,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    error: Mapped[str | None] = mapped_column(Text)
+    # Same key = same message: digests and alerts are sent once.
+    dedup_key: Mapped[str | None] = mapped_column(String(255), unique=True)
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_notifications_pending", "status", "next_attempt_at"),)

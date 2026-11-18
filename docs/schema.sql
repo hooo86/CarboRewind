@@ -369,4 +369,35 @@ CREATE INDEX ix_policy_accounts_account_id ON policy_accounts (account_id);
 
 UPDATE alembic_version SET version_num='0005' WHERE alembic_version.version_num = '0004';
 
+-- Running upgrade 0005 -> 0006
+
+CREATE TABLE app_settings (
+    key VARCHAR(64) NOT NULL,
+    value JSONB DEFAULT '{}'::jsonb NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_app_settings PRIMARY KEY (key)
+);
+
+CREATE TABLE notifications (
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
+    event VARCHAR(64) NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    recipients JSONB DEFAULT '[]'::jsonb NOT NULL,
+    status VARCHAR(32) DEFAULT 'pending' NOT NULL,
+    attempts INTEGER DEFAULT 0 NOT NULL,
+    error TEXT,
+    dedup_key VARCHAR(255),
+    next_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    sent_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_notifications PRIMARY KEY (id),
+    CONSTRAINT uq_notifications_dedup_key UNIQUE (dedup_key),
+    CONSTRAINT ck_notifications_notification_status CHECK (status IN ('pending', 'sent', 'failed'))
+);
+
+CREATE INDEX ix_notifications_pending ON notifications (status, next_attempt_at);
+
+UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
+
 COMMIT;

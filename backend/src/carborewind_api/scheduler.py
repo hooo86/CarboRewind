@@ -29,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from . import audit
+from .config import Settings
 from .db.models import (
     Account,
     AccountStatus,
@@ -46,6 +47,7 @@ from .db.models import (
     SnapshotStatus,
     TargetType,
 )
+from .notifications import deliver_pending, periodic_alerts
 from .scheduling import Cron, CronError, Retention, snapshots_to_keep, zone
 
 log = logging.getLogger(__name__)
@@ -63,6 +65,8 @@ class TickReport:
     snapshots_expired: int = 0
     versions_pruned: int = 0
     purge_job: uuid.UUID | None = None
+    notifications_queued: int = 0
+    notifications_sent: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -279,6 +283,7 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
     report = TickReport()
     await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LOCK_ID})
     await enqueue_due_backups(db, now, report)
+    report.notifications_queued = await periodic_alerts(db, now)
     if retention:
         await apply_retention(db, report)
         await enqueue_purge(db, report)
@@ -287,6 +292,7 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
 
 async def run_forever(
     factory: async_sessionmaker[AsyncSession],
+    settings: Settings | None = None,
     *,
     interval: float = 60.0,
     retention_every: int = 60,
@@ -299,12 +305,25 @@ async def run_forever(
         try:
             async with factory() as db, db.begin():
                 report = await tick(db, datetime.now(UTC), retention=count % retention_every == 0)
-            if report.jobs_queued or report.snapshots_expired or report.purge_job:
+            if settings is not None:
+                # Separate transaction: a slow mail server must not hold the scheduler lock.
+                async with factory() as db, db.begin():
+                    report.notifications_sent = await deliver_pending(
+                        db, settings, datetime.now(UTC)
+                    )
+            if (
+                report.jobs_queued
+                or report.snapshots_expired
+                or report.purge_job
+                or report.notifications_sent
+            ):
                 log.info(
-                    "scheduler: %s job(s) queued, %s snapshot(s) expired, purge %s",
+                    "scheduler: %s job(s) queued, %s snapshot(s) expired, purge %s, "
+                    "%s notification(s) sent",
                     report.jobs_queued,
                     report.snapshots_expired,
                     report.purge_job or "-",
+                    report.notifications_sent,
                 )
             for error in report.errors:
                 log.error("scheduler: %s", error)
