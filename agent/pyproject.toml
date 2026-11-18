@@ -39,6 +39,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "RUF"]
 
+[tool.coverage.run]
+concurrency = ["thread"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
 # The simulator names its handlers after the SOAP requests (_SyncRequest…).
