@@ -78,6 +78,21 @@ def repo_command(args: argparse.Namespace) -> int:
     return 0 if report.ok else 3
 
 
+def carbonio_command(args: argparse.Namespace) -> int:
+    from .carbonio.factory import build_client
+    from .carbonio.probe import run_probe
+
+    try:
+        settings = AgentSettings()
+        client = build_client(settings)
+    except (ValidationError, KeyFileError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    report = run_probe(client, args.account)
+    print(report.render())
+    return 0 if report.ok else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="carborewind-agent", description=__doc__)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -93,7 +108,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify.add_argument("--sample", type=float, default=1.0, help="fraction to check (0-1]")
     rotate = repo_sub.add_parser("rotate-key", help="re-wrap the master key with a new KEK")
     rotate.add_argument("new_key_file")
+    carbonio = sub.add_parser("carbonio", help="Carbonio integration tools")
+    carbonio_sub = carbonio.add_subparsers(dest="carbonio_command", required=True)
+    probe = carbonio_sub.add_parser("probe", help="read-only check of the Carbonio API contract")
+    probe.add_argument("--account", help="account to probe (default: first one listed)")
     args = parser.parse_args(argv)
+    if args.command == "carbonio":
+        return carbonio_command(args)
     if args.command == "check-config":
         return check_config()
     if args.command == "repo":
