@@ -1,0 +1,30 @@
+name: ✨ Fonctionnalité / Feature
+description: Proposer une fonctionnalité / Propose a feature
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Besoin / Problem
+      description: Quel problème cette fonctionnalité résout-elle ?
+    validations: { required: true }
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition / Proposal
+    validations: { required: true }
+  - type: textarea
+    id: carbonio
+    attributes:
+      label: API / commandes Carbonio concernées et limites CE vs Advanced
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation / Acceptance criteria
+      value: |
+        - [ ]
+    validations: { required: true }
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risques (perte de données, performance, sécurité) et mitigations

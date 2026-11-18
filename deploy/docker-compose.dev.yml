@@ -1,0 +1,39 @@
+# Environnement de développement local. Ne pas utiliser tel quel en production.
+name: carborewind-dev
+
+services:
+  api:
+    build: ../backend
+    env_file: .env
+    environment:
+      CARBOREWIND_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      CARBOREWIND_REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["127.0.0.1:8000:8000"]
+
+  frontend:
+    build: ../frontend
+    depends_on: [api]
+    ports: ["127.0.0.1:8080:8080"]
+
+  db:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  db-data:
