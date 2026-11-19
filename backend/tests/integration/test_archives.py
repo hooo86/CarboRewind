@@ -582,3 +582,42 @@ def test_legal_hold(api: TestClient, engine: Engine, world: dict[str, Any], migr
         ).status_code
         == 403
     )
+
+
+def test_archives_by_mailbox_and_full_restore(
+    api: TestClient, engine: Engine, world: dict[str, Any]
+) -> None:
+    _, job = _archive_run(api, world, engine)
+    agent, jid, h = world["agent"], job["job_id"], world["admin"]
+    agent.post(f"/jobs/{jid}/archive-stored", {"entries": _entries(3, start=5)})
+    agent.post(f"/jobs/{jid}/archive-complete", {"mode": "archive", "removed": [305, 306]})
+    boxes = api.get(
+        "/api/archives/mailboxes", params={"q": f"ana@{world['domain']}"}, headers=h
+    ).json()
+    mine = next(b for b in boxes["items"] if b["account_email"] == f"ana@{world['domain']}")
+    assert mine["messages"] >= 3 and mine["removed_messages"] >= 2
+    assert mine["oldest"] is not None and mine["legal_hold"] in (True, False)
+    viewer = login(api, engine, Role.VIEWER)
+    assert api.get("/api/archives/mailboxes", headers=viewer).status_code == 200
+    h = login(api, engine)
+    ana = str(world["ids"]["ana"])
+    r = api.post(f"/api/archives/accounts/{ana}/restore", json={}, headers=h)
+    assert r.status_code == 202, r.text
+    (restore,) = r.json()
+    with Session(engine) as s:
+        params = s.get(Job, uuid.UUID(restore["id"])).params  # type: ignore[union-attr]
+    restored_ids = sorted(i["id"] for i in params["archive_items"])
+    assert params["mode"] == "original" and {305, 306} <= set(restored_ids)
+    assert 307 not in restored_ids  # still in the mailbox: not restored by default
+    r = api.post(
+        f"/api/archives/accounts/{ana}/restore",
+        json={"only_removed": False, "mode": "new_folder"},
+        headers=h,
+    )
+    with Session(engine) as s:
+        params = s.get(Job, uuid.UUID(r.json()[0]["id"])).params  # type: ignore[union-attr]
+    assert 307 in {i["id"] for i in params["archive_items"]}
+    nobody = str(world["ids"]["admin"])
+    assert (
+        api.post(f"/api/archives/accounts/{nobody}/restore", json={}, headers=h).status_code == 404
+    )

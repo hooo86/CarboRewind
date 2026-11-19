@@ -237,7 +237,12 @@ async def run_scheduler(interval: float, once: bool) -> int:
     from .scheduler import log as scheduler_log
     from .scheduler import run_forever, tick
 
-    configure_logging(get_settings().log_level)
+    settings = get_settings()
+    configure_logging(
+        settings.log_level,
+        settings.redis_url.get_secret_value() if settings.redis_url else None,
+        "scheduler",
+    )
     engine, factory = _sessionmaker()
     try:
         if once:

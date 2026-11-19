@@ -16,6 +16,7 @@ from .archive import ArchiveError, MailboxArchiver
 from .backup import AccountBackup
 from .carbonio import AccountInfo, CarbonioClient, SoapFaultError
 from .imap import ImapError, ImapSettings, ImapSource
+from .logtail import LogError, journal, tail
 from .migrate import MailboxMigration, MigrationError
 from .purge import run_purge
 from .replicate import ReplicaError, replicate
@@ -150,6 +151,7 @@ class Worker:
         kek: bytes | None = None,
         mail_store: Path | None = None,
         space: tuple[float, float, float] | None = None,
+        log_files: dict[str, Path] | None = None,
         concurrency: int = 1,
         on_config: Callable[[dict[str, Any]], None] | None = None,
         poll_seconds: float = 10.0,
@@ -179,6 +181,8 @@ class Worker:
         # Jobs run at the same time (accounts backed up in parallel); settable at run time.
         self._concurrency = max(1, min(MAX_SLOTS, concurrency))
         self._on_config = on_config
+        # Logs readable from the interface: name -> file (plus the agent's own journal).
+        self._log_files = log_files or {}
         self._config_revision: int | None = None
         self._poll = poll_seconds
         self._inventory_every = inventory_every
@@ -648,15 +652,31 @@ class Worker:
             copy.get(blob_id)  # raises when missing or unreadable
 
     def _run_fetch(self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]) -> None:
-        """Read one archived message for the interface."""
+        """Read one archived message, or the last lines of a log, for the interface."""
         assert self._repo is not None  # noqa: S101 - checked by the caller
         params = job.get("params") or {}
+        if "log" in params:
+            self._api.fetch_complete(job["job_id"], self._read_log(params).encode())
+            return
         with self._repo.lock():
             data = self._repo.get(str(params.get("blob", "")))
         limit = int(params.get("max_bytes", 20 * 2**20))
         if len(data) > limit:
             raise RepositoryError(f"message too large to display ({len(data)} bytes)")
         self._api.fetch_complete(job["job_id"], data)
+
+    def _read_log(self, params: dict[str, Any]) -> str:
+        source = str(params.get("log"))
+        lines = int(params.get("lines", 500))
+        try:
+            if source == "agent":
+                return journal("carborewind-agent", lines)
+            path = self._log_files.get(source)
+            if path is None:
+                raise LogError(f"unknown log {source!r}")
+            return tail(path, lines)
+        except LogError as exc:
+            raise RepositoryError(str(exc)) from exc  # reported as a failed fetch
 
     def _run_migrate(
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]

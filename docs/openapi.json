@@ -689,6 +689,80 @@
         "title": "AgentCreated",
         "type": "object"
       },
+      "AgentLogIn": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "default": 500,
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Lines",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "agent",
+              "mail",
+              "mailbox"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "AgentLogIn",
+        "type": "object"
+      },
+      "AgentLogOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AgentLogOut",
+        "type": "object"
+      },
+      "AgentLogStarted": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "AgentLogStarted",
+        "type": "object"
+      },
       "AgentOut": {
         "properties": {
           "cert_not_after": {
@@ -1338,6 +1412,89 @@
           "entries"
         ],
         "title": "ArchiveStoredIn",
+        "type": "object"
+      },
+      "ArchivedMailboxOut": {
+        "properties": {
+          "account_email": {
+            "title": "Account Email",
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "last_archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Archived At"
+          },
+          "legal_hold": {
+            "title": "Legal Hold",
+            "type": "boolean"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "newest": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest"
+          },
+          "oldest": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest"
+          },
+          "removed_bytes": {
+            "title": "Removed Bytes",
+            "type": "integer"
+          },
+          "removed_messages": {
+            "title": "Removed Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "account_id",
+          "account_email",
+          "messages",
+          "bytes",
+          "removed_messages",
+          "removed_bytes",
+          "legal_hold",
+          "oldest",
+          "newest",
+          "last_archived_at"
+        ],
+        "title": "ArchivedMailboxOut",
         "type": "object"
       },
       "ArchivedMessageOut": {
@@ -2887,6 +3044,17 @@
             ],
             "title": "Backup Type"
           },
+          "bytes_done": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes Done"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -2993,6 +3161,17 @@
           },
           "status": {
             "$ref": "#/components/schemas/JobStatus"
+          },
+          "throughput_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Throughput Bps"
           }
         },
         "required": [
@@ -3507,6 +3686,40 @@
           }
         },
         "title": "MailboxPatch",
+        "type": "object"
+      },
+      "MailboxRestoreIn": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "original",
+            "enum": [
+              "new_folder",
+              "original"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "only_removed": {
+            "default": true,
+            "description": "Only the messages no longer in the mailbox",
+            "title": "Only Removed",
+            "type": "boolean"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Account Id"
+          }
+        },
+        "title": "MailboxRestoreIn",
         "type": "object"
       },
       "MatchRequest": {
@@ -4319,6 +4532,37 @@
           "offset"
         ],
         "title": "Page[AccountOut]",
+        "type": "object"
+      },
+      "Page_ArchivedMailboxOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedMailboxOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ArchivedMailboxOut]",
         "type": "object"
       },
       "Page_ArchivedMessageOut_": {
@@ -5743,6 +5987,33 @@
           }
         },
         "title": "SecurityPolicyIn",
+        "type": "object"
+      },
+      "ServerLogOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "lines": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "process": {
+            "title": "Process",
+            "type": "string"
+          }
+        },
+        "required": [
+          "process",
+          "available",
+          "lines"
+        ],
+        "title": "ServerLogOut",
         "type": "object"
       },
       "ServiceIn": {
@@ -9328,6 +9599,64 @@
         ]
       }
     },
+    "/api/archives/accounts/{account_id}/restore": {
+      "post": {
+        "description": "Every archived message of a mailbox back into Carbonio (by jobs of 5000).",
+        "operationId": "restore_mailbox_api_archives_accounts__account_id__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailboxRestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobOut"
+                  },
+                  "title": "Response Restore Mailbox Api Archives Accounts  Account Id  Restore Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Mailbox",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
     "/api/archives/legal-holds": {
       "get": {
         "operationId": "list_legal_holds_api_archives_legal_holds_get",
@@ -9348,6 +9677,80 @@
           }
         },
         "summary": "List Legal Holds",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/mailboxes": {
+      "get": {
+        "description": "One line per mailbox that has archived messages (figures only).",
+        "operationId": "archived_mailboxes_api_archives_mailboxes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ArchivedMailboxOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archived Mailboxes",
         "tags": [
           "archives"
         ]
@@ -10960,7 +11363,7 @@
     },
     "/api/jobs": {
       "get": {
-        "description": "Jobs on the caller's domains, most recent first.",
+        "description": "Jobs on the caller's domains: filters, sort, pages.",
         "operationId": "list_jobs_api_jobs_get",
         "parameters": [
           {
@@ -10981,6 +11384,22 @@
           },
           {
             "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
             "name": "account_id",
             "required": false,
             "schema": {
@@ -10994,6 +11413,47 @@
                 }
               ],
               "title": "Account Id"
+            }
+          },
+          {
+            "description": "Account contains",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Account contains",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "created_at",
+              "pattern": "^(created_at|duration|status|kind|account)$",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "pattern": "^(asc|desc)$",
+              "title": "Order",
+              "type": "string"
             }
           },
           {
@@ -11088,6 +11548,150 @@
         "summary": "Get Job",
         "tags": [
           "backups"
+        ]
+      }
+    },
+    "/api/logs/agent": {
+      "post": {
+        "operationId": "ask_agent_log_api_logs_agent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentLogIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLogStarted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask Agent Log",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/api/logs/agent/{job_id}": {
+      "get": {
+        "operationId": "agent_log_api_logs_agent__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentLogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Agent Log",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/api/logs/server": {
+      "get": {
+        "description": "Last lines of the API or scheduler (most recent last).",
+        "operationId": "server_log_api_logs_server_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "process",
+            "required": false,
+            "schema": {
+              "default": "api",
+              "enum": [
+                "api",
+                "scheduler"
+              ],
+              "title": "Process",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lines",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Lines",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerLogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Server Log",
+        "tags": [
+          "logs"
         ]
       }
     },

@@ -670,6 +670,73 @@ async def download_message(
     )
 
 
+# ------------------------------------------------------------------ by mailbox
+
+
+class ArchivedMailboxOut(BaseModel):
+    account_id: uuid.UUID
+    account_email: str
+    messages: int
+    bytes: int
+    removed_messages: int
+    removed_bytes: int
+    legal_hold: bool
+    oldest: datetime | None
+    newest: datetime | None
+    last_archived_at: datetime | None
+
+
+@router.get("/mailboxes", response_model=Page[ArchivedMailboxOut])
+async def archived_mailboxes(
+    principal: Reader,
+    db: DbSession,
+    q: Annotated[str | None, Query(max_length=255)] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Page[ArchivedMailboxOut]:
+    """One line per mailbox that has archived messages (figures only)."""
+    removed = ArchivedMessage.removed_at.is_not(None)
+    query = (
+        select(
+            Account.id,
+            Account.email,
+            func.count(ArchivedMessage.id),
+            func.coalesce(func.sum(ArchivedMessage.size), 0),
+            func.count().filter(removed),
+            func.coalesce(func.sum(ArchivedMessage.size).filter(removed), 0),
+            func.bool_or(ArchivedMessage.legal_hold),
+            func.min(ArchivedMessage.item_date),
+            func.max(ArchivedMessage.item_date),
+            func.max(ArchivedMessage.archived_at),
+        )
+        .join(ArchivedMessage, ArchivedMessage.account_id == Account.id)
+        .group_by(Account.id, Account.email)
+    )
+    scope = principal.access.domains(Permission.BACKUPS_READ)
+    if scope is not None:
+        query = query.where(Account.domain_id.in_(scope))
+    if q:
+        query = query.where(Account.email.ilike(_like(q.strip())))
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = await db.execute(query.order_by(Account.email).limit(limit).offset(offset))
+    items = [
+        ArchivedMailboxOut(
+            account_id=aid,
+            account_email=email,
+            messages=n,
+            bytes=int(size),
+            removed_messages=rn,
+            removed_bytes=int(rsize),
+            legal_hold=bool(held),
+            oldest=oldest,
+            newest=newest,
+            last_archived_at=last,
+        )
+        for aid, email, n, size, rn, rsize, held, oldest, newest, last in rows
+    ]
+    return Page(items=items, total=total or 0, limit=limit, offset=offset)
+
+
 # ------------------------------------------------------------------ restore
 
 
@@ -681,6 +748,46 @@ class RestoreIn(BaseModel):
         default=None, description="Account to restore into (default: each message's own)"
     )
     mode: Literal["new_folder", "original"] = "new_folder"
+
+
+class MailboxRestoreIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["new_folder", "original"] = "original"
+    target_account_id: uuid.UUID | None = None
+    only_removed: bool = Field(
+        default=True, description="Only the messages no longer in the mailbox"
+    )
+
+
+@router.post("/accounts/{account_id}/restore", response_model=list[JobOut], status_code=202)
+async def restore_mailbox(
+    account_id: uuid.UUID,
+    body: MailboxRestoreIn,
+    principal: Restorer,
+    db: DbSession,
+    request: Request,
+) -> list[JobOut]:
+    """Every archived message of a mailbox back into Carbonio (by jobs of 5000)."""
+    query = select(ArchivedMessage.id).where(ArchivedMessage.account_id == account_id)
+    if body.only_removed:
+        query = query.where(ArchivedMessage.removed_at.is_not(None))
+    ids = list(await db.scalars(query.order_by(ArchivedMessage.id)))
+    if not ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "nothing archived to restore")
+    jobs: list[JobOut] = []
+    for start in range(0, len(ids), MAX_RESTORE):
+        jobs += await restore_messages(
+            RestoreIn(
+                ids=ids[start : start + MAX_RESTORE],
+                target_account_id=body.target_account_id,
+                mode=body.mode,
+            ),
+            principal,
+            db,
+            request,
+        )
+    return jobs
 
 
 @router.post("/restore", response_model=list[JobOut], status_code=202)

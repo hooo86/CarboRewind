@@ -164,6 +164,8 @@ def test_resume_after_interruption(
     with pytest.raises(RuntimeError, match="killed"):
         engine.run(alice.id, alice.name, "s1", 1, checkpoint=checkpoints.append)
     assert len(checkpoints) == 2  # after 5 and 10 items
+    progress = checkpoints[-1]["progress"]
+    assert progress["items"] == 10 and progress["total"] >= 10 and progress["bytes"] > 0
     state = json.loads(json.dumps(checkpoints[-1]))  # survives a JSON round-trip (API storage)
 
     calls["n"] = 100  # no more crash

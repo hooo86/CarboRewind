@@ -830,7 +830,15 @@ async def complete(
             errors=len(body.errors),
         )
     job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
-    job.progress = {"items": body.item_count, "errors": len(body.errors)}
+    job.progress = {
+        "items": body.item_count,
+        "errors": len(body.errors),
+        # Read from Carbonio by this run (changed items), for the throughput.
+        "read_items": len(body.added),
+        "read_bytes": sum(i.size for i in body.added.values()),
+        "new_bytes": body.new_bytes,
+        "size_bytes": body.size_bytes,
+    }
     await db.flush()
     await _audit(
         db,

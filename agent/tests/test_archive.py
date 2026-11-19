@@ -392,3 +392,29 @@ def test_legal_hold_copies_every_folder(
     assert len(alice.items) == before  # nothing leaves the mailbox
     folders = {e["folder_path"] for e in repo.get_archive(alice.id, "h1")["items"].values()}
     assert {"/Trash", "/Trash/Old", "/Junk", "/Drafts"} <= folders
+
+
+def test_worker_reads_a_log_for_the_interface(
+    tmp_path: Path, client: CarbonioClient, repo: Repository, alice: Mailbox
+) -> None:
+    log = tmp_path / "carbonio.log"
+    log.write_text("first\nsecond\nthird\n")
+    api = FakeApi([_job(alice, "fetch", {"log": "mail", "lines": 2})])
+    settings: AgentSettings = _settings(tmp_path)
+    worker = Worker(
+        AgentApi(settings, http=api.client()),
+        client,
+        AccountBackup(client, repo),
+        repo=repo,
+        log_files={"mail": log},
+        sleep=lambda _: True,
+    )
+    assert worker.run_once()
+    path, body = api.calls[-1]
+    assert path == "/jobs/j-1/fetch-complete"
+    assert base64.b64decode(body["data"]).decode() == "second\nthird"
+    api = FakeApi([_job(alice, "fetch", {"log": "/etc/shadow"})])
+    worker._api = AgentApi(settings, http=api.client())
+    assert worker.run_once()
+    path, body = api.calls[-1]
+    assert path == "/jobs/j-1/fail" and "unknown log" in body["error"]

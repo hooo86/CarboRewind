@@ -248,6 +248,7 @@ class AccountBackup:
 
         # 3. Read and store changed items, checkpointing as we go.
         processed = 0
+        read_bytes = sum(e.size for e in done.values())  # shown as the job's throughput
         for item_id, (kind, folder_id, attrs) in sorted(to_fetch.items()):
             if item_id in done:
                 items[item_id] = done[item_id]
@@ -269,6 +270,7 @@ class AccountBackup:
                     items[item_id] = base[item_id]
                 continue
             new_bytes += created
+            read_bytes += entry.size
             items[item_id] = entry
             done[item_id] = entry
             processed += 1
@@ -278,6 +280,11 @@ class AccountBackup:
                     {
                         "done": {str(k): v.to_json() for k, v in done.items()},
                         "backup_type": backup_type,
+                        "progress": {
+                            "items": len(done),
+                            "total": len(to_fetch),
+                            "bytes": read_bytes,
+                        },
                     }
                 )
 

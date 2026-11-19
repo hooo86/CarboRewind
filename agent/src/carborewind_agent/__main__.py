@@ -192,6 +192,10 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
             settings.min_free_gb_network,
         ),
         concurrency=settings.max_concurrent_accounts,
+        log_files={
+            "mail": next((p for p in settings.mail_logs if p.exists()), settings.mail_logs[0]),
+            "mailbox": Path("/opt/zextras/log/mailbox.log"),
+        },
         on_config=apply_config,
     )
 

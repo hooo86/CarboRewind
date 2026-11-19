@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -30,6 +30,17 @@ class BackupRequest(BaseModel):
     priority: int = 50  # on-demand jobs go before scheduled ones (100)
 
 
+def _throughput(j: Job) -> dict[str, Any]:
+    progress = j.progress or {}
+    done = progress.get("read_bytes", progress.get("bytes"))
+    if j.kind is not JobKind.BACKUP or done is None or j.started_at is None:
+        return {}
+    end = j.finished_at or datetime.now(UTC)
+    seconds = (end - j.started_at).total_seconds()
+    rate = int(done) / seconds if seconds > 0 and int(done) > 0 else None
+    return {"bytes_done": int(done), "throughput_bps": rate}
+
+
 class JobOut(BaseModel):
     id: uuid.UUID
     kind: JobKind
@@ -48,6 +59,9 @@ class JobOut(BaseModel):
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # Bytes read from Carbonio and average rate (backups; live while running).
+    bytes_done: int | None = None
+    throughput_bps: float | None = None
 
     @classmethod
     def of(cls, j: Job, account_email: str | None = None) -> JobOut:
@@ -71,6 +85,7 @@ class JobOut(BaseModel):
             created_at=j.created_at,
             started_at=j.started_at,
             finished_at=j.finished_at,
+            **_throughput(j),
         )
 
 
@@ -237,16 +252,23 @@ async def start_backup_all(
     )
 
 
+JOB_SORTS = ("created_at", "duration", "status", "kind", "account")
+
+
 @router.get("/api/jobs", response_model=Page[JobOut])
 async def list_jobs(
     principal: Reader,
     db: DbSession,
     status_: Annotated[JobStatus | None, Query(alias="status")] = None,
+    kind: JobKind | None = None,
     account_id: uuid.UUID | None = None,
+    q: Annotated[str | None, Query(max_length=255, description="Account contains")] = None,
+    sort: Annotated[str, Query(pattern="^(" + "|".join(JOB_SORTS) + ")$")] = "created_at",
+    order: Annotated[str, Query(pattern="^(asc|desc)$")] = "desc",
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[JobOut]:
-    """Jobs on the caller's domains, most recent first."""
+    """Jobs on the caller's domains: filters, sort, pages."""
     query = (
         select(Job, Account.email)
         .join(Account, Account.id == Job.account_id)
@@ -257,10 +279,25 @@ async def list_jobs(
         query = query.where(Account.domain_id.in_(scope))
     if status_ is not None:
         query = query.where(Job.status == status_)
+    if kind is not None:
+        query = query.where(Job.kind == kind)
     if account_id is not None:
         query = query.where(Job.account_id == account_id)
+    if q:
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(Account.email.ilike(f"%{escaped}%"))
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = await db.execute(query.order_by(Job.created_at.desc()).limit(limit).offset(offset))
+    column: Any = {
+        "created_at": Job.created_at,
+        "duration": func.coalesce(Job.finished_at, func.now()) - Job.started_at,
+        "status": Job.status,
+        "kind": Job.kind,
+        "account": Account.email,
+    }[sort]
+    column = column.asc().nulls_last() if order == "asc" else column.desc().nulls_last()
+    rows = await db.execute(
+        query.order_by(column, Job.created_at.desc()).limit(limit).offset(offset)
+    )
     return Page(
         items=[JobOut.of(job, email) for job, email in rows.tuples()],
         total=total or 0,

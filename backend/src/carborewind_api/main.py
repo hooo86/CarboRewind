@@ -23,6 +23,7 @@ from .api import audit as audit_api
 from .api import auth as auth_api
 from .api import backups as backups_api
 from .api import inventory as inventory_api
+from .api import logs as logs_api
 from .api import mail as mail_api
 from .api import migrations as migrations_api
 from .api import monitoring as monitoring_api
@@ -62,7 +63,11 @@ def _security_headers(hsts_max_age: int) -> dict[str, str]:
 def create_app(settings: Settings | None = None, checks: dict[str, Check] | None = None) -> FastAPI:
     """Build the API. ``settings`` and readiness ``checks`` can be injected for tests."""
     settings = settings or get_settings()
-    configure_logging(settings.log_level)
+    configure_logging(
+        settings.log_level,
+        settings.redis_url.get_secret_value() if settings.redis_url else None,
+        "api",
+    )
     readiness: dict[str, Check] = dict(checks or {})
 
     @asynccontextmanager
@@ -161,6 +166,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(mail_api.router)
     app.include_router(monitoring_api.router)
     app.include_router(archives_api.router)
+    app.include_router(logs_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics(request: Request) -> Response:
