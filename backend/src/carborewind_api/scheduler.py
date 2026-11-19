@@ -28,12 +28,13 @@ from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import audit, mail_traffic, monitoring, storage_settings
+from . import archiving, audit, mail_traffic, monitoring, storage_settings
 from .config import Settings
 from .db.models import (
     Account,
     AccountStatus,
     ActorType,
+    ArchivedMessage,
     Blob,
     FolderVersion,
     ItemVersion,
@@ -228,16 +229,20 @@ def orphan_blobs_query(limit: int) -> Any:
     referenced = or_(
         exists().where(ItemVersion.content_blob_id == Blob.id),
         exists().where(ItemVersion.meta_blob_id == Blob.id),
+        exists().where(ArchivedMessage.content_blob_id == Blob.id),
+        exists().where(ArchivedMessage.meta_blob_id == Blob.id),
     )
     return select(Blob.id).where(~referenced).order_by(Blob.id).limit(limit)
 
 
 async def blobs_in_checkpoints(db: AsyncSession) -> set[str]:
-    """Blobs written by unfinished backups: a resumed job trusts them without re-reading."""
+    """Blobs written by unfinished backups or archive runs: a resumed job trusts them."""
     out: set[str] = set()
     checkpoints = await db.scalars(
         select(Job.checkpoint).where(
-            Job.kind == JobKind.BACKUP, Job.status.in_(PENDING), Job.checkpoint.is_not(None)
+            Job.kind.in_([JobKind.BACKUP, JobKind.ARCHIVE]),
+            Job.status.in_(PENDING),
+            Job.checkpoint.is_not(None),
         )
     )
     for checkpoint in checkpoints:
@@ -257,7 +262,11 @@ async def purge_plan(db: AsyncSession) -> dict[str, Any]:
     manifests = [{"account": carbonio, "snapshot": str(sid)} for sid, carbonio in rows]
     keep = await blobs_in_checkpoints(db)
     blobs = [b for b in await db.scalars(orphan_blobs_query(MAX_PURGE_BLOBS)) if b not in keep]
-    return {"manifests": manifests, "blobs": blobs}
+    return {
+        "manifests": manifests,
+        "blobs": blobs,
+        "archives": await archiving.purgeable_archives(db),
+    }
 
 
 async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
@@ -272,7 +281,8 @@ async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
         )
     )
     orphan = await db.scalar(orphan_blobs_query(1))
-    if not expired and orphan is None:
+    archives = (await db.execute(archiving.purgeable_archives_query(1))).first()
+    if not expired and orphan is None and archives is None:
         return
     job = Job(kind=JobKind.PURGE, status=JobStatus.QUEUED, priority=200, params={})
     db.add(job)
@@ -325,6 +335,9 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
     report = TickReport()
     await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LOCK_ID})
     await enqueue_due_backups(db, now, report)
+    archived, errors = await archiving.enqueue_due(db, now)
+    report.jobs_queued += archived
+    report.errors.extend(errors)
     report.notifications_queued = await periodic_alerts(db, now)
     await enqueue_replicate(db, now, report)
     report.verify_jobs = await monitoring.enqueue_verify(db, now)
@@ -332,6 +345,8 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
         report.notifications_queued += await monitoring.periodic_alerts(db, now)
         await monitoring.prune(db, now)
         await mail_traffic.prune(db, now)
+        await archiving.prune_fetched(db, now)
+        await archiving.apply_retention(db, now)
         await apply_retention(db, report)
         await enqueue_purge(db, report)
     return report

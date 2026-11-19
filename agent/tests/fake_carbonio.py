@@ -14,6 +14,7 @@ import json
 import re
 import secrets
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from email.parser import BytesHeaderParser
 from typing import Any
 from urllib.parse import unquote
@@ -378,8 +379,22 @@ class FakeCarbonio:
         return {"m": [{"id": str(item.id)}]}
 
     def _SearchRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
-        """Only ``inid:<folder> msgid:"<id>"`` (what migrations use)."""
+        """``inid:<folder> msgid:"<id>"`` (migrations) and ``before:M/D/YYYY`` (archiving)."""
         mbox = self._mailbox_for(token)
+        before = re.fullmatch(r"before:(\d{1,2})/(\d{1,2})/(\d{4})", body["query"])
+        if before:
+            month, day, year = (int(g) for g in before.groups())
+            limit_ms = int(datetime(year, month, day, tzinfo=UTC).timestamp() * 1000)
+            found = sorted(
+                (i for i in mbox.items.values() if i.kind == "m" and i.date < limit_ms),
+                key=lambda i: (i.date, i.id),
+            )
+            offset, limit = int(body.get("offset", 0)), int(body.get("limit", 100))
+            page = found[offset : offset + limit]
+            return {
+                "m": [self._item_entry(i) for i in page],
+                "more": offset + limit < len(found),
+            }
         m = re.fullmatch(r'inid:(\d+) msgid:"((?:\\.|[^"\\])*)"', body["query"])
         if not m:
             raise _Fault("mail.QUERY_PARSE_ERROR", body["query"])
@@ -393,6 +408,19 @@ class FakeCarbonio:
             if " ".join(str(head.get("Message-ID", "")).split()) == wanted:
                 hits.append({"id": str(item.id)})
         return {"m": hits[: int(body.get("limit", 100))]} if hits else {}
+
+    def _MsgActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        if action["op"] != "delete":
+            raise _Fault("service.INVALID_REQUEST", action["op"])
+        ids = [int(i) for i in action["id"].split(",")]
+        missing = [i for i in ids if i not in mbox.items]
+        if missing:
+            raise _Fault("mail.NO_SUCH_ITEM", f"no such item: {missing[0]}")
+        for item_id in ids:
+            mbox.delete(item_id)
+        return {"action": {"op": "delete", "id": action["id"]}}
 
     def _GetFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)

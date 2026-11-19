@@ -30,6 +30,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
@@ -130,6 +131,8 @@ class JobKind(enum.StrEnum):
     PURGE = "purge"
     MIGRATE = "migrate"  # copy a mailbox from a remote IMAP server
     REPLICATE = "replicate"  # mirror the repository onto copy 02
+    ARCHIVE = "archive"  # move old messages of one account into the archive
+    FETCH = "fetch"  # read one archived message for the interface
 
 
 class JobStatus(enum.StrEnum):
@@ -670,6 +673,115 @@ class MigrationMailbox(Base):
         Index("ix_migration_mailboxes_batch_id", "batch_id"),
         Index("ix_migration_mailboxes_target", "target_account_id"),
     )
+
+
+# --------------------------------------------------------------------------- archiving
+
+
+class ArchivePolicy(Base):
+    """Which old messages leave the mailboxes for the archive, and when.
+
+    ``mode``: ``simulate`` (count only), ``copy`` (archive, keep in the mailbox) or
+    ``archive`` (archive, verify, then delete from the mailbox). ``archive`` is only accepted
+    once a simulation finished after the last change of the selection criteria.
+    """
+
+    __tablename__ = "archive_policies"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    mode: Mapped[str] = mapped_column(String(16), server_default=text("'simulate'"))
+    # Scope: empty lists = every domain / every account of these domains.
+    domain_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    account_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    exclude_account_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+    older_than_days: Mapped[int] = mapped_column(Integer, server_default=text("365"))
+    # Folder paths left alone (with their sub-folders), on top of Trash, Junk and Drafts.
+    exclude_folders: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    keep_flagged: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    keep_unread: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    include_admins: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    max_per_run: Mapped[int] = mapped_column(Integer, server_default=text("5000"))
+    schedule: Mapped[str] = mapped_column(String(128), server_default=text("'30 1 * * *'"))
+    timezone: Mapped[str] = mapped_column(String(64), server_default=text("'UTC'"))
+    # 0 = archives kept forever.
+    retention_days: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    criteria_changed_at: Mapped[datetime] = _created_at()
+    simulated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("mode IN ('simulate', 'copy', 'archive')", name="mode_valid"),
+        CheckConstraint("older_than_days >= 1", name="age_positive"),
+        CheckConstraint("max_per_run BETWEEN 1 AND 50000", name="max_per_run_bounded"),
+        CheckConstraint("retention_days >= 0", name="retention_positive"),
+    )
+
+
+class ArchivedMessage(Base):
+    """One message kept in the archive (content in the repository, metadata here)."""
+
+    __tablename__ = "archived_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("archive_policies.id", ondelete="SET NULL")
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    carbonio_item_id: Mapped[int] = mapped_column(Integer)
+    folder_path: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(Text)
+    sender: Mapped[str | None] = mapped_column(Text)
+    recipients: Mapped[str | None] = mapped_column(Text)
+    item_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    size: Mapped[int] = mapped_column(BigInteger)
+    has_attachments: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    flags: Mapped[str] = mapped_column(String(32), server_default=text("''"))
+    content_blob_id: Mapped[str] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    meta_blob_id: Mapped[str | None] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    archived_at: Mapped[datetime] = _created_at()
+    # Set once the message was deleted from the mailbox (NULL: copy only, still there).
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id", "carbonio_item_id", "content_blob_id", name="uq_archived_messages_item"
+        ),
+        Index("ix_archived_messages_account_date", "account_id", "item_date"),
+        Index("ix_archived_messages_archived_at", "archived_at"),
+        Index("ix_archived_messages_job_id", "job_id"),
+        Index("ix_archived_messages_content_blob", "content_blob_id"),
+        Index("ix_archived_messages_meta_blob", "meta_blob_id"),
+        Index(
+            "ix_archived_messages_subject_trgm",
+            "subject",
+            postgresql_using="gin",
+            postgresql_ops={"subject": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_archived_messages_sender_trgm",
+            "sender",
+            postgresql_using="gin",
+            postgresql_ops={"sender": "gin_trgm_ops"},
+        ),
+    )
+
+
+class FetchedContent(Base):
+    """Archived message read by the agent for the interface; encrypted, kept one hour."""
+
+    __tablename__ = "fetched_contents"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _created_at()
 
 
 # --------------------------------------------------------------------------- monitoring

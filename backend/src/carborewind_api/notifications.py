@@ -61,6 +61,7 @@ EVENTS = (
     "replica_lag",
     "storage_full",
     "mailbox_quota",
+    "archive_report",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -199,6 +200,17 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
         ),
+        "archive_report": "[CarboRewind] Archivage « {policy} » : {archived} message(s) archivé(s)",
+        "archive_report_body": (
+            "Passage de la politique d'archivage « {policy} » ({mode}) sur {accounts} compte(s) :\n"
+            "- messages concernés : {candidates}\n"
+            "- messages archivés : {archived}\n"
+            "- messages retirés des boîtes : {removed} ({freed} Gio libérés)\n"
+            "- erreurs : {errors} ; comptes en échec : {failed}\n"
+        ),
+        "mode.simulate": "simulation",
+        "mode.copy": "copie seule",
+        "mode.archive": "archivage complet",
         "metric.sent_messages_hour": "messages envoyés dans l'heure",
         "metric.sent_recipients_hour": "destinataires dans l'heure",
         "metric.sent_messages_day": "messages envoyés sur 24 h",
@@ -273,6 +285,17 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
         ),
+        "archive_report": '[CarboRewind] Archiving "{policy}": {archived} message(s) archived',
+        "archive_report_body": (
+            'Run of the archive policy "{policy}" ({mode}) on {accounts} account(s):\n'
+            "- messages selected: {candidates}\n"
+            "- messages archived: {archived}\n"
+            "- messages removed from the mailboxes: {removed} ({freed} GiB freed)\n"
+            "- errors: {errors}; failed accounts: {failed}\n"
+        ),
+        "mode.simulate": "simulation",
+        "mode.copy": "copy only",
+        "mode.archive": "full archiving",
         "metric.sent_messages_hour": "messages sent in the hour",
         "metric.sent_recipients_hour": "recipients in the hour",
         "metric.sent_messages_day": "messages sent in 24 h",
@@ -305,7 +328,7 @@ async def notify(db: AsyncSession, event: str, dedup_key: str | None = None, **v
         return False
     texts = TEXTS.get(cfg.language, TEXTS["fr"])
     safe = {k: _one_line(v) if k != "list" else str(v) for k, v in values.items()}
-    for key in ("metric", "action", "target"):  # codes with a translated label
+    for key in ("metric", "action", "target", "mode"):  # codes with a translated label
         if f"{key}.{safe.get(key)}" in texts:
             safe[key] = texts[f"{key}.{safe[key]}"]
     stmt = insert(Notification).values(

@@ -582,4 +582,90 @@ ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP WITH TIME ZONE;
 
 UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num = '0011';
 
+-- Running upgrade 0012 -> 0013
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate', 'archive', 'fetch'));
+
+CREATE TABLE archive_policies (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    enabled BOOLEAN DEFAULT false NOT NULL,
+    mode VARCHAR(16) DEFAULT 'simulate' NOT NULL,
+    domain_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    account_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    exclude_account_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    older_than_days INTEGER DEFAULT 365 NOT NULL,
+    exclude_folders JSONB DEFAULT '[]'::jsonb NOT NULL,
+    keep_flagged BOOLEAN DEFAULT true NOT NULL,
+    keep_unread BOOLEAN DEFAULT false NOT NULL,
+    include_admins BOOLEAN DEFAULT false NOT NULL,
+    max_per_run INTEGER DEFAULT 5000 NOT NULL,
+    schedule VARCHAR(128) DEFAULT '30 1 * * *' NOT NULL,
+    timezone VARCHAR(64) DEFAULT 'UTC' NOT NULL,
+    retention_days INTEGER DEFAULT 0 NOT NULL,
+    criteria_changed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    simulated_at TIMESTAMP WITH TIME ZONE,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_archive_policies PRIMARY KEY (id),
+    CONSTRAINT ck_archive_policies_mode_valid CHECK (mode IN ('simulate', 'copy', 'archive')),
+    CONSTRAINT ck_archive_policies_max_per_run_bounded CHECK (max_per_run BETWEEN 1 AND 50000),
+    CONSTRAINT ck_archive_policies_age_positive CHECK (older_than_days >= 1),
+    CONSTRAINT ck_archive_policies_retention_positive CHECK (retention_days >= 0),
+    CONSTRAINT uq_archive_policies_name UNIQUE (name)
+);
+
+CREATE TABLE archived_messages (
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
+    account_id UUID NOT NULL,
+    policy_id UUID,
+    job_id UUID,
+    carbonio_item_id INTEGER NOT NULL,
+    folder_path TEXT NOT NULL,
+    subject TEXT,
+    sender TEXT,
+    recipients TEXT,
+    item_date TIMESTAMP WITH TIME ZONE,
+    size BIGINT NOT NULL,
+    has_attachments BOOLEAN DEFAULT false NOT NULL,
+    flags VARCHAR(32) DEFAULT '' NOT NULL,
+    content_blob_id VARCHAR(64) NOT NULL,
+    meta_blob_id VARCHAR(64),
+    archived_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    removed_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_archived_messages PRIMARY KEY (id),
+    CONSTRAINT fk_archived_messages_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_archived_messages_content_blob_id_blobs FOREIGN KEY(content_blob_id) REFERENCES blobs (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_archived_messages_job_id_jobs FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE SET NULL,
+    CONSTRAINT fk_archived_messages_meta_blob_id_blobs FOREIGN KEY(meta_blob_id) REFERENCES blobs (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_archived_messages_policy_id_archive_policies FOREIGN KEY(policy_id) REFERENCES archive_policies (id) ON DELETE SET NULL,
+    CONSTRAINT uq_archived_messages_item UNIQUE (account_id, carbonio_item_id, content_blob_id)
+);
+
+CREATE INDEX ix_archived_messages_account_date ON archived_messages (account_id, item_date);
+
+CREATE INDEX ix_archived_messages_archived_at ON archived_messages (archived_at);
+
+CREATE INDEX ix_archived_messages_content_blob ON archived_messages (content_blob_id);
+
+CREATE INDEX ix_archived_messages_job_id ON archived_messages (job_id);
+
+CREATE INDEX ix_archived_messages_meta_blob ON archived_messages (meta_blob_id);
+
+CREATE INDEX ix_archived_messages_sender_trgm ON archived_messages USING gin (sender gin_trgm_ops);
+
+CREATE INDEX ix_archived_messages_subject_trgm ON archived_messages USING gin (subject gin_trgm_ops);
+
+CREATE TABLE fetched_contents (
+    job_id UUID NOT NULL,
+    data BYTEA NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_fetched_contents PRIMARY KEY (job_id),
+    CONSTRAINT fk_fetched_contents_job_id_jobs FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE CASCADE
+);
+
+UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
+
 COMMIT;

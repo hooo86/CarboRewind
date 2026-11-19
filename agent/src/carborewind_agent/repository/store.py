@@ -9,6 +9,7 @@ Every directory is 0700 and every file 0600 (owner: the agent's system user).
       keys/master.json                 master key wrapped by the KEK
       blobs/<id[:2]>/<id>              sealed objects, content-addressed
       manifests/<account>/<snap>.json  sealed snapshot manifests
+      archives/<account>/<id>.json     sealed archive manifests (messages moved to the archive)
       locks/repo.lock                  advisory lock (shared: backup/restore, exclusive: purge)
 
 Writes are atomic (temporary file in the same directory, ``fsync``, ``rename``, ``fsync`` of
@@ -254,6 +255,33 @@ class Repository:
         with contextlib.suppress(FileNotFoundError):
             path.unlink()
 
+    # ------------------------------------------------------------------ archive manifests
+
+    def _archive_path(self, account: str, archive: str) -> tuple[Path, bytes]:
+        rel = f"archives/{_segment(account, 'account')}/{_segment(archive, 'archive')}.json"
+        return self.root / rel, rel.encode()
+
+    def put_archive(self, account: str, archive: str, manifest: dict[str, Any]) -> str:
+        """Seal the list of messages one archive run took out of a mailbox."""
+        path, aad = self._archive_path(account, archive)
+        payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        _atomic_write(path, self._keys.seal(payload, aad=aad))
+        return aad.decode()
+
+    def get_archive(self, account: str, archive: str) -> dict[str, Any]:
+        path, aad = self._archive_path(account, archive)
+        try:
+            sealed = path.read_bytes()
+        except FileNotFoundError as exc:
+            raise RepositoryError(f"archive {aad.decode()} not found") from exc
+        result: dict[str, Any] = json.loads(self._keys.open(sealed, aad=aad))
+        return result
+
+    def delete_archive(self, account: str, archive: str) -> None:
+        path, _ = self._archive_path(account, archive)
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+
     # ------------------------------------------------------------------ verification
 
     def verify(self, sample: float = 1.0, seed: int | None = None) -> VerifyReport:
@@ -270,13 +298,17 @@ class Repository:
                 self.get(blob_id)
             except (IntegrityError, RepositoryError):
                 report.corrupted.append(blob_id)
-        manifests = self.root / "manifests"
-        for path in sorted(manifests.glob("*/*.json")) if manifests.exists() else []:
-            if sample < 1 and rng.random() >= sample:
-                continue
-            report.manifests_checked += 1
-            try:
-                self.get_manifest(path.parent.name, path.stem)
-            except (IntegrityError, RepositoryError, ValueError):
-                report.manifests_corrupted.append(f"{path.parent.name}/{path.stem}")
+        for sub, read in (("manifests", self.get_manifest), ("archives", self.get_archive)):
+            base = self.root / sub
+            for path in sorted(base.glob("*/*.json")) if base.exists() else []:
+                if sample < 1 and rng.random() >= sample:
+                    continue
+                report.manifests_checked += 1
+                try:
+                    read(path.parent.name, path.stem)
+                except (IntegrityError, RepositoryError, ValueError):
+                    name = f"{path.parent.name}/{path.stem}"
+                    report.manifests_corrupted.append(
+                        name if sub == "manifests" else f"archives/{name}"
+                    )
         return report

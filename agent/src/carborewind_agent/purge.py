@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class PurgeResult:
     manifests_deleted: list[str] = field(default_factory=list)
+    archives_deleted: list[str] = field(default_factory=list)
     blobs_deleted: list[str] = field(default_factory=list)
     freed_bytes: int = 0
 
@@ -27,6 +28,7 @@ class PurgeResult:
         """Body of ``POST /api/agent/jobs/{id}/purge-complete``."""
         return {
             "manifests_deleted": self.manifests_deleted,
+            "archives_deleted": self.archives_deleted,
             "blobs_deleted": self.blobs_deleted,
             "freed_bytes": self.freed_bytes,
         }
@@ -42,6 +44,13 @@ def run_purge(repo: Repository, params: dict[str, Any]) -> PurgeResult:
                 log.error("cannot delete manifest", extra={"entry": entry, "error": str(exc)})
                 continue
             result.manifests_deleted.append(entry["snapshot"])
+        for entry in params.get("archives", []):
+            try:
+                repo.delete_archive(entry["account"], entry["archive"])
+            except (RepositoryError, KeyError) as exc:
+                log.error("cannot delete archive", extra={"entry": entry, "error": str(exc)})
+                continue
+            result.archives_deleted.append(entry["archive"])
         for blob_id in params.get("blobs", []):
             try:
                 result.freed_bytes += repo.delete(blob_id)

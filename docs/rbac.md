@@ -32,6 +32,7 @@ chacune avec sa portée.
 | `agents:manage` (global uniquement) | ✅ | — | — | — |
 | `settings:manage` (global uniquement) | ✅ | — | — | — |
 | `migrations:manage` (global uniquement) | ✅ | — | — | — |
+| `archives:manage` (global uniquement) | ✅ | — | — | — |
 <!-- END GENERATED MATRIX -->
 
 Les permissions marquées *global uniquement* ne sont jamais accordées par une attribution

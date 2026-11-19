@@ -154,6 +154,7 @@ class AccountRestore:
         dry_run: bool = False,
         resume: dict[str, Any] | None = None,
         checkpoint: Checkpoint | None = None,
+        manifest: dict[str, Any] | None = None,
     ) -> RestoreResult:
         if mode not in MODES:
             raise RestoreError(f"unknown restore mode {mode!r}")
@@ -163,7 +164,8 @@ class AccountRestore:
         if "/" in label or not label.strip():
             raise RestoreError("invalid label")
         with self._repo.lock():
-            manifest = self._repo.get_manifest(source_account_id, snapshot_id)
+            if manifest is None:  # else given by the caller (messages from the archive)
+                manifest = self._repo.get_manifest(source_account_id, snapshot_id)
             folders = {int(f["id"]): f for f in manifest.get("folders", [])}
             items = {int(k): v for k, v in manifest.get("items", {}).items()}
             selected = self._select(items, folders, folder_ids or [], item_ids or [])

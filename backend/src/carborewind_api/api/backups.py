@@ -247,7 +247,11 @@ async def list_jobs(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[JobOut]:
     """Jobs on the caller's domains, most recent first."""
-    query = select(Job, Account.email).join(Account, Account.id == Job.account_id)
+    query = (
+        select(Job, Account.email)
+        .join(Account, Account.id == Job.account_id)
+        .where(Job.kind != JobKind.FETCH)  # reading a message is not a job worth listing
+    )
     scope = principal.access.domains(Permission.BACKUPS_READ)
     if scope is not None:
         query = query.where(Account.domain_id.in_(scope))

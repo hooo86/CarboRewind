@@ -367,6 +367,39 @@ class CarbonioClient:
         )
         return bool(resp.get("m"))
 
+    def search_messages(
+        self, account_id: str, query: str, *, offset: int = 0, limit: int = 500
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """One page of messages matching ``query`` (``SearchRequest``, oldest first).
+
+        Each hit carries ``id``, ``l`` (folder), ``f`` (flags), ``d`` (date, ms) and ``s``
+        (size). Returns ``(hits, more)``.
+        """
+        resp = self._mail.invoke(
+            "Search",
+            NS_MAIL,
+            {
+                "query": query,
+                "types": "message",
+                "sortBy": "dateAsc",
+                "offset": offset,
+                "limit": limit,
+            },
+            token=self.delegate(account_id),
+        )
+        return list(resp.get("m", [])), bool(resp.get("more"))
+
+    def delete_messages(self, account_id: str, item_ids: list[int]) -> None:
+        """Delete messages for good (``MsgActionRequest op=delete``, not via the Trash)."""
+        if not item_ids:
+            return
+        self._mail.invoke(
+            "MsgAction",
+            NS_MAIL,
+            {"action": {"op": "delete", "id": ",".join(str(i) for i in item_ids)}},
+            token=self.delegate(account_id),
+        )
+
     # ------------------------------------------------------------------ restore primitives
 
     def create_folder(

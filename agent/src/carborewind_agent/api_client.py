@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import ssl
 from pathlib import Path
@@ -172,6 +173,17 @@ class AgentApi:
 
     def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/migrate-complete", payload)
+
+    def archive_stored(self, job_id: str, entries: list[dict[str, Any]]) -> None:
+        """Index of archived messages, sent before any of them is deleted."""
+        self._post(f"/jobs/{job_id}/archive-stored", {"entries": entries})
+
+    def archive_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/archive-complete", payload)
+
+    def fetch_complete(self, job_id: str, data: bytes) -> None:
+        """Content of one archived message, for the interface (base64)."""
+        self._post(f"/jobs/{job_id}/fetch-complete", {"data": base64.b64encode(data).decode()})
 
     def fail(self, job_id: str, error: str, retryable: bool) -> None:
         self._post(f"/jobs/{job_id}/fail", {"error": error[:2000], "retryable": retryable})

@@ -19,6 +19,7 @@ from .db.models import (
     AccountStatus,
     Agent,
     AgentStatus,
+    ArchivedMessage,
     Job,
     JobKind,
     JobStatus,
@@ -79,6 +80,25 @@ async def collect(db: AsyncSession) -> str:
         )
     )
     out.gauge("mailboxes_used_bytes", "Total size of the live mailboxes", int(mail_used or 0))
+    archived, archived_bytes, removed_bytes = (
+        await db.execute(
+            select(
+                func.count(),
+                func.coalesce(func.sum(ArchivedMessage.size), 0),
+                func.coalesce(
+                    func.sum(ArchivedMessage.size).filter(ArchivedMessage.removed_at.is_not(None)),
+                    0,
+                ),
+            ).select_from(ArchivedMessage)
+        )
+    ).one()
+    out.gauge("archived_messages", "Messages kept in the archive", int(archived))
+    out.gauge("archived_bytes", "Size of the messages kept in the archive", int(archived_bytes))
+    out.gauge(
+        "archived_removed_bytes",
+        "Size of the archived messages removed from the mailboxes",
+        int(removed_bytes),
+    )
     oldest = await db.scalar(
         select(func.min(_last_ok()))
         .select_from(Account)

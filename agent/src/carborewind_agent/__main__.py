@@ -123,6 +123,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     import signal
 
     from .api_client import AgentApi
+    from .archive import MailboxArchiver
     from .backup import AccountBackup
     from .carbonio.factory import build_client
     from .migrate import MailboxMigration
@@ -147,6 +148,9 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         AccountRestore(carbonio, repo, throttle),
         repo,
         migration=MailboxMigration(carbonio, throttle),
+        archiver=MailboxArchiver(
+            carbonio, repo, throttle, protected={settings.carbonio_admin_name}
+        ),
         storage_dir=settings.storage_dir,
         replica=settings.replica_path,
         kek=read_kek(settings.repository_key_file),

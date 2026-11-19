@@ -18,6 +18,7 @@ from .api import account_list as account_list_api
 from .api import accounts as accounts_api
 from .api import agent as agent_api
 from .api import agents as agents_api
+from .api import archives as archives_api
 from .api import audit as audit_api
 from .api import auth as auth_api
 from .api import backups as backups_api
@@ -159,6 +160,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(migrations_api.router)
     app.include_router(mail_api.router)
     app.include_router(monitoring_api.router)
+    app.include_router(archives_api.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics(request: Request) -> Response:

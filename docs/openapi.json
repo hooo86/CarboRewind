@@ -944,6 +944,360 @@
         "title": "ApplyIn",
         "type": "object"
       },
+      "ArchiveEntryIn": {
+        "properties": {
+          "blob": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Blob",
+            "type": "string"
+          },
+          "date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "flags": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Flags",
+            "type": "string"
+          },
+          "folder": {
+            "title": "Folder",
+            "type": "integer"
+          },
+          "folder_path": {
+            "maxLength": 4096,
+            "title": "Folder Path",
+            "type": "string"
+          },
+          "has_attachments": {
+            "default": false,
+            "title": "Has Attachments",
+            "type": "boolean"
+          },
+          "item_id": {
+            "minimum": 0.0,
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "meta_blob": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Meta Blob",
+            "type": "string"
+          },
+          "meta_size": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Meta Size",
+            "type": "integer"
+          },
+          "recipients": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipients"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender"
+          },
+          "size": {
+            "minimum": 0.0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "item_id",
+          "folder",
+          "folder_path",
+          "blob",
+          "meta_blob",
+          "size"
+        ],
+        "title": "ArchiveEntryIn",
+        "type": "object"
+      },
+      "ArchiveResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Archived",
+            "type": "integer"
+          },
+          "archived_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "by_folder": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "maxProperties": 500,
+            "title": "By Folder",
+            "type": "object"
+          },
+          "cancelled": {
+            "default": false,
+            "title": "Cancelled",
+            "type": "boolean"
+          },
+          "candidate_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidate Bytes",
+            "type": "integer"
+          },
+          "candidates": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Candidates",
+            "type": "integer"
+          },
+          "error_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 1000,
+            "title": "Errors",
+            "type": "object"
+          },
+          "manifest_ref": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Ref"
+          },
+          "mode": {
+            "enum": [
+              "simulate",
+              "copy",
+              "archive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "new_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "New Bytes",
+            "type": "integer"
+          },
+          "removed": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 100000,
+            "title": "Removed",
+            "type": "array"
+          },
+          "removed_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Removed Bytes",
+            "type": "integer"
+          },
+          "replica_checked": {
+            "default": false,
+            "title": "Replica Checked",
+            "type": "boolean"
+          },
+          "scanned": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Scanned",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "ArchiveResultIn",
+        "type": "object"
+      },
+      "ArchiveStoredIn": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveEntryIn"
+            },
+            "maxItems": 1000,
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "ArchiveStoredIn",
+        "type": "object"
+      },
+      "ArchivedMessageOut": {
+        "properties": {
+          "account_email": {
+            "title": "Account Email",
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "archived_at": {
+            "format": "date-time",
+            "title": "Archived At",
+            "type": "string"
+          },
+          "folder_path": {
+            "title": "Folder Path",
+            "type": "string"
+          },
+          "has_attachments": {
+            "title": "Has Attachments",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "item_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Date"
+          },
+          "recipients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipients"
+          },
+          "removed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed At"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "account_email",
+          "folder_path",
+          "subject",
+          "sender",
+          "recipients",
+          "item_date",
+          "size",
+          "has_attachments",
+          "archived_at",
+          "removed_at"
+        ],
+        "title": "ArchivedMessageOut",
+        "type": "object"
+      },
       "AuditEventOut": {
         "properties": {
           "action": {
@@ -1560,6 +1914,21 @@
             ],
             "title": "Agents Active"
           },
+          "archived_bytes": {
+            "default": 0,
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "archived_messages": {
+            "default": 0,
+            "title": "Archived Messages",
+            "type": "integer"
+          },
+          "archived_removed_bytes": {
+            "default": 0,
+            "title": "Archived Removed Bytes",
+            "type": "integer"
+          },
           "jobs_failed_24h": {
             "title": "Jobs Failed 24H",
             "type": "integer"
@@ -1790,6 +2159,21 @@
           "error"
         ],
         "title": "FailureIn",
+        "type": "object"
+      },
+      "FetchedIn": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "maxLength": 27962034,
+            "title": "Data",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "FetchedIn",
         "type": "object"
       },
       "FolderIn": {
@@ -2209,7 +2593,9 @@
           "verify",
           "purge",
           "migrate",
-          "replicate"
+          "replicate",
+          "archive",
+          "fetch"
         ],
         "title": "JobKind",
         "type": "string"
@@ -3356,6 +3742,55 @@
         "title": "NotificationStatus",
         "type": "string"
       },
+      "OpenOut": {
+        "properties": {
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "OpenOut",
+        "type": "object"
+      },
+      "OpenedOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "OpenedOut",
+        "type": "object"
+      },
       "Options": {
         "additionalProperties": false,
         "properties": {
@@ -3476,6 +3911,37 @@
           "offset"
         ],
         "title": "Page[AccountOut]",
+        "type": "object"
+      },
+      "Page_ArchivedMessageOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArchivedMessageOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[ArchivedMessageOut]",
         "type": "object"
       },
       "Page_AuditEventOut_": {
@@ -3600,6 +4066,37 @@
           "offset"
         ],
         "title": "Page[JobOut]",
+        "type": "object"
+      },
+      "Page_RunJobOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[RunJobOut]",
         "type": "object"
       },
       "Page_SnapshotOut_": {
@@ -3770,6 +4267,120 @@
         "title": "PlaceIn",
         "type": "object"
       },
+      "PolicyFields": {
+        "additionalProperties": false,
+        "properties": {
+          "account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "domain_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Domain Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exclude_account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Exclude Account Ids",
+            "type": "array"
+          },
+          "exclude_folders": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Exclude Folders",
+            "type": "array"
+          },
+          "include_admins": {
+            "default": false,
+            "title": "Include Admins",
+            "type": "boolean"
+          },
+          "keep_flagged": {
+            "default": true,
+            "title": "Keep Flagged",
+            "type": "boolean"
+          },
+          "keep_unread": {
+            "default": false,
+            "title": "Keep Unread",
+            "type": "boolean"
+          },
+          "max_per_run": {
+            "default": 5000,
+            "maximum": 50000.0,
+            "minimum": 1.0,
+            "title": "Max Per Run",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "simulate",
+            "enum": [
+              "simulate",
+              "copy",
+              "archive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "older_than_days": {
+            "default": 365,
+            "maximum": 36500.0,
+            "minimum": 30.0,
+            "title": "Older Than Days",
+            "type": "integer"
+          },
+          "retention_days": {
+            "default": 0,
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "schedule": {
+            "default": "30 1 * * *",
+            "maxLength": 128,
+            "title": "Schedule",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "PolicyFields",
+        "type": "object"
+      },
       "PolicyIn": {
         "additionalProperties": false,
         "properties": {
@@ -3851,226 +4462,6 @@
         "title": "PolicyIn",
         "type": "object"
       },
-      "PolicyOut": {
-        "properties": {
-          "account_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Account Ids",
-            "type": "array"
-          },
-          "backup_type": {
-            "$ref": "#/components/schemas/BackupType"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "last_run_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Run At"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "next_run_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Run At"
-          },
-          "priority": {
-            "title": "Priority",
-            "type": "integer"
-          },
-          "retention": {
-            "$ref": "#/components/schemas/RetentionIn"
-          },
-          "schedule": {
-            "title": "Schedule",
-            "type": "string"
-          },
-          "target_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Id"
-          },
-          "target_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Name"
-          },
-          "target_type": {
-            "$ref": "#/components/schemas/TargetType"
-          },
-          "timezone": {
-            "title": "Timezone",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "target_type",
-          "target_id",
-          "target_name",
-          "backup_type",
-          "schedule",
-          "timezone",
-          "retention",
-          "priority",
-          "enabled",
-          "last_run_at",
-          "next_run_at",
-          "created_at"
-        ],
-        "title": "PolicyOut",
-        "type": "object"
-      },
-      "PolicyPatch": {
-        "additionalProperties": false,
-        "properties": {
-          "account_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                "maxItems": 10000,
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Account Ids"
-          },
-          "backup_type": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BackupType"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enabled"
-          },
-          "name": {
-            "anyOf": [
-              {
-                "maxLength": 255,
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "priority": {
-            "anyOf": [
-              {
-                "maximum": 1000.0,
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Priority"
-          },
-          "retention": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RetentionIn"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "schedule": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Schedule"
-          },
-          "timezone": {
-            "anyOf": [
-              {
-                "maxLength": 64,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Timezone"
-          }
-        },
-        "title": "PolicyPatch",
-        "type": "object"
-      },
       "PreviousSnapshot": {
         "properties": {
           "snapshot_id": {
@@ -4133,6 +4524,14 @@
       "PurgeResultIn": {
         "additionalProperties": false,
         "properties": {
+          "archives_deleted": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100000,
+            "title": "Archives Deleted",
+            "type": "array"
+          },
           "blobs_deleted": {
             "items": {
               "type": "string"
@@ -4291,6 +4690,47 @@
           "error"
         ],
         "title": "ReplicationOut",
+        "type": "object"
+      },
+      "RestoreIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          },
+          "mode": {
+            "default": "new_folder",
+            "enum": [
+              "new_folder",
+              "original"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Account to restore into (default: each message's own)",
+            "title": "Target Account Id"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "RestoreIn",
         "type": "object"
       },
       "RestoreRequest": {
@@ -4629,6 +5069,152 @@
           "rows"
         ],
         "title": "RowsIn",
+        "type": "object"
+      },
+      "RunIn": {
+        "additionalProperties": false,
+        "properties": {
+          "simulate": {
+            "default": false,
+            "description": "Count only, whatever the policy's mode",
+            "title": "Simulate",
+            "type": "boolean"
+          }
+        },
+        "title": "RunIn",
+        "type": "object"
+      },
+      "RunJobOut": {
+        "properties": {
+          "account_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Email"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "id",
+          "run",
+          "mode",
+          "policy",
+          "account_email",
+          "status",
+          "progress",
+          "error",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "RunJobOut",
+        "type": "object"
+      },
+      "RunOut": {
+        "properties": {
+          "jobs": {
+            "title": "Jobs",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "run": {
+            "title": "Run",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run",
+          "mode",
+          "jobs"
+        ],
+        "title": "RunOut",
         "type": "object"
       },
       "RunRequest": {
@@ -5300,6 +5886,52 @@
         "title": "StorageSettingsOut",
         "type": "object"
       },
+      "SummaryOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "last_archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Archived At"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "removed_bytes": {
+            "title": "Removed Bytes",
+            "type": "integer"
+          },
+          "removed_messages": {
+            "title": "Removed Messages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "messages",
+          "bytes",
+          "removed_messages",
+          "removed_bytes",
+          "accounts",
+          "last_archived_at"
+        ],
+        "title": "SummaryOut",
+        "type": "object"
+      },
       "TargetType": {
         "enum": [
           "account",
@@ -5728,6 +6360,285 @@
         "title": "VerifyResultIn",
         "type": "object"
       },
+      "carborewind_api__api__archives__PolicyOut": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "archived_bytes": {
+            "default": 0,
+            "title": "Archived Bytes",
+            "type": "integer"
+          },
+          "archived_count": {
+            "default": 0,
+            "title": "Archived Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "criteria_changed_at": {
+            "format": "date-time",
+            "title": "Criteria Changed At",
+            "type": "string"
+          },
+          "cutoff": {
+            "format": "date-time",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "domain_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Domain Ids",
+            "type": "array"
+          },
+          "effective_mode": {
+            "title": "Effective Mode",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exclude_account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Exclude Account Ids",
+            "type": "array"
+          },
+          "exclude_folders": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exclude Folders",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "include_admins": {
+            "title": "Include Admins",
+            "type": "boolean"
+          },
+          "keep_flagged": {
+            "title": "Keep Flagged",
+            "type": "boolean"
+          },
+          "keep_unread": {
+            "title": "Keep Unread",
+            "type": "boolean"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "max_per_run": {
+            "title": "Max Per Run",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "older_than_days": {
+            "title": "Older Than Days",
+            "type": "integer"
+          },
+          "retention_days": {
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "schedule": {
+            "title": "Schedule",
+            "type": "string"
+          },
+          "simulated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Simulated At"
+          },
+          "simulation_valid": {
+            "title": "Simulation Valid",
+            "type": "boolean"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "mode",
+          "effective_mode",
+          "simulation_valid",
+          "domain_ids",
+          "account_ids",
+          "exclude_account_ids",
+          "older_than_days",
+          "exclude_folders",
+          "keep_flagged",
+          "keep_unread",
+          "include_admins",
+          "max_per_run",
+          "schedule",
+          "timezone",
+          "retention_days",
+          "cutoff",
+          "criteria_changed_at",
+          "simulated_at",
+          "last_run_at",
+          "created_at"
+        ],
+        "title": "PolicyOut",
+        "type": "object"
+      },
+      "carborewind_api__api__archives__PolicyPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "domain_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Domain Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exclude_account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Exclude Account Ids",
+            "type": "array"
+          },
+          "exclude_folders": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Exclude Folders",
+            "type": "array"
+          },
+          "include_admins": {
+            "default": false,
+            "title": "Include Admins",
+            "type": "boolean"
+          },
+          "keep_flagged": {
+            "default": true,
+            "title": "Keep Flagged",
+            "type": "boolean"
+          },
+          "keep_unread": {
+            "default": false,
+            "title": "Keep Unread",
+            "type": "boolean"
+          },
+          "max_per_run": {
+            "default": 5000,
+            "maximum": 50000.0,
+            "minimum": 1.0,
+            "title": "Max Per Run",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "simulate",
+            "enum": [
+              "simulate",
+              "copy",
+              "archive"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          },
+          "older_than_days": {
+            "default": 365,
+            "maximum": 36500.0,
+            "minimum": 30.0,
+            "title": "Older Than Days",
+            "type": "integer"
+          },
+          "retention_days": {
+            "default": 0,
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Retention Days",
+            "type": "integer"
+          },
+          "schedule": {
+            "default": "30 1 * * *",
+            "maxLength": 128,
+            "title": "Schedule",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "title": "PolicyPatch",
+        "type": "object"
+      },
       "carborewind_api__api__audit__VerifyOut": {
         "properties": {
           "broken_id": {
@@ -5994,6 +6905,226 @@
           "job_id"
         ],
         "title": "VerifyOut",
+        "type": "object"
+      },
+      "carborewind_api__api__policies__PolicyOut": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "backup_type": {
+            "$ref": "#/components/schemas/BackupType"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run At"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionIn"
+          },
+          "schedule": {
+            "title": "Schedule",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Name"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "target_type",
+          "target_id",
+          "target_name",
+          "backup_type",
+          "schedule",
+          "timezone",
+          "retention",
+          "priority",
+          "enabled",
+          "last_run_at",
+          "next_run_at",
+          "created_at"
+        ],
+        "title": "PolicyOut",
+        "type": "object"
+      },
+      "carborewind_api__api__policies__PolicyPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "account_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 10000,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Ids"
+          },
+          "backup_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackupType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "retention": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetentionIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "PolicyPatch",
         "type": "object"
       }
     }
@@ -6580,6 +7711,100 @@
         ]
       }
     },
+    "/api/agent/jobs/{job_id}/archive-complete": {
+      "post": {
+        "description": "Record what left the mailbox; the last job of a run sends the report.",
+        "operationId": "archive_complete_api_agent_jobs__job_id__archive_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/archive-stored": {
+      "post": {
+        "description": "Index archived messages; called before any of them leaves the mailbox.",
+        "operationId": "archive_stored_api_agent_jobs__job_id__archive_stored_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveStoredIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive Stored",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/jobs/{job_id}/complete": {
       "post": {
         "description": "Record the snapshot and apply the catalogue diff, atomically.",
@@ -6669,6 +7894,53 @@
           }
         },
         "summary": "Fail",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/fetch-complete": {
+      "post": {
+        "description": "Keep an archived message for the interface, encrypted, for one hour.",
+        "operationId": "fetch_complete_api_agent_jobs__job_id__fetch_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FetchedIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fetch Complete",
         "tags": [
           "agent protocol"
         ]
@@ -7164,6 +8436,690 @@
         "summary": "Revoke Agent",
         "tags": [
           "agents"
+        ]
+      }
+    },
+    "/api/archives/messages": {
+      "get": {
+        "description": "Archived messages on the caller's domains, most recent first.",
+        "operationId": "search_messages_api_archives_messages_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "account_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "account",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account"
+            }
+          },
+          {
+            "description": "Subject contains",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Subject contains",
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sender",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sender"
+            }
+          },
+          {
+            "in": "query",
+            "name": "recipient",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recipient"
+            }
+          },
+          {
+            "in": "query",
+            "name": "folder",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 1024,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Folder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "removed",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Removed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ArchivedMessageOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Messages",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/messages/{message_id}/open": {
+      "post": {
+        "description": "Ask the agent for the message; poll ``GET /api/archives/open/{job_id}``.",
+        "operationId": "open_message_api_archives_messages__message_id__open_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "title": "Message Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Message",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/open/{job_id}": {
+      "get": {
+        "operationId": "opened_message_api_archives_open__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Opened Message",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/open/{job_id}/eml": {
+      "get": {
+        "operationId": "download_message_api_archives_open__job_id__eml_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Message",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/policies": {
+      "get": {
+        "operationId": "list_policies_api_archives_policies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/carborewind_api__api__archives__PolicyOut"
+                  },
+                  "title": "Response List Policies Api Archives Policies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Policies",
+        "tags": [
+          "archives"
+        ]
+      },
+      "post": {
+        "operationId": "create_policy_api_archives_policies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/carborewind_api__api__archives__PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Policy",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/policies/{policy_id}": {
+      "delete": {
+        "description": "Archived messages stay (kept forever once their policy is gone).",
+        "operationId": "delete_policy_api_archives_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Policy",
+        "tags": [
+          "archives"
+        ]
+      },
+      "patch": {
+        "operationId": "update_policy_api_archives_policies__policy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/carborewind_api__api__archives__PolicyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/carborewind_api__api__archives__PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Policy",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/policies/{policy_id}/run": {
+      "post": {
+        "operationId": "run_policy_api_archives_policies__policy_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Policy",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/restore": {
+      "post": {
+        "description": "One restore job per source account; messages go back with their dates and flags.",
+        "operationId": "restore_messages_api_archives_restore_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobOut"
+                  },
+                  "title": "Response Restore Messages Api Archives Restore Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore Messages",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/runs": {
+      "get": {
+        "description": "Archive jobs, most recent first (one per account and run).",
+        "operationId": "list_runs_api_archives_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "policy_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Policy Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_RunJobOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/summary": {
+      "get": {
+        "operationId": "summary_api_archives_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Summary",
+        "tags": [
+          "archives"
         ]
       }
     },
@@ -9318,7 +11274,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/PolicyOut"
+                    "$ref": "#/components/schemas/carborewind_api__api__policies__PolicyOut"
                   },
                   "title": "Response List Policies Api Policies Get",
                   "type": "array"
@@ -9350,7 +11306,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PolicyOut"
+                  "$ref": "#/components/schemas/carborewind_api__api__policies__PolicyOut"
                 }
               }
             },
@@ -9426,7 +11382,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PolicyPatch"
+                "$ref": "#/components/schemas/carborewind_api__api__policies__PolicyPatch"
               }
             }
           },
@@ -9437,7 +11393,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PolicyOut"
+                  "$ref": "#/components/schemas/carborewind_api__api__policies__PolicyOut"
                 }
               }
             },

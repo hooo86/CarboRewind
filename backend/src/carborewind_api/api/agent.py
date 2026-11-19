@@ -8,6 +8,7 @@ the certificate fingerprint to an active agent. Enrolment itself uses a one-time
 
 from __future__ import annotations
 
+import base64
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -19,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import audit, mail_traffic, monitoring, storage_settings
+from .. import archiving, audit, mail_traffic, monitoring, storage_settings
 from ..db.models import (
     Account,
     AccountAction,
@@ -30,6 +31,7 @@ from ..db.models import (
     BackupType,
     Blob,
     Domain,
+    FetchedContent,
     FolderVersion,
     ItemKind,
     ItemVersion,
@@ -586,6 +588,9 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
             await db.flush()
             await db.commit()
             return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if job.kind is JobKind.ARCHIVE and account is not None and params.get("mode") == "copy":
+        # Sent, not stored: messages already copied are not read again.
+        params["skip_ids"] = await archiving.skip_ids(db, account.id)
     if job.kind is JobKind.PURGE and "blobs" not in params:
         # Fixed at first claim (the agent is idle, so nothing deduplicates against them).
         params.update(await purge_plan(db))
@@ -893,6 +898,7 @@ class PurgeResultIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     manifests_deleted: list[uuid.UUID] = Field(default_factory=list, max_length=100_000)
+    archives_deleted: list[str] = Field(default_factory=list, max_length=100_000)
     blobs_deleted: list[str] = Field(default_factory=list, max_length=100_000)
     freed_bytes: int = Field(default=0, ge=0)
 
@@ -912,6 +918,10 @@ async def purge_complete(
     planned_manifests = {m["snapshot"] for m in job.params.get("manifests", [])}
     blobs = [b for b in body.blobs_deleted if b in planned_blobs]
     manifests = [m for m in body.manifests_deleted if str(m) in planned_manifests]
+    planned_archives = {a["archive"] for a in job.params.get("archives", [])}
+    await archiving.mark_archives_purged(
+        db, [a for a in body.archives_deleted if a in planned_archives]
+    )
     now = datetime.now(UTC)
     if manifests:
         await db.execute(
@@ -1111,7 +1121,155 @@ async def verify_complete(
     )
 
 
+class ArchiveEntryIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    item_id: int = Field(ge=0)
+    folder: int
+    folder_path: str = Field(max_length=4096)
+    blob: str = Field(pattern=r"^[0-9a-f]{64}$")
+    meta_blob: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+    meta_size: int = Field(default=0, ge=0)
+    flags: str = Field(default="", max_length=32)
+    subject: str | None = Field(default=None, max_length=2000)
+    sender: str | None = Field(default=None, max_length=1000)
+    recipients: str | None = Field(default=None, max_length=2000)
+    date: datetime | None = None
+    has_attachments: bool = False
+
+
+class ArchiveStoredIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[ArchiveEntryIn] = Field(max_length=1000)
+
+
+async def _own_archive_job(db: DbSession, agent: Agent, job_id: uuid.UUID) -> tuple[Job, Account]:
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.ARCHIVE or job.account_id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not an archive job")
+    account = await db.get(Account, job.account_id)
+    assert account is not None  # noqa: S101 - FK
+    return job, account
+
+
+@router.post("/jobs/{job_id}/archive-stored", status_code=status.HTTP_204_NO_CONTENT)
+async def archive_stored(
+    job_id: uuid.UUID, body: ArchiveStoredIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Index archived messages; called before any of them leaves the mailbox."""
+    job, account = await _own_archive_job(db, agent, job_id)
+    if job.params.get("mode") == "simulate":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a simulation stores nothing")
+    await archiving.record_stored(
+        db, job, account, [e.model_dump(mode="json") for e in body.entries]
+    )
+
+
+class ArchiveResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["simulate", "copy", "archive"]
+    scanned: int = Field(default=0, ge=0)
+    candidates: int = Field(default=0, ge=0)
+    candidate_bytes: int = Field(default=0, ge=0)
+    truncated: bool = False
+    by_folder: dict[str, list[int]] = Field(default_factory=dict, max_length=500)
+    archived: int = Field(default=0, ge=0)
+    archived_bytes: int = Field(default=0, ge=0)
+    new_bytes: int = Field(default=0, ge=0)
+    removed: list[int] = Field(default_factory=list, max_length=100_000)
+    removed_bytes: int = Field(default=0, ge=0)
+    errors: dict[str, str] = Field(default_factory=dict, max_length=1000)
+    error_count: int = Field(default=0, ge=0)
+    manifest_ref: str | None = Field(default=None, max_length=512)
+    replica_checked: bool = False
+    cancelled: bool = False
+
+
+@router.post("/jobs/{job_id}/archive-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def archive_complete(
+    job_id: uuid.UUID, body: ArchiveResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Record what left the mailbox; the last job of a run sends the report."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job, account = await _own_archive_job(db, agent, job_id)
+    if body.mode != job.params.get("mode"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "mode differs from the job's")
+    now = datetime.now(UTC)
+    marked = await archiving.mark_removed(db, account, body.removed, now)
+    summary = body.model_dump(mode="json", exclude={"removed"})
+    summary["removed_count"] = len(body.removed)
+    summary["errors"] = dict(list(body.errors.items())[:100])
+    job.progress = summary
+    job.error = f"{body.error_count} message(s) not archived" if body.error_count else None
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, now, None
+    await _audit(
+        db,
+        agent,
+        f"archive.{body.mode}",
+        Outcome.FAILURE if body.error_count else Outcome.SUCCESS,
+        target_type="account",
+        target_id=account.email,
+        domain_id=account.domain_id,
+        details={
+            "job": str(job.id),
+            "policy": job.params.get("policy"),
+            "candidates": body.candidates,
+            "archived": body.archived,
+            "removed": len(body.removed),
+            "indexed_removed": marked,
+            "removed_bytes": body.removed_bytes,
+            "errors": body.error_count,
+            "replica_checked": body.replica_checked,
+        },
+    )
+    await archiving.finish_run(db, job, now)
+
+
+class FetchedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data: str = Field(max_length=(archiving.MAX_FETCH_BYTES * 4) // 3 + 8)
+
+
+@router.post("/jobs/{job_id}/fetch-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def fetch_complete(
+    job_id: uuid.UUID,
+    body: FetchedIn,
+    agent: CurrentAgent,
+    db: DbSession,
+    settings: AppSettings,
+) -> None:
+    """Keep an archived message for the interface, encrypted, for one hour."""
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.FETCH:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a fetch job")
+    try:
+        raw = base64.b64decode(body.data, validate=True)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid base64") from exc
+    try:
+        sealed = archiving.seal_content(settings, raw)
+    except SecretKeyError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    await db.execute(
+        insert(FetchedContent)
+        .values(job_id=job.id, data=sealed)
+        .on_conflict_do_update(index_elements=["job_id"], set_={"data": sealed})
+    )
+    job.progress = {"size": len(raw)}
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
+
+
 async def _notify_failure(db: DbSession, job: Job) -> None:
+    if job.kind is JobKind.FETCH:
+        return  # the user waiting in the interface sees the error
+    if job.kind is JobKind.ARCHIVE:
+        await archiving.finish_run(db, job, datetime.now(UTC))
     account = await db.get(Account, job.account_id) if job.account_id else None
     await notify(
         db,

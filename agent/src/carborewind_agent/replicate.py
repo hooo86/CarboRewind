@@ -22,7 +22,7 @@ from typing import Any
 
 from .storage import NETWORK_FS, mount_info
 
-MIRRORED = ("blobs", "manifests")  # deletions are mirrored only below these
+MIRRORED = ("blobs", "manifests", "archives")  # deletions are mirrored only below these
 SKIPPED = ("locks",)
 
 

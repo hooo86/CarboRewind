@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .api_client import AgentApi, ApiError
+from .archive import ArchiveError, MailboxArchiver
 from .backup import AccountBackup
 from .carbonio import AccountInfo, CarbonioClient, SoapFaultError
 from .imap import ImapError, ImapSettings, ImapSource
@@ -26,6 +27,26 @@ log = logging.getLogger(__name__)
 
 # Carbonio errors that will not fix themselves by retrying the job.
 PERMANENT_FAULTS = {"account.NO_SUCH_ACCOUNT", "service.PERM_DENIED", "account.AUTH_FAILED"}
+
+
+def archive_manifest(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Restore manifest for archived messages: ``{id, blob, meta_blob, folder_path}`` each."""
+    paths = sorted({str(i.get("folder_path") or "/Inbox") for i in items})
+    folder_ids = {path: -(n + 2) for n, path in enumerate(paths)}  # never sent to Carbonio
+    return {
+        "folders": [
+            {"id": fid, "path": path, "view": "message"} for path, fid in folder_ids.items()
+        ],
+        "items": {
+            str(int(i["id"])): {
+                "kind": "message",
+                "folder": folder_ids[str(i.get("folder_path") or "/Inbox")],
+                "blob": i["blob"],
+                "meta_blob": i.get("meta_blob"),
+            }
+            for i in items
+        },
+    }
 
 
 def _first(attrs: dict[str, list[str]], name: str) -> str | None:
@@ -120,6 +141,7 @@ class Worker:
         repo: Repository | None = None,
         *,
         migration: MailboxMigration | None = None,
+        archiver: MailboxArchiver | None = None,
         storage_dir: Path | None = None,
         replica: Path | None = None,
         storage_every: int = 3,
@@ -136,6 +158,7 @@ class Worker:
         self._restore = restore
         self._repo = repo
         self._migration = migration
+        self._archiver = archiver
         self._storage_dir = storage_dir
         self._replica = replica
         self._storage_every = storage_every
@@ -300,6 +323,10 @@ class Worker:
             runner = self._run_replicate
         elif job["kind"] == "verify" and self._repo is not None:
             runner = self._run_verify
+        elif job["kind"] == "archive" and self._archiver is not None:
+            runner = self._run_archive
+        elif job["kind"] == "fetch" and self._repo is not None:
+            runner = self._run_fetch
         else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
@@ -333,6 +360,7 @@ class Worker:
             ImapError,
             ReplicaError,
             RepositoryError,
+            ArchiveError,
         ) as exc:
             stop_beat.set()
             log.error("job %s failed: %s", job_id, exc)
@@ -397,9 +425,13 @@ class Worker:
     ) -> None:
         assert self._restore is not None  # noqa: S101 - checked by the caller
         p = job["params"]
+        manifest = None
+        if p.get("archive_items"):
+            # Messages from the archive: the API sends where each one lives.
+            manifest = archive_manifest(p["archive_items"])
         result = self._restore.run(
             p["source_carbonio_id"],
-            p["snapshot_id"],
+            p.get("snapshot_id") or "archive",
             job["carbonio_id"],
             job["account_email"],
             mode=p.get("mode", "new_folder"),
@@ -409,6 +441,7 @@ class Worker:
             dry_run=bool(p.get("dry_run")),
             resume=job.get("checkpoint"),
             checkpoint=checkpoint,
+            manifest=manifest,
         )
         self._api.restore_complete(job["job_id"], result.to_payload())
         log.info(
@@ -476,6 +509,62 @@ class Worker:
             report.checked,
             len(report.corrupted) + len(report.manifests_corrupted),
         )
+
+    def _run_archive(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        assert self._archiver is not None and self._repo is not None  # noqa: S101
+        params = job.get("params") or {}
+        if params.get("mode") != "simulate":
+            self._repo.min_free_bytes = self.space_floor(self._repo.root)
+            self._repo.check_space()
+        result = self._archiver.run(
+            job["carbonio_id"],
+            job["account_email"],
+            job["job_id"],
+            params,
+            report=lambda entries: self._api.archive_stored(job["job_id"], entries),
+            replica_check=self._check_replica if self._replica else None,
+            resume=job.get("checkpoint"),
+            checkpoint=checkpoint,
+            should_stop=self._cancelled.is_set,
+        )
+        self._api.archive_complete(job["job_id"], result.to_payload())
+        log.info(
+            "job %s done: %s of %s, %s candidate(s), %s archived, %s removed, %s error(s)",
+            job["job_id"],
+            result.mode,
+            job.get("account_email"),
+            result.candidates,
+            result.archived,
+            len(result.removed),
+            len(result.errors),
+        )
+
+    def _check_replica(self, blob_ids: list[str]) -> None:
+        """Before messages leave the mailbox: copy 2 is refreshed and holds them, readable."""
+        assert self._repo is not None and self._replica is not None  # noqa: S101
+        if self._kek is None:
+            raise ReplicaError("copy 02 cannot be checked without the repository key")
+        floor = int(self._space[2] * GIB) if self._space else 0
+        with self._repo.lock():
+            outcome = replicate(self._repo.root, self._replica, min_free_bytes=floor)
+        if outcome.errors:
+            raise ReplicaError(f"copy 02 not refreshed: {len(outcome.errors)} file(s) failed")
+        copy = Repository.open(self._replica, self._kek)
+        for blob_id in blob_ids:
+            copy.get(blob_id)  # raises when missing or unreadable
+
+    def _run_fetch(self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]) -> None:
+        """Read one archived message for the interface."""
+        assert self._repo is not None  # noqa: S101 - checked by the caller
+        params = job.get("params") or {}
+        with self._repo.lock():
+            data = self._repo.get(str(params.get("blob", "")))
+        limit = int(params.get("max_bytes", 20 * 2**20))
+        if len(data) > limit:
+            raise RepositoryError(f"message too large to display ({len(data)} bytes)")
+        self._api.fetch_complete(job["job_id"], data)
 
     def _run_migrate(
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]

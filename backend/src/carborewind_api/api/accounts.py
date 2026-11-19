@@ -27,6 +27,7 @@ from ..db.models import (
     Snapshot,
     SnapshotStatus,
 )
+from .archives import summary_for
 from .deps import DbSession, Principal, deny, require
 from .schemas import MAX_PAGE, Page
 
@@ -76,6 +77,10 @@ class Dashboard(BaseModel):
     # Mailboxes over the alert threshold (Monitoring settings).
     mailboxes_nearly_full: int = 0
     mailbox_alert_percent: int = 0
+    # Archive: messages kept in the repository, and what left the mailboxes.
+    archived_messages: int = 0
+    archived_bytes: int = 0
+    archived_removed_bytes: int = 0
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -260,7 +265,11 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
             Account.domain_id,
         )
     )
+    archive = await summary_for(db, scope)
     return Dashboard(
+        archived_messages=archive.messages,
+        archived_bytes=archive.bytes,
+        archived_removed_bytes=archive.removed_bytes,
         mail_used_bytes=int(mail_used or 0),
         mail_quota_bytes=int(mail_quota or 0),
         mailboxes_nearly_full=int(nearly_full or 0),
