@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { AgentSettingsForm } from "../components/AgentSettingsForm";
+import { BlacklistSettingsTab } from "../components/Blacklist";
 import { LimitsForm } from "./MailTrafficPage";
 import { MonitoringSettingsForm } from "./MonitoringPage";
 import { PolicyCard } from "./UsersPage";
@@ -36,14 +37,17 @@ const EVENTS = [
   "service_up",
   "mail_queue",
   "archive_report",
+  "blacklisted",
+  "blacklist_cleared",
 ];
 
 type Form = Omit<
   NotificationSettings,
-  "password_set" | "secret_key_configured"
+  "password_set" | "secret_key_configured" | "fallback_password_set"
 > & {
   password: string;
   recipientsText: string;
+  fallbackPassword: string;
 };
 
 function toForm(s: NotificationSettings): Form {
@@ -61,6 +65,13 @@ function toForm(s: NotificationSettings): Form {
     timezone: s.timezone,
     language: s.language,
     password: "",
+    fallback_enabled: s.fallback_enabled ?? false,
+    fallback_host: s.fallback_host ?? "",
+    fallback_port: s.fallback_port ?? 587,
+    fallback_security: s.fallback_security ?? "starttls",
+    fallback_username: s.fallback_username ?? "",
+    fallback_sender: s.fallback_sender ?? "",
+    fallbackPassword: "",
   };
 }
 
@@ -82,6 +93,9 @@ function NotificationsForm({
     text: string;
   } | null>(null);
   const [testTo, setTestTo] = useState("");
+  const [fallbackPw, setFallbackPw] = useState<"keep" | "change" | "clear">(
+    initial.fallback_password_set ? "keep" : "change",
+  );
 
   useEffect(() => setForm(toForm(initial)), [initial]);
 
@@ -96,7 +110,7 @@ function NotificationsForm({
       .split(/[\s,;]+/)
       .map((r) => r.trim())
       .filter(Boolean);
-    const { recipientsText: _r, password, ...rest } = form;
+    const { recipientsText: _r, password, fallbackPassword, ...rest } = form;
     void _r;
     try {
       const saved = await api.saveNotificationSettings({
@@ -108,9 +122,16 @@ function NotificationsForm({
             : passwordAction === "clear"
               ? ""
               : password,
+        fallback_password:
+          fallbackPw === "keep"
+            ? null
+            : fallbackPw === "clear"
+              ? ""
+              : fallbackPassword,
       });
       setMessage({ kind: "ok", text: t("settings.saved") });
       setPasswordAction(saved.password_set ? "keep" : "change");
+      setFallbackPw(saved.fallback_password_set ? "keep" : "change");
       onSaved(saved);
     } catch (err) {
       setMessage({
@@ -122,11 +143,11 @@ function NotificationsForm({
     }
   }
 
-  async function test() {
+  async function test(server: "main" | "fallback" = "main") {
     setBusy(true);
     setMessage(null);
     try {
-      const r = await api.testNotification(testTo.trim() || undefined);
+      const r = await api.testNotification(testTo.trim() || undefined, server);
       setMessage(
         r.ok
           ? { kind: "ok", text: t("settings.testOk") }
@@ -250,6 +271,110 @@ function NotificationsForm({
         </div>
       </fieldset>
       <fieldset>
+        <legend>{t("settings.fallback")}</legend>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={form.fallback_enabled}
+            onChange={(e) => set("fallback_enabled", e.target.checked)}
+          />
+          {t("settings.fallbackEnabled")}
+        </label>
+        <p className="muted small">{t("settings.fallbackHelp")}</p>
+        <div className="row">
+          <label className="grow">
+            {t("settings.fallbackHost")}
+            <input
+              value={form.fallback_host}
+              placeholder="smtp.relais.example.com"
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_host", e.target.value)}
+            />
+          </label>
+          <label>
+            {t("settings.fallbackPort")}
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={form.fallback_port}
+              disabled={!form.fallback_enabled}
+              onChange={(e) =>
+                set("fallback_port", Number(e.target.value) || 0)
+              }
+            />
+          </label>
+          <label>
+            {t("settings.fallbackSecurity")}
+            <select
+              value={form.fallback_security}
+              disabled={!form.fallback_enabled}
+              onChange={(e) => {
+                const security = e.target.value as "starttls" | "ssl" | "none";
+                set("fallback_security", security);
+                set(
+                  "fallback_port",
+                  security === "ssl" ? 465 : security === "starttls" ? 587 : 25,
+                );
+              }}
+            >
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">SSL/TLS</option>
+              <option value="none">{t("settings.noEncryption")}</option>
+            </select>
+          </label>
+        </div>
+        <div className="row">
+          <label className="grow">
+            {t("settings.fallbackUsername")}
+            <input
+              value={form.fallback_username}
+              autoComplete="off"
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_username", e.target.value)}
+            />
+          </label>
+          <label className="grow">
+            {t("settings.fallbackPassword")}
+            {fallbackPw === "change" ? (
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={form.fallbackPassword}
+                disabled={!form.fallback_enabled}
+                onChange={(e) => set("fallbackPassword", e.target.value)}
+              />
+            ) : (
+              <span className="muted">
+                {fallbackPw === "keep"
+                  ? t("settings.passwordStored")
+                  : t("settings.passwordCleared")}
+              </span>
+            )}
+          </label>
+          {initial.fallback_password_set && fallbackPw !== "change" && (
+            <div className="actions">
+              <button
+                type="button"
+                className="small secondary"
+                onClick={() => setFallbackPw("change")}
+              >
+                {t("settings.fallbackChangePassword")}
+              </button>
+            </div>
+          )}
+          <label className="grow">
+            {t("settings.fallbackSender")}
+            <input
+              type="email"
+              value={form.fallback_sender}
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_sender", e.target.value)}
+            />
+          </label>
+        </div>
+      </fieldset>
+      <fieldset>
         <legend>{t("settings.messages")}</legend>
         <div className="row">
           <label className="grow">
@@ -345,6 +470,16 @@ function NotificationsForm({
         >
           {t("settings.sendTest")}
         </button>
+        {initial.fallback_enabled && initial.fallback_host && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => void test("fallback")}
+          >
+            {t("settings.sendTestFallback")}
+          </button>
+        )}
       </div>
     </form>
   );
@@ -443,6 +578,7 @@ const TABS = [
   "monitoring",
   "mail",
   "security",
+  "blacklist",
   "agent",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -506,6 +642,7 @@ export function SettingsPage() {
       {tab === "monitoring" && <MonitoringSettingsTab />}
       {tab === "mail" && <MailLimitsTab />}
       {tab === "security" && <PolicyCard />}
+      {tab === "blacklist" && <BlacklistSettingsTab />}
       {tab === "agent" && <AgentTab />}
     </>
   );

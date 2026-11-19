@@ -50,6 +50,23 @@ sudo su - zextras -c "zmcontrol start"
 sudo su - zextras -c "postqueue -f"
 ```
 
+## Listes noires (DNSBL)
+
+**Paramètres → Listes noires** : les adresses IP publiques du serveur de messagerie sont
+vérifiées toutes les N minutes (60 par défaut, 15 au minimum) et à la demande, dans les listes
+choisies (par défaut zen.spamhaus.org, bl.spamcop.net, b.barracudacentral.org,
+psbl.surriel.com, ix.dnsbl.manitu.net, dnsbl-1.uceprotect.net).
+
+* Requête DNS standard : adresse inversée + zone de la liste (IPv4 et IPv6). Réponse en
+  `127.0.0.0/8` = listée ; nom inexistant = non listée.
+* **Spamhaus refuse les résolveurs DNS publics** (8.8.8.8, 1.1.1.1…) : il répond
+  `127.255.255.25x`, affiché comme « inconnu », jamais comme une inscription. Le serveur
+  CarboRewind doit utiliser le DNS local ou celui du fournisseur d'accès.
+* Une inscription envoie l'alerte `blacklisted` (une fois), un retrait `blacklist_cleared`. Une
+  vérification en échec (DNS injoignable) ne change rien.
+* La Supervision affiche le tableau adresse × liste ; le tableau de bord affiche un bandeau rouge
+  tant qu'une adresse est listée ; Prometheus : `carborewind_blacklisted{ip,zone}`.
+
 ## Garde-fous
 
 - **Espace disque** : l'agent refuse d'écrire une sauvegarde quand il ne resterait pas assez de place

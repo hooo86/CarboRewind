@@ -139,4 +139,18 @@ describe("dashboard", () => {
       screen.getByText("archived (3 messages, 2 MB freed)"),
     ).toBeInTheDocument();
   });
+
+  it("warns when a server address is blacklisted", async () => {
+    open(user("super_admin"), {
+      "GET /api/dashboard": {
+        ...dashboard,
+        blacklisted: ["203.0.113.10 (bl.spamcop.net)"],
+      },
+    });
+    expect(
+      await screen.findByText(
+        /Server address\(es\) blacklisted: 203.0.113.10 \(bl.spamcop.net\)/,
+      ),
+    ).toBeInTheDocument();
+  });
 });

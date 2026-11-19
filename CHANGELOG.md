@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Serveur SMTP de secours pour les notifications (bascule automatique, test dédié).
+- Surveillance des listes noires (DNSBL) des adresses publiques du serveur de messagerie, avec
+  alerte à l'inscription et au retrait, tableau dans la Supervision, bandeau sur le tableau de
+  bord et métrique Prometheus.
 - Paramètres → Agent : boîtes sauvegardées en parallèle, débit, pause selon la charge, garde-fou
   disque, surveillance des services et du journal MTA, appliqués par l'agent sans redémarrage.
   Voir `docs/agent-settings.md`.

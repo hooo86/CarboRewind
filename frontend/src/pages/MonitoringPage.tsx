@@ -18,6 +18,7 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
+import { BlacklistPanel } from "../components/Blacklist";
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
 
@@ -498,6 +499,8 @@ export function MonitoringPage() {
                   ))
                 )}
               </section>
+
+              <BlacklistPanel />
 
               <h2>{t("monitoring.storage")}</h2>
               {d.storage.length === 0 ? (

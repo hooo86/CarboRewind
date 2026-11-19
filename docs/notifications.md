@@ -14,3 +14,13 @@ Menu **Paramètres** (super-administrateurs) → *Notifications par e-mail (SMTP
 Les messages sont mis en file d'attente dans la même transaction que l'événement, puis envoyés par le service
 `scheduler`, avec jusqu'à 6 tentatives (délais croissants). La liste **Derniers messages** montre l'état de
 chaque envoi. Le conteneur `scheduler` dispose pour cela d'un réseau sortant (`egress`).
+
+
+## Serveur SMTP de secours
+
+**Paramètres → Notifications → Serveur SMTP de secours** : quand le serveur principal refuse ou
+ne répond pas, chaque alerte repart aussitôt par le serveur de secours (son propre hôte, port,
+chiffrement, identifiant, mot de passe chiffré, et expéditeur facultatif). Le journal d'envoi
+indique « sent by the fallback server » avec l'erreur du serveur principal ; si les deux
+échouent, le message est retenté plus tard avec les deux erreurs. Un bouton envoie un e-mail de
+test par le serveur de secours.

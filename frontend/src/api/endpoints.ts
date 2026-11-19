@@ -1,5 +1,7 @@
 import { request } from "./client";
 import type {
+  BlacklistSettings,
+  BlacklistStatus,
   AgentTuning,
   AgentTuningInput,
   ArchivedMessage,
@@ -195,11 +197,11 @@ export const api = {
     request<NotificationSettings>("GET", "/api/settings/notifications"),
   saveNotificationSettings: (body: NotificationSettingsInput) =>
     request<NotificationSettings>("PUT", "/api/settings/notifications", body),
-  testNotification: (to?: string) =>
+  testNotification: (to?: string, server: "main" | "fallback" = "main") =>
     request<{ ok: boolean; error: string | null }>(
       "POST",
       "/api/settings/notifications/test",
-      to ? { to } : {},
+      to ? { to, server } : { server },
     ),
   notificationOutbox: () =>
     request<OutboxEntry[]>("GET", "/api/settings/notifications/outbox"),
@@ -326,6 +328,11 @@ export const api = {
   agentTuning: () => request<AgentTuning>("GET", "/api/settings/agent"),
   saveAgentTuning: (body: AgentTuningInput) =>
     request<AgentTuning>("PUT", "/api/settings/agent", body),
+  blacklist: () => request<BlacklistStatus>("GET", "/api/monitoring/blacklist"),
+  saveBlacklist: (body: BlacklistSettings) =>
+    request<BlacklistStatus>("PUT", "/api/monitoring/blacklist", body),
+  checkBlacklist: () =>
+    request<BlacklistStatus>("POST", "/api/monitoring/blacklist/check"),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

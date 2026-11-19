@@ -306,6 +306,14 @@ export function DashboardPage() {
             <Link to="/monitoring">{t("alerts.seeMonitoring")}</Link>
           </p>
         )}
+      {stats.state === "ready" && (stats.data.blacklisted?.length ?? 0) > 0 && (
+        <p role="alert" className="alert error">
+          {t("alerts.blacklisted", {
+            list: stats.data.blacklisted?.join(", "),
+          })}{" "}
+          <Link to="/monitoring">{t("alerts.seeMonitoring")}</Link>
+        </p>
+      )}
       {policies.state === "ready" && !policies.data.some((p) => p.enabled) && (
         <p role="alert" className="alert warn">
           {t("alerts.noPolicy")}{" "}

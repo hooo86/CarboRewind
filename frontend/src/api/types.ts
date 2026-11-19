@@ -139,6 +139,7 @@ export interface Dashboard {
   archived_bytes?: number;
   archived_removed_bytes?: number;
   services_down?: string[];
+  blacklisted?: string[];
   mail_queue_total?: number | null;
 }
 
@@ -285,13 +286,42 @@ export interface NotificationSettings {
   digest_hour: number;
   timezone: string;
   language: "fr" | "en";
+  fallback_enabled?: boolean;
+  fallback_host?: string;
+  fallback_port?: number;
+  fallback_security?: "starttls" | "ssl" | "none";
+  fallback_username?: string;
+  fallback_password_set?: boolean;
+  fallback_sender?: string;
   secret_key_configured: boolean;
 }
 
 export type NotificationSettingsInput = Omit<
   NotificationSettings,
-  "password_set" | "secret_key_configured"
-> & { password: string | null };
+  "password_set" | "secret_key_configured" | "fallback_password_set"
+> & { password: string | null; fallback_password?: string | null };
+
+export interface BlacklistSettings {
+  enabled: boolean;
+  ips: string[];
+  zones: string[];
+  interval_minutes: number;
+}
+
+export interface BlacklistResult {
+  ip: string;
+  zone: string;
+  listed: boolean | null;
+  codes: string[];
+  error: string | null;
+  since?: string | null;
+}
+
+export interface BlacklistStatus {
+  settings: BlacklistSettings;
+  checked_at: string | null;
+  results: BlacklistResult[];
+}
 
 export interface OutboxEntry {
   id: number;

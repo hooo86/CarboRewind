@@ -222,7 +222,7 @@ describe("settings page", () => {
       "bad credentials",
     );
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual(
-      [{}, { to: "me@example.com" }],
+      [{ server: "main" }, { to: "me@example.com", server: "main" }],
     );
   });
 
@@ -468,5 +468,118 @@ describe("agent settings", () => {
     });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/invalid port line/)).toBeInTheDocument();
+  });
+});
+
+describe("fallback SMTP and blacklists", () => {
+  it("saves a fallback server and tests it", async () => {
+    const { calls } = open(user("super_admin"), {
+      "GET /api/settings/notifications": {
+        ...stored,
+        fallback_enabled: true,
+        fallback_host: "relay.example.com",
+        fallback_port: 465,
+        fallback_security: "ssl",
+        fallback_username: "relay",
+        fallback_password_set: true,
+        fallback_sender: "",
+      },
+      "POST /api/settings/notifications/test": { ok: true, error: null },
+    });
+    expect(
+      await screen.findByDisplayValue("relay.example.com"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Port (fallback)")).toHaveValue(465);
+    fireEvent.change(screen.getByLabelText("Fallback server"), {
+      target: { value: "smtp.isp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "PUT")?.body).toMatchObject({
+        fallback_enabled: true,
+        fallback_host: "smtp.isp.example.com",
+        fallback_port: 465,
+        fallback_security: "ssl",
+        fallback_password: null,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test the fallback server" }),
+    );
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.url.endsWith("/notifications/test") &&
+            (c.body as { server: string }).server === "fallback",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("sets up the blacklist check and checks now", async () => {
+    const status = {
+      settings: {
+        enabled: false,
+        ips: [],
+        zones: ["zen.spamhaus.org", "bl.spamcop.net"],
+        interval_minutes: 60,
+      },
+      checked_at: null,
+      results: [],
+    };
+    const { calls } = open(
+      user("super_admin"),
+      {
+        "GET /api/monitoring/blacklist": status,
+        "PUT /api/monitoring/blacklist": (c: { body: unknown }) => ({
+          body: { ...status, settings: c.body },
+        }),
+        "POST /api/monitoring/blacklist/check": {
+          ...status,
+          checked_at: "2026-11-19T10:00:00Z",
+          results: [
+            {
+              ip: "203.0.113.10",
+              zone: "zen.spamhaus.org",
+              listed: false,
+              codes: [],
+              error: null,
+            },
+            {
+              ip: "203.0.113.10",
+              zone: "bl.spamcop.net",
+              listed: true,
+              codes: ["127.0.0.2"],
+              error: null,
+            },
+          ],
+        },
+      },
+      "/settings?tab=blacklist",
+    );
+    const form = await screen.findByRole("form", {
+      name: "Blacklists (DNSBL)",
+    });
+    fireEvent.click(within(form).getByLabelText("Check automatically"));
+    fireEvent.change(within(form).getByLabelText(/Public IP addresses/), {
+      target: { value: "203.0.113.10\n 198.51.100.7 " },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(
+      await within(form).findByText("Settings saved."),
+    ).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      enabled: true,
+      ips: ["203.0.113.10", "198.51.100.7"],
+      zones: ["zen.spamhaus.org", "bl.spamcop.net"],
+      interval_minutes: 60,
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Check now" }));
+    const table = await within(form).findByRole("table", {
+      name: "Result per list",
+    });
+    expect(within(table).getByText("listed")).toHaveClass("bad");
+    expect(within(table).getByText("clean")).toHaveClass("ok");
   });
 });
