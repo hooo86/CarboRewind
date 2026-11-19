@@ -1527,6 +1527,22 @@
         "title": "ClaimedJob",
         "type": "object"
       },
+      "CodeIn": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 32,
+            "minLength": 6,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "CodeIn",
+        "type": "object"
+      },
       "Dashboard": {
         "properties": {
           "accounts": {
@@ -2446,6 +2462,18 @@
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
+          "otp": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otp"
+          },
           "password": {
             "maxLength": 1024,
             "minLength": 1,
@@ -2789,6 +2817,124 @@
           }
         },
         "title": "MatchRequest",
+        "type": "object"
+      },
+      "MeOut": {
+        "properties": {
+          "auth_source": {
+            "$ref": "#/components/schemas/AuthSource"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "failed_logins": {
+            "default": 0,
+            "title": "Failed Logins",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "locked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locked Until"
+          },
+          "recovery_codes_left": {
+            "default": 0,
+            "title": "Recovery Codes Left",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleOut"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "totp_enabled": {
+            "default": false,
+            "title": "Totp Enabled",
+            "type": "boolean"
+          },
+          "totp_enrollment_required": {
+            "default": false,
+            "title": "Totp Enrollment Required",
+            "type": "boolean"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "email",
+          "auth_source",
+          "is_active",
+          "locked_until",
+          "last_login_at",
+          "roles"
+        ],
+        "title": "MeOut",
         "type": "object"
       },
       "MigrationAuth": {
@@ -3498,6 +3644,29 @@
         "title": "Page[UserOut]",
         "type": "object"
       },
+      "PasswordChange": {
+        "additionalProperties": false,
+        "properties": {
+          "current_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "PasswordChange",
+        "type": "object"
+      },
       "PlaceIn": {
         "properties": {
           "error": {
@@ -3969,6 +4138,22 @@
           }
         },
         "title": "PurgeResultIn",
+        "type": "object"
+      },
+      "RecoveryCodesOut": {
+        "properties": {
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recovery_codes"
+        ],
+        "title": "RecoveryCodesOut",
         "type": "object"
       },
       "ReplicaResultIn": {
@@ -4443,12 +4628,34 @@
         "title": "RunRequest",
         "type": "object"
       },
+      "SecurityPolicyIn": {
+        "additionalProperties": false,
+        "properties": {
+          "require_2fa": {
+            "default": "none",
+            "enum": [
+              "none",
+              "admins",
+              "all"
+            ],
+            "title": "Require 2Fa",
+            "type": "string"
+          }
+        },
+        "title": "SecurityPolicyIn",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "csrf_token": {
             "description": "Echo this value in the X-CSRF-Token header of every unsafe request",
             "title": "Csrf Token",
             "type": "string"
+          },
+          "totp_enrollment_required": {
+            "default": false,
+            "title": "Totp Enrollment Required",
+            "type": "boolean"
           },
           "user": {
             "$ref": "#/components/schemas/UserOut"
@@ -5102,6 +5309,29 @@
         "title": "TestResult",
         "type": "object"
       },
+      "TotpSetupOut": {
+        "properties": {
+          "qr_svg": {
+            "title": "Qr Svg",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret",
+          "uri",
+          "qr_svg"
+        ],
+        "title": "TotpSetupOut",
+        "type": "object"
+      },
       "UserCreate": {
         "additionalProperties": false,
         "description": "Create a local account, or pre-register an LDAP account (no password).",
@@ -5164,6 +5394,18 @@
           "auth_source": {
             "$ref": "#/components/schemas/AuthSource"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "display_name": {
             "anyOf": [
               {
@@ -5185,6 +5427,11 @@
               }
             ],
             "title": "Email"
+          },
+          "failed_logins": {
+            "default": 0,
+            "title": "Failed Logins",
+            "type": "integer"
           },
           "id": {
             "format": "uuid",
@@ -5225,6 +5472,11 @@
             },
             "title": "Roles",
             "type": "array"
+          },
+          "totp_enabled": {
+            "default": false,
+            "title": "Totp Enabled",
+            "type": "boolean"
           },
           "username": {
             "title": "Username",
@@ -5282,6 +5534,23 @@
               }
             ],
             "title": "Is Active"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          },
+          "reset_2fa": {
+            "default": false,
+            "title": "Reset 2Fa",
+            "type": "boolean"
           },
           "unlock": {
             "default": false,
@@ -7195,6 +7464,147 @@
         ]
       }
     },
+    "/api/auth/2fa/disable": {
+      "post": {
+        "description": "Turn two-factor authentication off (a current or recovery code is required).",
+        "operationId": "totp_disable_api_auth_2fa_disable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Totp Disable",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/enable": {
+      "post": {
+        "description": "Confirm enrolment with a first code; returns the recovery codes (shown once).",
+        "operationId": "totp_enable_api_auth_2fa_enable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Totp Enable",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/recovery-codes": {
+      "post": {
+        "description": "Replace the recovery codes (a current code is required).",
+        "operationId": "totp_new_recovery_codes_api_auth_2fa_recovery_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Totp New Recovery Codes",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/2fa/setup": {
+      "post": {
+        "description": "Start (or restart) enrolment: a new secret, active once confirmed by a code.",
+        "operationId": "totp_setup_api_auth_2fa_setup_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Totp Setup",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "description": "Open a session. Sets an HttpOnly session cookie and a CSRF cookie.",
@@ -7221,7 +7631,7 @@
             "description": "Successful Response"
           },
           "401": {
-            "description": "Invalid credentials (generic, whatever the reason)"
+            "description": "Invalid credentials (generic, whatever the reason), or 'otp_required' when the password is right and a second factor is needed"
           },
           "415": {
             "description": "Body must be application/json"
@@ -7270,7 +7680,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserOut"
+                  "$ref": "#/components/schemas/MeOut"
                 }
               }
             },
@@ -7278,6 +7688,41 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "description": "Change one's own password (local accounts); the other sessions are closed.",
+        "operationId": "change_password_api_auth_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
         "tags": [
           "auth"
         ]
@@ -9193,6 +9638,67 @@
         ]
       }
     },
+    "/api/settings/security": {
+      "get": {
+        "operationId": "get_security_api_settings_security_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityPolicyIn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Security",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Who must use two-factor authentication. Users concerned who have not enrolled yet\nare sent to the enrolment at their next request.",
+        "operationId": "put_security_api_settings_security_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecurityPolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecurityPolicyIn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Security",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
     "/api/settings/storage": {
       "get": {
         "operationId": "get_storage_settings_api_settings_storage_get",
@@ -9372,6 +9878,41 @@
       }
     },
     "/api/users/{user_id}": {
+      "delete": {
+        "description": "Delete an access account (its audit trail stays). Not yourself, not the last\nactive super-administrator.",
+        "operationId": "delete_user_api_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete User",
+        "tags": [
+          "users"
+        ]
+      },
       "get": {
         "operationId": "get_user_api_users__user_id__get",
         "parameters": [

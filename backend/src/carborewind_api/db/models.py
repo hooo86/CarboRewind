@@ -203,6 +203,14 @@ class User(Base):
     failed_logins: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-factor authentication (TOTP). The secret is Fernet-encrypted; it is set during
+    # enrolment and only active once confirmed with a first code (totp_enabled).
+    totp_secret_enc: Mapped[str | None] = mapped_column(Text)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
+    # SHA-256 of the unused one-time recovery codes.
+    recovery_codes: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     roles: Mapped[list[RoleAssignment]] = relationship(

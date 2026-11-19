@@ -44,6 +44,7 @@ from ..notifications import (
     send_mail,
 )
 from ..scheduling import CronError, zone
+from ..security import policy as security_policy
 from ..storage_settings import SAFE_FIELD, valid_share
 from .deps import AppSettings, DbSession, Principal, client_ip, require
 
@@ -522,3 +523,36 @@ async def replicate_now(principal: Admin, db: DbSession, request: Request) -> Re
         target_id=str(job.id),
     )
     return ReplicateResult(job_id=job.id)
+
+
+# ------------------------------------------------------------------ security policy
+
+
+class SecurityPolicyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    require_2fa: Literal["none", "admins", "all"] = "none"
+
+
+@router.get("/security", response_model=SecurityPolicyIn)
+async def get_security(principal: Admin, db: DbSession) -> SecurityPolicyIn:
+    return SecurityPolicyIn(require_2fa=(await security_policy.load(db)).require_2fa)
+
+
+@router.put("/security", response_model=SecurityPolicyIn)
+async def put_security(
+    body: SecurityPolicyIn, principal: Admin, db: DbSession, request: Request
+) -> SecurityPolicyIn:
+    """Who must use two-factor authentication. Users concerned who have not enrolled yet
+    are sent to the enrolment at their next request."""
+    await security_policy.save(db, security_policy.SecurityPolicy(require_2fa=body.require_2fa))
+    await audit.record(
+        db,
+        action="settings.security",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details=body.model_dump(),
+    )
+    return body

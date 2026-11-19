@@ -568,4 +568,18 @@ CREATE INDEX ix_storage_samples_hour ON storage_samples (hour);
 
 UPDATE alembic_version SET version_num='0011' WHERE alembic_version.version_num = '0010';
 
+-- Running upgrade 0011 -> 0012
+
+ALTER TABLE users ADD COLUMN totp_secret_enc TEXT;
+
+ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT false NOT NULL;
+
+ALTER TABLE users ADD COLUMN totp_last_step BIGINT;
+
+ALTER TABLE users ADD COLUMN recovery_codes JSONB DEFAULT '[]'::jsonb NOT NULL;
+
+ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP WITH TIME ZONE;
+
+UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num = '0011';
+
 COMMIT;

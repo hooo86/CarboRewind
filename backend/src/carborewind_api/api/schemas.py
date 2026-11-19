@@ -38,6 +38,9 @@ class UserOut(BaseModel):
     locked_until: datetime | None
     last_login_at: datetime | None
     roles: list[RoleOut]
+    totp_enabled: bool = False
+    failed_logins: int = 0
+    created_at: datetime | None = None
 
     @classmethod
     def of(cls, user: User) -> UserOut:
@@ -51,4 +54,7 @@ class UserOut(BaseModel):
             locked_until=user.locked_until,
             last_login_at=user.last_login_at,
             roles=[RoleOut(id=r.id, role=r.role, domain_id=r.domain_id) for r in user.roles],
+            totp_enabled=bool(user.totp_enabled),
+            failed_logins=user.failed_logins or 0,
+            created_at=user.created_at,
         )
