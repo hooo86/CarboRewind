@@ -1108,6 +1108,8 @@ export const resources = {
         lastBackup: "Dernière sauvegarde",
         never: "jamais",
         actions: "Actions",
+        backupPending:
+          "Une sauvegarde de {{email}} est déjà en attente ou en cours : attendez qu'elle se termine (ou annulez-la dans Jobs).",
         backupIncremental: "Incrémentale",
         backupFull: "Complète",
         backupTitle: "Lancer une sauvegarde {{type}} de {{email}}",
@@ -2433,6 +2435,8 @@ export const resources = {
         lastBackup: "Last backup",
         never: "never",
         actions: "Actions",
+        backupPending:
+          "A backup of {{email}} is already queued or running: wait for it to finish (or cancel it in Jobs).",
         backupIncremental: "Incremental",
         backupFull: "Full",
         backupTitle: "Start a {{type}} backup of {{email}}",

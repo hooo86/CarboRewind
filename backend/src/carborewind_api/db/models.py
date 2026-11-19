@@ -458,6 +458,13 @@ class Job(Base):
         ),
         Index("ix_jobs_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
         Index("ix_jobs_account_created", "account_id", "created_at"),
+        # One backup of a mailbox at a time: a second request is refused, not queued.
+        Index(
+            "uq_jobs_one_backup_per_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("kind = 'backup' AND status IN ('queued', 'running')"),
+        ),
     )
 
 

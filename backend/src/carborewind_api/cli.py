@@ -205,6 +205,15 @@ async def backup_request(email: str, full: bool) -> str:
             if account is None:
                 raise SystemExit(f"unknown account {email} (has the agent synced the inventory?)")
             backup_type = BackupType.FULL if full else BackupType.INCREMENTAL
+            pending = await db.scalar(
+                select(Job.id).where(
+                    Job.kind == JobKind.BACKUP,
+                    Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                    Job.account_id == account.id,
+                )
+            )
+            if pending is not None:
+                raise SystemExit(f"a backup of {email} is already queued or running ({pending})")
             job = Job(
                 kind=JobKind.BACKUP,
                 status=JobStatus.QUEUED,

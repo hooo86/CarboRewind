@@ -132,7 +132,8 @@ async def enqueue_due_backups(db: AsyncSession, now: datetime, report: TickRepor
             result = await db.execute(
                 insert(Job)
                 .values(rows)
-                .on_conflict_do_nothing(index_elements=["idempotency_key"])
+                # Same slot already queued, or a backup of the account already pending.
+                .on_conflict_do_nothing()
                 .returning(Job.id)
             )
             queued = len(result.all())

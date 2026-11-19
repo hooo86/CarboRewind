@@ -682,4 +682,25 @@ ALTER TABLE notifications ADD COLUMN channel VARCHAR(16) DEFAULT 'email' NOT NUL
 
 UPDATE alembic_version SET version_num='0015' WHERE alembic_version.version_num = '0014';
 
+-- Running upgrade 0015 -> 0016
+
+UPDATE jobs SET status = 'cancelled', finished_at = now(),
+               error = 'cancelled: another backup of this mailbox was already pending'
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id, row_number() OVER (
+                    PARTITION BY account_id
+                    ORDER BY (status = 'running') DESC, created_at
+                ) AS rank
+                FROM jobs
+                WHERE kind = 'backup' AND status IN ('queued', 'running')
+                  AND account_id IS NOT NULL
+            ) ranked
+            WHERE rank > 1 AND id IN (SELECT id FROM jobs WHERE status = 'queued')
+        );
+
+CREATE UNIQUE INDEX uq_jobs_one_backup_per_account ON jobs (account_id) WHERE kind = 'backup' AND status IN ('queued', 'running');
+
+UPDATE alembic_version SET version_num='0016' WHERE alembic_version.version_num = '0015';
+
 COMMIT;

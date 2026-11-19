@@ -1010,3 +1010,27 @@ def test_large_full_backup_completes(
     r = agent.post(f"/jobs/{claimed['job_id']}/complete", body)
     assert r.status_code == 204, r.text
     assert api.get(f"/api/jobs/{claimed['job_id']}").json()["status"] == "succeeded"
+
+
+def test_one_backup_of_a_mailbox_at_a_time(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    _drain(agent)
+    email = f"once@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    account_id = str(_account_id(engine, email))
+    first = api.post("/api/backups", json={"account_id": account_id}, headers=admin)
+    assert first.status_code == 202
+    again = api.post("/api/backups", json={"account_id": account_id}, headers=admin)
+    assert again.status_code == 409
+    assert "already" in again.json()["detail"]
+    claimed = agent.post("/jobs/claim").json()  # still refused while it runs
+    assert (
+        api.post("/api/backups", json={"account_id": account_id}, headers=admin).status_code == 409
+    )
+    bulk = api.post("/api/backups/bulk", json={"account_ids": [account_id]}, headers=admin)
+    assert bulk.json()["skipped_busy"] == 1
+    agent.post(f"/jobs/{claimed['job_id']}/fail", {"error": "x", "retryable": False})
+    assert (
+        api.post("/api/backups", json={"account_id": account_id}, headers=admin).status_code == 202
+    )

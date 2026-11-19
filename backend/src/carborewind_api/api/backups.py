@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from .. import audit
 from ..authz import Permission
@@ -100,6 +101,15 @@ async def start_backup(
         )
     if account.status is AccountStatus.DELETED:
         raise HTTPException(status.HTTP_409_CONFLICT, "account is deleted")
+    pending = await db.scalar(
+        select(Job.id).where(
+            Job.kind == JobKind.BACKUP,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            Job.account_id == account.id,
+        )
+    )
+    if pending is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, BACKUP_PENDING)
     job = Job(
         kind=JobKind.BACKUP,
         status=JobStatus.QUEUED,
@@ -108,8 +118,12 @@ async def start_backup(
         priority=body.priority,
         params={"backup_type": body.backup_type.value},
     )
-    db.add(job)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(job)
+            await db.flush()
+    except IntegrityError:  # two clicks at the same instant: the unique index decides
+        raise HTTPException(status.HTTP_409_CONFLICT, BACKUP_PENDING) from None
     await db.refresh(job)
     await audit.record(
         db,
@@ -124,6 +138,9 @@ async def start_backup(
         details={"job": str(job.id), "type": body.backup_type.value},
     )
     return JobOut.of(job, account.email)
+
+
+BACKUP_PENDING = "a backup of this mailbox is already queued or running"
 
 
 class BulkBackupRequest(BaseModel):

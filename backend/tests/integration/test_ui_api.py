@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
 from carborewind_api.config import Settings
@@ -215,6 +215,14 @@ def test_dashboard_scoped_and_global(
 def test_backup_request_returns_account_email(
     api: TestClient, engine: Engine, world: dict[str, uuid.UUID]
 ) -> None:
+    with engine.begin() as conn:  # earlier tests may have left one pending
+        conn.execute(
+            text(
+                "UPDATE jobs SET status = 'cancelled' WHERE account_id = :a AND kind = 'backup'"
+                " AND status = 'queued'"
+            ),
+            {"a": world["bob"]},
+        )
     _login(api, engine, Role.DOMAIN_ADMIN, world["d1"])
     csrf = api.cookies.get("__Host-carborewind_csrf")
     r = api.post(

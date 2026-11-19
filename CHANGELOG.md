@@ -16,6 +16,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
 
 ### Fixed
+- Une boîte ne peut plus être sauvegardée deux fois en même temps : une nouvelle demande est
+  refusée tant qu'une sauvegarde de la boîte est en attente ou en cours (index unique en base,
+  migration 0016 qui annule les doublons déjà en file).
 - Sauvegarde des grosses boîtes (plus d'environ 11 000 messages) en échec « HTTP 500 » à la fin :
   l'enregistrement du catalogue est désormais fait par lots (limite de 65 535 paramètres de
   PostgreSQL). Les caractères NUL présents dans certains sujets sont retirés.
