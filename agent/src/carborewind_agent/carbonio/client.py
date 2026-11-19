@@ -392,6 +392,18 @@ class CarbonioClient:
                 return item
         raise SoapFaultError("mail.NO_SUCH_ITEM", f"item {item_id} not found")
 
+    def messages_meta(self, account_id: str, item_ids: list[int]) -> dict[int, dict[str, Any]]:
+        """Flags, tags, folder, dates of many messages at once (``GetMsgMetadataRequest``)."""
+        if not item_ids:
+            return {}
+        resp = self._mail.invoke(
+            "GetMsgMetadata",
+            NS_MAIL,
+            {"m": {"ids": ",".join(str(i) for i in item_ids)}},
+            token=self.delegate(account_id),
+        )
+        return {int(m["id"]): m for m in resp.get("m", []) if "id" in m}
+
     def has_message_id(self, account_id: str, folder_id: int, message_id: str) -> bool:
         """True if the folder already holds a message with this Message-ID header.
 

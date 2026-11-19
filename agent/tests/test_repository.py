@@ -302,3 +302,20 @@ def test_cli_repo_uses_environment(
     assert main(["repo", "init"]) == 0
     assert main(["repo", "verify"]) == 0
     assert "checked 0 blob(s)" in capsys.readouterr().out
+
+
+def test_directory_syncs_are_batched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from carborewind_agent.repository import store
+
+    repo = Repository.init(tmp_path / "r", generate_key())
+    synced: list[Path] = []
+    monkeypatch.setattr(store, "_fsync_dir", synced.append)
+    for n in range(20):
+        repo.put(f"message {n}".encode())
+    assert synced == []  # deferred
+    repo.sync()
+    assert synced and len(synced) == len(set(synced)) <= 20
+    synced.clear()
+    repo.put(b"one more")
+    repo.put_manifest("acc", "snap", {"items": {}})
+    assert len(synced) >= 2  # the blob's directory first, then the manifest's

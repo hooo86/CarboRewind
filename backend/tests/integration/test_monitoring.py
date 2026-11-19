@@ -25,6 +25,7 @@ from carborewind_api.db.models import (
     MailAlert,
     MailStat,
     Notification,
+    Role,
     Snapshot,
     SnapshotStatus,
     StorageSample,
@@ -463,3 +464,42 @@ def test_carbonio_services_and_mail_queue(api: TestClient, engine: Engine) -> No
         headers=h,
     )
     assert r.status_code == 422
+
+
+def test_agent_settings_from_the_interface(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    with Session(engine) as s, s.begin():
+        s.execute(delete(AppSetting).where(AppSetting.key == "agent_tuning"))
+    assert agent.api.get("/api/agent/config", headers=agent.headers).status_code == 204
+    current = api.get("/api/settings/agent", headers=h).json()
+    assert current["revision"] == 0 and current["max_concurrent_accounts"] == 2
+    body = {
+        "max_concurrent_accounts": 3,
+        "max_bandwidth_mbps": 200,
+        "max_load_per_cpu": 4,
+        "min_free_gb_local": 10,
+        "min_free_percent_local": 10,
+        "min_free_gb_network": 1,
+        "service_monitor": True,
+        "service_ports": {"mta": 25, "amavis": 10024},
+        "mail_monitor": False,
+    }
+    for bad in (
+        {"max_concurrent_accounts": 0},
+        {"max_concurrent_accounts": 9},
+        {"service_ports": {"bad name": 25}},
+        {"service_ports": {"mta": 70000}},
+        {"min_free_percent_local": 95},
+    ):
+        assert api.put("/api/settings/agent", json={**body, **bad}, headers=h).status_code == 422
+    r = api.put("/api/settings/agent", json=body, headers=h)
+    assert r.status_code == 200 and r.json()["revision"] == 1
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["revision"] == 1 and cfg["max_concurrent_accounts"] == 3
+    assert cfg["mail_monitor"] is False and cfg["service_ports"] == {"mta": 25, "amavis": 10024}
+    listed = api.get("/api/settings/agent", headers=h).json()
+    applied = [a["applied"] for a in listed["agents"] if a["applied"]]
+    assert any(x["revision"] == 1 for x in applied)
+    viewer = login(api, engine, Role.DOMAIN_ADMIN)
+    assert api.get("/api/settings/agent", headers=viewer).status_code == 403

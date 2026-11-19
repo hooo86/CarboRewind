@@ -119,6 +119,12 @@ class ServiceMonitor:
         self._carbonio = carbonio
         self._ports = ports
         self._interval = interval
+        self.enabled = True
+
+    def configure(self, enabled: bool, ports: dict[str, int]) -> None:
+        """Settings → Agent: turn the watcher on or off, change the probed ports."""
+        self.enabled = enabled
+        self._ports = {str(k): int(v) for k, v in ports.items()}
 
     def tick(self) -> dict[str, Any]:
         report = collect(self._carbonio, self._ports)
@@ -128,7 +134,8 @@ class ServiceMonitor:
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():
             try:
-                self.tick()
+                if self.enabled:
+                    self.tick()
             except (ApiError, OSError) as exc:
                 log.warning("service report failed", extra={"error": str(exc)})
             except Exception:  # keep watching whatever happens

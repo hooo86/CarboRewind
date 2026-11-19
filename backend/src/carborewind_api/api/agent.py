@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import secrets
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from urllib.parse import unquote
@@ -20,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import archiving, audit, mail_traffic, monitoring, storage_settings
+from .. import agent_tuning, archiving, audit, mail_traffic, monitoring, storage_settings
 from ..db.models import (
     Account,
     AccountAction,
@@ -376,6 +377,25 @@ async def storage_config(
         return cfg.for_agent(settings)
     except SecretKeyError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+
+@router.get(
+    "/config",
+    response_model=None,
+    responses={204: {"description": "Never set in the interface: the agent keeps agent.env"}},
+)
+async def agent_config(agent: CurrentAgent, db: DbSession) -> dict[str, Any] | Response:
+    """Tuning chosen in Settings → Agent; the agent applies it at once."""
+    cfg = await agent_tuning.load(db)
+    if cfg.revision == 0:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    seen = (agent.storage or {}).get("tuning") or {}
+    if seen.get("revision") != cfg.revision:
+        agent.storage = {
+            **(agent.storage or {}),
+            "tuning": {"revision": cfg.revision, "at": datetime.now(UTC).isoformat()},
+        }
+    return asdict(cfg)
 
 
 @router.post("/storage-status", status_code=status.HTTP_204_NO_CONTENT)

@@ -154,6 +154,16 @@ class AgentApi:
         result: dict[str, Any] = response.json()
         return result
 
+    def agent_config(self) -> dict[str, Any] | None:
+        """Tuning chosen in Settings → Agent; None until saved once."""
+        response = self._http.get("/api/agent/config")
+        if response.status_code == 204:
+            return None
+        if response.status_code >= 400:
+            raise ApiError(response.status_code, response.text[:200])
+        result: dict[str, Any] = response.json()
+        return result
+
     def storage_status(self, storage: dict[str, Any]) -> None:
         self._post("/storage-status", storage)
 

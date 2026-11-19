@@ -83,6 +83,8 @@ PROFILE_ATTRS = {
 # (in turn: the next inventory continues where this one stopped), to spare Carbonio.
 MAX_SIZE_LOOKUPS = 200
 GIB = 1024**3
+# Upper bound of jobs at the same time (Settings → Agent offers 1 to 8).
+MAX_SLOTS = 8
 
 
 def account_payload(
@@ -148,6 +150,8 @@ class Worker:
         kek: bytes | None = None,
         mail_store: Path | None = None,
         space: tuple[float, float, float] | None = None,
+        concurrency: int = 1,
+        on_config: Callable[[dict[str, Any]], None] | None = None,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
         sleep: Callable[[float], bool] | None = None,
@@ -170,8 +174,12 @@ class Worker:
         self._size_cursor = 0
         self._requested_revision: int | None = None
         self._reported_status: float | None = None
-        # Set when the API answers 409 to a heartbeat: the job was cancelled meanwhile.
-        self._cancelled = threading.Event()
+        # Per job thread: set when the API answers 409 to a heartbeat (job cancelled).
+        self._local = threading.local()
+        # Jobs run at the same time (accounts backed up in parallel); settable at run time.
+        self._concurrency = max(1, min(MAX_SLOTS, concurrency))
+        self._on_config = on_config
+        self._config_revision: int | None = None
         self._poll = poll_seconds
         self._inventory_every = inventory_every
         self._stop = threading.Event()
@@ -179,6 +187,45 @@ class Worker:
 
     def stop(self) -> None:
         self._stop.set()
+
+    @property
+    def _cancelled(self) -> threading.Event:
+        event: threading.Event | None = getattr(self._local, "cancel", None)
+        if event is None:
+            event = threading.Event()
+            self._local.cancel = event
+        return event
+
+    @property
+    def concurrency(self) -> int:
+        return self._concurrency
+
+    # ------------------------------------------------------------------ settings from the UI
+
+    def sync_config(self) -> None:
+        """Apply the tuning chosen in Settings → Agent (none saved yet: agent.env stays)."""
+        cfg = self._api.agent_config()
+        if not cfg:
+            return
+        revision = int(cfg.get("revision") or 0)
+        if revision == self._config_revision:
+            return
+        self._concurrency = max(1, min(MAX_SLOTS, int(cfg.get("max_concurrent_accounts", 1))))
+        self._space = (
+            float(cfg.get("min_free_gb_local", 20.0)),
+            float(cfg.get("min_free_percent_local", 15.0)),
+            float(cfg.get("min_free_gb_network", 2.0)),
+        )
+        if self._on_config is not None:
+            self._on_config(cfg)
+        self._config_revision = revision
+        log.info(
+            "settings revision %s applied: %s job(s) at once, %s Mbit/s, load %s",
+            revision,
+            self._concurrency,
+            cfg.get("max_bandwidth_mbps"),
+            cfg.get("max_load_per_cpu"),
+        )
 
     def sync_inventory(self) -> dict[str, Any]:
         # Optional enrichments: an older Carbonio or a restricted admin may refuse them.
@@ -276,25 +323,55 @@ class Worker:
             self._reported_status = mtime
 
     def run_forever(self) -> None:
+        """Synchronise (inventory, storage, settings) here; run jobs in parallel slots."""
+        slots: list[threading.Thread] = []
         loops = 0
+        try:
+            while not self._stop.is_set():
+                if loops % self._inventory_every == 0:
+                    try:
+                        self.sync_inventory()
+                    except (SoapFaultError, ApiError) as exc:
+                        log.error("inventory failed", extra={"error": str(exc)})
+                if loops % self._storage_every == 0:
+                    try:
+                        self.sync_storage()
+                    except (ApiError, OSError) as exc:
+                        log.error("storage settings sync failed", extra={"error": str(exc)})
+                    try:
+                        self.sync_config()
+                    except (ApiError, ValueError, TypeError) as exc:
+                        log.error("settings sync failed", extra={"error": str(exc)})
+                loops += 1
+                while len(slots) < self._concurrency:
+                    slot = threading.Thread(
+                        target=self._slot, args=(len(slots),), name=f"job-{len(slots)}"
+                    )
+                    slot.daemon = True
+                    slot.start()
+                    slots.append(slot)
+                if self._sleep(self._poll):
+                    break
+        finally:
+            self._stop.set()
+            for slot in slots:
+                slot.join(timeout=5)
+
+    def _slot(self, index: int) -> None:
+        """One job at a time; slots above the configured concurrency stay idle."""
         while not self._stop.is_set():
-            if loops % self._inventory_every == 0:
-                try:
-                    self.sync_inventory()
-                except (SoapFaultError, ApiError) as exc:
-                    log.error("inventory failed", extra={"error": str(exc)})
-            if loops % self._storage_every == 0:
-                try:
-                    self.sync_storage()
-                except (ApiError, OSError) as exc:
-                    log.error("storage settings sync failed", extra={"error": str(exc)})
-            loops += 1
-            try:
-                worked = self.run_once()
-            except ApiError as exc:
-                log.error("API unreachable", extra={"error": str(exc)})
+            if index >= self._concurrency:
                 worked = False
-            if not worked and self._sleep(self._poll):
+            else:
+                try:
+                    worked = self.run_once()
+                except ApiError as exc:
+                    log.error("API unreachable", extra={"error": str(exc)})
+                    worked = False
+                except Exception:  # a slot must never die
+                    log.exception("job slot crashed")
+                    worked = False
+            if not worked and self._stop.wait(self._poll):
                 break
 
     def run_once(self) -> bool:
@@ -332,7 +409,8 @@ class Worker:
             return True
         latest: dict[str, Any] = {"checkpoint": job.get("checkpoint")}
         stop_beat = threading.Event()
-        self._cancelled.clear()
+        cancelled = threading.Event()
+        self._local.cancel = cancelled
 
         def progress() -> dict[str, Any] | None:
             cp = latest["checkpoint"]
@@ -346,7 +424,7 @@ class Worker:
                     self._api.heartbeat(job_id, latest["checkpoint"], progress())
                 except ApiError as exc:
                     if exc.status == 409:
-                        self._cancelled.set()
+                        cancelled.set()
                     log.warning("heartbeat failed", extra={"job": job_id, "error": str(exc)})
 
         beater = threading.Thread(target=beat, daemon=True)

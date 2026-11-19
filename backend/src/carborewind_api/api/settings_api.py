@@ -11,7 +11,9 @@ clears it, any other value replaces it (encrypted with ``CARBOREWIND_SECRET_KEY`
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -19,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import select
 
-from .. import audit, storage_settings
+from .. import agent_tuning, audit, storage_settings
 from ..authz import Permission
 from ..config import Settings
 from ..db.models import (
@@ -556,3 +558,68 @@ async def put_security(
         details=body.model_dump(),
     )
     return body
+
+
+# ------------------------------------------------------------------ agent
+
+
+class AgentTuningIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    max_concurrent_accounts: int = Field(default=2, ge=1, le=8)
+    max_bandwidth_mbps: int = Field(default=0, ge=0, le=100_000)
+    max_load_per_cpu: float = Field(default=1.5, ge=0, le=64)
+    min_free_gb_local: float = Field(default=20.0, ge=0, le=100_000)
+    min_free_percent_local: float = Field(default=15.0, ge=0, le=90)
+    min_free_gb_network: float = Field(default=2.0, ge=0, le=100_000)
+    service_monitor: bool = True
+    service_ports: dict[str, int] = Field(default_factory=dict, max_length=20)
+    mail_monitor: bool = True
+
+    @field_validator("service_ports")
+    @classmethod
+    def _ports(cls, value: dict[str, int]) -> dict[str, int]:
+        for name, port in value.items():
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", name):
+                raise ValueError(f"invalid service name {name!r}")
+            if not 1 <= int(port) <= 65535:
+                raise ValueError(f"invalid port for {name}")
+        return value
+
+
+class AgentTuningOut(AgentTuningIn):
+    revision: int
+    agents: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.get("/agent", response_model=AgentTuningOut)
+async def get_agent_tuning(principal: Admin, db: DbSession) -> AgentTuningOut:
+    cfg = await agent_tuning.load(db)
+    agents = [
+        {"name": a.name, "applied": (a.storage or {}).get("tuning")}
+        for a in await db.scalars(
+            select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
+        )
+    ]
+    return AgentTuningOut(**asdict(cfg), agents=agents)
+
+
+@router.put("/agent", response_model=AgentTuningOut)
+async def put_agent_tuning(
+    body: AgentTuningIn, principal: Admin, db: DbSession, request: Request
+) -> AgentTuningOut:
+    cfg = await agent_tuning.load(db)
+    new = agent_tuning.AgentTuning(revision=cfg.revision + 1, **body.model_dump())
+    await agent_tuning.save(db, new)
+    await audit.record(
+        db,
+        action="settings.agent.update",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="settings",
+        target_id="agent",
+        details=body.model_dump(),
+    )
+    return AgentTuningOut(**asdict(new), agents=[])

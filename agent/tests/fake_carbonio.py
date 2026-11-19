@@ -373,6 +373,18 @@ class FakeCarbonio:
             raise _Fault("mail.NO_SUCH_ITEM", "no such item")
         return {item.kind: [self._item_entry(item)]}
 
+    def _GetMsgMetadataRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        self.meta_batches = getattr(self, "meta_batches", 0) + 1
+        ids = [int(i) for i in body["m"]["ids"].split(",")]
+        return {
+            "m": [
+                self._item_entry(mbox.items[i])
+                for i in ids
+                if i in mbox.items and mbox.items[i].kind == "m"
+            ]
+        }
+
     def _CreateFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
         spec = body["folder"]

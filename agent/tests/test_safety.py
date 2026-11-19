@@ -166,3 +166,22 @@ def test_replica_stops_before_filling_copy02(tmp_path: Path) -> None:
 def test_no_guard_without_configuration(tmp_path: Path) -> None:
     w, repo = make(tmp_path, Api(), FakeCarbonio())
     assert w.space_floor(repo.root) == 0
+
+
+def test_throttle_can_be_reconfigured() -> None:
+    from carborewind_agent.throttle import Throttle
+
+    slept: list[float] = []
+    now = [0.0]
+    throttle = Throttle(0, 0, clock=lambda: now[0], sleep=slept.append, loadavg=lambda: 9.0)
+    throttle.consume(10_000_000)
+    assert slept == []  # unlimited, no load back-off
+    throttle.configure(8, 0)  # 8 Mbit/s = 1 MB/s
+    throttle.consume(2_000_000)
+    assert slept and round(slept[-1], 1) == 1.0
+    throttle.configure(0, 4.0)
+    slept.clear()
+    loads = iter([9.0, 1.0])
+    throttle._loadavg = lambda: next(loads)  # type: ignore[method-assign]
+    throttle.consume(1)
+    assert slept == [5.0]  # one pause, then the load went down

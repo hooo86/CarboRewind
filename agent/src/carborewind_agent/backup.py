@@ -243,6 +243,9 @@ class AccountBackup:
         for item_id in deleted:
             items.pop(item_id, None)
 
+        # 2b. Metadata of messages by batches (a full backup otherwise asks once per message).
+        self._prefetch_meta(account_id, to_fetch, done)
+
         # 3. Read and store changed items, checkpointing as we go.
         processed = 0
         for item_id, (kind, folder_id, attrs) in sorted(to_fetch.items()):
@@ -270,6 +273,7 @@ class AccountBackup:
             done[item_id] = entry
             processed += 1
             if checkpoint and processed % self._checkpoint_every == 0:
+                self._repo.sync()  # a resumed job trusts the blobs the checkpoint lists
                 checkpoint(
                     {
                         "done": {str(k): v.to_json() for k, v in done.items()},
@@ -318,6 +322,32 @@ class AccountBackup:
             removed=removed,
             folders=folder_list,
         )
+
+    META_BATCH = 200
+
+    def _prefetch_meta(
+        self,
+        account_id: str,
+        to_fetch: dict[int, tuple[str, int, dict[str, Any]]],
+        done: dict[int, ItemEntry],
+    ) -> None:
+        wanted = [
+            i
+            for i, (kind, _, attrs) in sorted(to_fetch.items())
+            if kind == "message" and attrs.get("l") is None and i not in done
+        ]
+        for start in range(0, len(wanted), self.META_BATCH):
+            batch = wanted[start : start + self.META_BATCH]
+            try:
+                metas = self._client.messages_meta(account_id, batch)
+            except SoapFaultError as exc:
+                # Older server or refused: the items are read one by one, as before.
+                log.info("batched metadata unavailable (%s), reading one by one", exc.code)
+                return
+            for item_id, meta in metas.items():
+                if item_id in to_fetch and meta.get("l") is not None:
+                    kind, folder_id, _ = to_fetch[item_id]
+                    to_fetch[item_id] = (kind, folder_id, meta)
 
     def _store_item(
         self,

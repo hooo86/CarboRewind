@@ -231,6 +231,7 @@ class MailboxArchiver:
                     continue
                 processed += 1
                 if checkpoint and processed % self._checkpoint_every == 0:
+                    self._repo.sync()
                     checkpoint(self._state(done, removed))
             entries = [done[k] for k in sorted(done)]
             result.archived = len(entries)

@@ -98,10 +98,13 @@ class MailMonitor:
                 error = f"{exc.code}: {exc}"[:500]
         self._api.mail_action_done(str(action["id"]), error)
 
+    enabled = True  # Settings → Agent can turn the watcher off and on again
+
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():
             try:
-                self.tick()
+                if self.enabled:
+                    self.tick()
             except (ApiError, SoapFaultError, OSError) as exc:
                 log.error("mail statistics failed: %s", exc)
             except Exception:  # never let the watcher die silently

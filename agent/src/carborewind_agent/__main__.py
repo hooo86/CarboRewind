@@ -8,6 +8,7 @@ import sys
 import threading
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -141,6 +142,36 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     carbonio = build_client(settings)
     throttle = Throttle.from_mbps(settings.max_bandwidth_mbps, settings.max_load_per_cpu)
     server_ca = Path(args.server_ca) if args.server_ca else settings.api_ca_file
+    from .mailwatch import MailMonitor
+    from .servicewatch import ServiceMonitor
+
+    stop_mail = threading.Event()
+    # Both watchers always run; Settings → Agent turns them off and on (agent.env gives
+    # the starting state until settings are saved in the interface).
+    monitor = MailMonitor(
+        AgentApi(settings, server_ca=server_ca),
+        carbonio,
+        settings.mail_logs,
+        settings.mail_state_file,
+        protected={settings.carbonio_admin_name},
+    )
+    monitor.enabled = settings.mail_monitor
+    threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
+    services = ServiceMonitor(
+        AgentApi(settings, server_ca=server_ca), carbonio, settings.service_ports
+    )
+    services.enabled = settings.service_monitor
+    threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()
+
+    def apply_config(cfg: dict[str, Any]) -> None:
+        throttle.configure(
+            int(cfg.get("max_bandwidth_mbps", 0)), float(cfg.get("max_load_per_cpu", 0))
+        )
+        monitor.enabled = bool(cfg.get("mail_monitor", True))
+        services.configure(
+            bool(cfg.get("service_monitor", True)), dict(cfg.get("service_ports") or {})
+        )
+
     worker = Worker(
         AgentApi(settings, server_ca=server_ca),
         carbonio,
@@ -160,27 +191,9 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
             settings.min_free_percent_local,
             settings.min_free_gb_network,
         ),
+        concurrency=settings.max_concurrent_accounts,
+        on_config=apply_config,
     )
-    stop_mail = threading.Event()
-    if settings.mail_monitor:
-        from .mailwatch import MailMonitor
-
-        monitor = MailMonitor(
-            AgentApi(settings, server_ca=server_ca),
-            carbonio,
-            settings.mail_logs,
-            settings.mail_state_file,
-            protected={settings.carbonio_admin_name},
-        )
-        threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
-
-    if settings.service_monitor:
-        from .servicewatch import ServiceMonitor
-
-        services = ServiceMonitor(
-            AgentApi(settings, server_ca=server_ca), carbonio, settings.service_ports
-        )
-        threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()
 
     def stop(*_: object) -> None:
         stop_mail.set()

@@ -26,6 +26,7 @@ import os
 import random
 import re
 import tempfile
+import threading
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -76,8 +77,13 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    """Write ``data`` to ``path`` atomically, owner-only (0600)."""
+def _atomic_write(path: Path, data: bytes, pending: set[Path] | None = None) -> None:
+    """Write ``data`` to ``path`` atomically, owner-only (0600).
+
+    With ``pending``, the directory is not synced now but recorded there, to be synced
+    once for many files (:meth:`Repository.sync`): on a network share each directory sync
+    is a round trip.
+    """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     try:
@@ -91,7 +97,10 @@ def _atomic_write(path: Path, data: bytes) -> None:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
         raise
-    _fsync_dir(path.parent)
+    if pending is None:
+        _fsync_dir(path.parent)
+    else:
+        pending.add(path.parent)
 
 
 def _segment(value: str, what: str) -> str:
@@ -106,6 +115,15 @@ class Repository:
         self.root = root
         self.repo_id = repo_id
         self._keys = keys
+        self._pending_dirs: set[Path] = set()
+        self._pending_lock = threading.Lock()
+
+    def sync(self) -> None:
+        """Make the blobs written since the last call durable (directory entries)."""
+        with self._pending_lock:
+            dirs, self._pending_dirs = self._pending_dirs, set()
+        for directory in dirs:
+            _fsync_dir(directory)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -197,7 +215,10 @@ class Repository:
             self.check_space(len(data))
         self._writes += 1
         sealed = self._keys.seal(data, aad=blob_id.encode())
-        _atomic_write(path, sealed)
+        pending: set[Path] = set()
+        _atomic_write(path, sealed, pending)
+        with self._pending_lock:
+            self._pending_dirs |= pending
         return PutResult(blob_id, len(data), len(sealed), created=True)
 
     def has(self, blob_id: str) -> bool:
@@ -236,6 +257,7 @@ class Repository:
         return self.root / rel, rel.encode()
 
     def put_manifest(self, account: str, snapshot: str, manifest: dict[str, Any]) -> str:
+        self.sync()  # every blob it lists is durable before the manifest is
         path, aad = self._manifest_path(account, snapshot)
         payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
         _atomic_write(path, self._keys.seal(payload, aad=aad))
@@ -263,6 +285,7 @@ class Repository:
 
     def put_archive(self, account: str, archive: str, manifest: dict[str, Any]) -> str:
         """Seal the list of messages one archive run took out of a mailbox."""
+        self.sync()
         path, aad = self._archive_path(account, archive)
         payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
         _atomic_write(path, self._keys.seal(payload, aad=aad))

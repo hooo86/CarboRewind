@@ -29,11 +29,14 @@ class FakeApi:
     def __init__(self, jobs: list[dict[str, Any]]) -> None:
         self.jobs = jobs
         self.calls: list[tuple[str, Any]] = []
+        self.config: dict[str, Any] | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/agent")
         body = json.loads(request.content) if request.content else None
         self.calls.append((path, body))
+        if path == "/config":
+            return httpx.Response(200, json=self.config) if self.config else httpx.Response(204)
         if path == "/jobs/claim":
             return httpx.Response(200, json=self.jobs.pop(0)) if self.jobs else httpx.Response(204)
         if path == "/inventory":
@@ -397,3 +400,64 @@ def test_quota_report(carbonio: CarbonioClient, fake: FakeCarbonio) -> None:
     assert quota_report(carbonio, "nobody@example.test") == [
         "nobody@example.test: not found by SearchDirectoryRequest"
     ]
+
+
+def test_settings_from_the_interface_are_applied(
+    settings: AgentSettings, carbonio: CarbonioClient, engine: AccountBackup
+) -> None:
+    api = FakeApi([])
+    seen: list[dict[str, Any]] = []
+    worker = Worker(AgentApi(settings, http=api.client()), carbonio, engine, on_config=seen.append)
+    worker.sync_config()  # nothing saved yet: agent.env stays
+    assert worker.concurrency == 1 and seen == []
+    api.config = {
+        "revision": 3,
+        "max_concurrent_accounts": 3,
+        "min_free_gb_local": 5,
+        "min_free_percent_local": 10,
+        "min_free_gb_network": 1,
+        "max_bandwidth_mbps": 100,
+        "max_load_per_cpu": 2,
+    }
+    worker.sync_config()
+    assert worker.concurrency == 3 and seen[0]["max_bandwidth_mbps"] == 100
+    worker.sync_config()  # same revision: not applied twice
+    assert len(seen) == 1
+    api.config = {**api.config, "revision": 4, "max_concurrent_accounts": 99}
+    worker.sync_config()
+    assert worker.concurrency == 8  # bounded
+
+
+def test_jobs_run_in_parallel_slots(
+    settings: AgentSettings, carbonio: CarbonioClient, fake: FakeCarbonio, tmp_path: Path
+) -> None:
+    boxes = [fake.add_mailbox(f"u{n}@example.test") for n in range(3)]
+    for box in boxes:
+        box.add("m", 2, b"Subject: x\r\n\r\nbody")
+    jobs = [
+        {**_job(box), "job_id": f"j-{n}", "snapshot_id": f"s-{n}"} for n, box in enumerate(boxes)
+    ]
+    api = FakeApi(jobs)
+    api.config = {"revision": 1, "max_concurrent_accounts": 2}
+    engine = AccountBackup(carbonio, Repository.init(tmp_path / "repo2", generate_key()))
+    import time
+
+    def until_done(_: float) -> bool:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if sum(1 for p, _ in api.calls if p.endswith("/complete")) == 3:
+                return True
+            time.sleep(0.05)
+        return True
+
+    worker = Worker(
+        AgentApi(settings, http=api.client()),
+        carbonio,
+        engine,
+        sleep=until_done,
+        poll_seconds=0.05,
+    )
+    worker.run_forever()
+    assert worker.concurrency == 2
+    done = sorted(p for p, _ in api.calls if p.endswith("/complete"))
+    assert done == ["/jobs/j-0/complete", "/jobs/j-1/complete", "/jobs/j-2/complete"]

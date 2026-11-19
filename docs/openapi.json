@@ -764,6 +764,155 @@
         "title": "AgentStatus",
         "type": "string"
       },
+      "AgentTuningIn": {
+        "additionalProperties": false,
+        "properties": {
+          "mail_monitor": {
+            "default": true,
+            "title": "Mail Monitor",
+            "type": "boolean"
+          },
+          "max_bandwidth_mbps": {
+            "default": 0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Max Bandwidth Mbps",
+            "type": "integer"
+          },
+          "max_concurrent_accounts": {
+            "default": 2,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Max Concurrent Accounts",
+            "type": "integer"
+          },
+          "max_load_per_cpu": {
+            "default": 1.5,
+            "maximum": 64.0,
+            "minimum": 0.0,
+            "title": "Max Load Per Cpu",
+            "type": "number"
+          },
+          "min_free_gb_local": {
+            "default": 20.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Min Free Gb Local",
+            "type": "number"
+          },
+          "min_free_gb_network": {
+            "default": 2.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Min Free Gb Network",
+            "type": "number"
+          },
+          "min_free_percent_local": {
+            "default": 15.0,
+            "maximum": 90.0,
+            "minimum": 0.0,
+            "title": "Min Free Percent Local",
+            "type": "number"
+          },
+          "service_monitor": {
+            "default": true,
+            "title": "Service Monitor",
+            "type": "boolean"
+          },
+          "service_ports": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 20,
+            "title": "Service Ports",
+            "type": "object"
+          }
+        },
+        "title": "AgentTuningIn",
+        "type": "object"
+      },
+      "AgentTuningOut": {
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "mail_monitor": {
+            "default": true,
+            "title": "Mail Monitor",
+            "type": "boolean"
+          },
+          "max_bandwidth_mbps": {
+            "default": 0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Max Bandwidth Mbps",
+            "type": "integer"
+          },
+          "max_concurrent_accounts": {
+            "default": 2,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Max Concurrent Accounts",
+            "type": "integer"
+          },
+          "max_load_per_cpu": {
+            "default": 1.5,
+            "maximum": 64.0,
+            "minimum": 0.0,
+            "title": "Max Load Per Cpu",
+            "type": "number"
+          },
+          "min_free_gb_local": {
+            "default": 20.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Min Free Gb Local",
+            "type": "number"
+          },
+          "min_free_gb_network": {
+            "default": 2.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Min Free Gb Network",
+            "type": "number"
+          },
+          "min_free_percent_local": {
+            "default": 15.0,
+            "maximum": 90.0,
+            "minimum": 0.0,
+            "title": "Min Free Percent Local",
+            "type": "number"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "service_monitor": {
+            "default": true,
+            "title": "Service Monitor",
+            "type": "boolean"
+          },
+          "service_ports": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 20,
+            "title": "Service Ports",
+            "type": "object"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "AgentTuningOut",
+        "type": "object"
+      },
       "AlertOut": {
         "properties": {
           "account_id": {
@@ -7829,6 +7978,29 @@
         ]
       }
     },
+    "/api/agent/config": {
+      "get": {
+        "description": "Tuning chosen in Settings → Agent; the agent applies it at once.",
+        "operationId": "agent_config_api_agent_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "Never set in the interface: the agent keeps agent.env"
+          }
+        },
+        "summary": "Agent Config",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/enroll": {
       "post": {
         "description": "Exchange a one-time token and a CSR for a client certificate.",
@@ -11899,6 +12071,66 @@
         "summary": "Start Restore",
         "tags": [
           "restores"
+        ]
+      }
+    },
+    "/api/settings/agent": {
+      "get": {
+        "operationId": "get_agent_tuning_api_settings_agent_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTuningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Agent Tuning",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_agent_tuning_api_settings_agent_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentTuningIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTuningOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Agent Tuning",
+        "tags": [
+          "settings"
         ]
       }
     },

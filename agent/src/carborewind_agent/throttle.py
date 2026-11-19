@@ -38,6 +38,14 @@ class Throttle:
     def from_mbps(cls, mbps: int, max_load: float = 0.0) -> Throttle:
         return cls(mbps * 125_000, max_load)
 
+    def configure(self, mbps: int, max_load: float) -> None:
+        """New limits, applied to the next transfers (settings changed in the interface)."""
+        with self._lock:
+            self._rate = max(0, int(mbps)) * 125_000
+            self._allowance = float(self._rate)
+            self._last = self._clock()
+            self._max_load = max(0.0, float(max_load))
+
     def consume(self, nbytes: int) -> None:
         """Block until ``nbytes`` may be transferred."""
         self._wait_for_load()
