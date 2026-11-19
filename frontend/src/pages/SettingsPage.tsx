@@ -25,6 +25,7 @@ const EVENTS = [
   "integrity_failed",
   "replica_lag",
   "storage_full",
+  "mailbox_quota",
 ];
 
 type Form = Omit<

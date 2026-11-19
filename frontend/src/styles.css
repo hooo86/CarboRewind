@@ -951,3 +951,51 @@ button.danger {
 .user .who:hover {
   text-decoration: underline;
 }
+
+/* Storage gauges (dashboard) */
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.gauge-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.gauge-bar {
+  height: 0.7rem;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.gauge-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.gauge-fill.ok {
+  background: var(--ok, #16a34a);
+}
+
+.gauge-fill.warn {
+  background: var(--warn);
+}
+
+.gauge-fill.bad {
+  background: var(--bad);
+}
+
+.ok-text {
+  color: var(--ok, inherit);
+}
+
+.gauge-detail {
+  margin: 0;
+  font-size: 0.85rem;
+}

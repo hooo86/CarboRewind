@@ -17,6 +17,10 @@ function open(role = user("super_admin"), extra = {}) {
     "GET /api/auth/me": role,
     "GET /api/dashboard": {
       ...dashboard,
+      mail_used_bytes: 2000,
+      mail_quota_bytes: 10000,
+      mailboxes_nearly_full: 3,
+      mailbox_alert_percent: 90,
       storage: [
         {
           agent: "mail",
@@ -26,6 +30,14 @@ function open(role = user("super_admin"), extra = {}) {
           source: "//nas1/backups",
           total_bytes: 1000,
           free_bytes: 500,
+          mail_store: {
+            path: "/opt/zextras",
+            kind: "local",
+            fstype: "ext4",
+            source: null,
+            total_bytes: 4000,
+            free_bytes: 1000,
+          },
           reported_at: "2026-11-19T10:00:00Z",
           replica: {
             path: "/var/lib/carborewind/copy02/repository",
@@ -66,7 +78,7 @@ describe("dashboard", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const calls = open();
     expect(
-      await screen.findByText(/copy 2: \/\/nas2\/copie02/),
+      await screen.findByText("Copy 2 — //nas2/copie02"),
     ).toBeInTheDocument();
     fireEvent.change(await screen.findByLabelText("Accounts"), {
       target: { value: DOMAIN_ID },
@@ -102,7 +114,7 @@ describe("dashboard", () => {
 
   it("hides the manual backup from viewers", async () => {
     open(user("viewer"));
-    await waitFor(() => expect(screen.getByText(/copy 2/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Copy 2/)).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Start backup" })).toBeNull();
   });
 });

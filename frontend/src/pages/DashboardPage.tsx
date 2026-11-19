@@ -33,6 +33,152 @@ function Tile({
   );
 }
 
+function Gauge({
+  label,
+  used,
+  total,
+  detail,
+  error,
+}: {
+  label: string;
+  used: number;
+  total: number;
+  detail?: string;
+  error?: boolean;
+}) {
+  const { t } = useTranslation();
+  const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+  const tone = error ? "bad" : pct >= 90 ? "bad" : pct >= 75 ? "warn" : "ok";
+  return (
+    <div className="gauge">
+      <div className="gauge-head">
+        <strong>{label}</strong>
+        <span className={`${tone}-text`}>
+          {error
+            ? t("dashboard.storageUnreachable")
+            : t("dashboard.usedOf", {
+                used: formatBytes(used),
+                total: formatBytes(total),
+                pct,
+              })}
+        </span>
+      </div>
+      <div
+        className="gauge-bar"
+        role="meter"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span className={`gauge-fill ${tone}`} style={{ width: `${pct}%` }} />
+      </div>
+      {detail && <p className="muted gauge-detail">{detail}</p>}
+    </div>
+  );
+}
+
+function StorageOverview({ d }: { d: Dashboard }) {
+  const { t, i18n } = useTranslation();
+  const mail = d.mail_used_bytes ?? 0;
+  const pctOf = (total?: number | null) =>
+    total
+      ? (Math.round((mail / total) * 1000) / 10).toLocaleString(i18n.language)
+      : null;
+  const reports = d.storage ?? [];
+  return (
+    <section className="card stack" aria-labelledby="storage-title">
+      <h2 id="storage-title">{t("dashboard.storageTitle")}</h2>
+      <div className="tiles">
+        <div className="tile">
+          <span className="tile-value">{formatBytes(mail)}</span>
+          <span className="tile-label">{t("dashboard.mailVolume")}</span>
+        </div>
+        {d.mail_quota_bytes ? (
+          <div className="tile">
+            <span className="tile-value">
+              {formatBytes(d.mail_quota_bytes)}
+            </span>
+            <span className="tile-label">{t("dashboard.quotaAllocated")}</span>
+          </div>
+        ) : null}
+      </div>
+      {(d.mailboxes_nearly_full ?? 0) > 0 && (
+        <p role="alert" className="alert warn">
+          {t("dashboard.nearlyFull", {
+            count: d.mailboxes_nearly_full,
+            pct: d.mailbox_alert_percent,
+          })}{" "}
+          <Link
+            to={
+              d.mailbox_alert_percent
+                ? `/accounts?f=usage_pct:ge:${d.mailbox_alert_percent}`
+                : "/monitoring"
+            }
+          >
+            {t("dashboard.seeThem")}
+          </Link>
+        </p>
+      )}
+      {reports.map((st) => {
+        const server = st.mail_store;
+        const serverPct = pctOf(server?.total_bytes);
+        const nasPct = pctOf(st.total_bytes);
+        return (
+          <div key={st.agent + st.path} className="split">
+            {server?.total_bytes ? (
+              <Gauge
+                label={t("dashboard.serverDisk", { agent: st.agent })}
+                used={server.total_bytes - (server.free_bytes ?? 0)}
+                total={server.total_bytes}
+                error={!!server.error}
+                detail={
+                  serverPct !== null
+                    ? t("dashboard.mailShareServer", { pct: serverPct })
+                    : undefined
+                }
+              />
+            ) : null}
+            {st.total_bytes ? (
+              <Gauge
+                label={
+                  st.kind === "network"
+                    ? t("dashboard.backupNas", { where: st.source ?? st.path })
+                    : t("dashboard.backupLocal")
+                }
+                used={st.total_bytes - (st.free_bytes ?? 0)}
+                total={st.total_bytes}
+                error={!!st.error}
+                detail={
+                  nasPct !== null
+                    ? t("dashboard.mailShareNas", { pct: nasPct })
+                    : undefined
+                }
+              />
+            ) : (
+              st.error && (
+                <p className="alert warn">
+                  {t("dashboard.storageUnreachable")}
+                </p>
+              )
+            )}
+            {st.replica?.total_bytes ? (
+              <Gauge
+                label={t("dashboard.copy2", {
+                  where: st.replica.source ?? st.replica.path,
+                })}
+                used={st.replica.total_bytes - (st.replica.free_bytes ?? 0)}
+                total={st.replica.total_bytes}
+                error={!!st.replica.error}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 function ManualBackup({ onQueued }: { onQueued: () => void }) {
   const { t } = useTranslation();
   const { canRunBackup } = useAuth();
@@ -199,52 +345,7 @@ export function DashboardPage() {
                 })}
               </p>
             )}
-            {(d.storage ?? []).map((st) => {
-              const low =
-                st.total_bytes &&
-                st.free_bytes !== undefined &&
-                st.free_bytes !== null
-                  ? st.free_bytes / st.total_bytes < 0.1
-                  : false;
-              return (
-                <p
-                  key={st.agent + st.path}
-                  className={st.error || low ? "alert warn" : "muted"}
-                >
-                  {t(
-                    st.kind === "network"
-                      ? "dashboard.storageNetwork"
-                      : "dashboard.storageLocal",
-                    {
-                      agent: st.agent,
-                      where: st.source ?? st.path,
-                      fstype: st.fstype ?? "?",
-                    },
-                  )}{" "}
-                  {st.error
-                    ? t("dashboard.storageUnreachable")
-                    : t("dashboard.storageFree", {
-                        free: formatBytes(st.free_bytes ?? 0),
-                        total: formatBytes(st.total_bytes ?? 0),
-                      })}
-                  {st.replica && (
-                    <>
-                      {" · "}
-                      {t("dashboard.replica", {
-                        where: st.replica.source ?? st.replica.path,
-                      })}{" "}
-                      {st.replica.error
-                        ? t("dashboard.storageUnreachable")
-                        : st.replica.total_bytes != null &&
-                          t("dashboard.storageFree", {
-                            free: formatBytes(st.replica.free_bytes ?? 0),
-                            total: formatBytes(st.replica.total_bytes),
-                          })}
-                    </>
-                  )}
-                </p>
-              );
-            })}
+            <StorageOverview d={d} />
           </>
         )}
       </LoadView>

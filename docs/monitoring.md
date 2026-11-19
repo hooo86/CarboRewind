@@ -10,9 +10,11 @@ Menu **Supervision** (super-administrateurs) et métriques Prometheus.
 | **Comptes à risque** | jamais sauvegardés ; sans sauvegarde réussie depuis N heures (24 par défaut) ; dernière sauvegarde en échec ; dernière sauvegarde partielle ; couverts par aucune politique active. Chaque chiffre ouvre la liste des comptes filtrée | (résumé quotidien existant) |
 | **Retard de la copie 2** | dernière mise à jour réussie, retard quand des sauvegardes ou purges ont eu lieu depuis | « Copie 2 en retard » au-delà de N heures (24 par défaut), une fois par jour |
 | **Intégrité** | job `verify` planifié (par défaut le dimanche à 3 h 30) qui déchiffre et authentifie un échantillon des fichiers (10 % par défaut, un échantillon différent à chaque fois) de la copie 1 puis de la copie 2 ; vérification complète à la demande | « Corruption détectée » |
+| **Boîtes presque pleines** | boîtes dont l'espace utilisé atteint le seuil (90 % du quota par défaut) ou dépasse une taille fixe en Go (0 = désactivé) ; liste dans « Comptes à risque » et nombre sur le tableau de bord | « Boîtes mail proches du quota », résumé une fois par jour |
+| **Stockage des e-mails** (tableau de bord) | volume total des boîtes, quotas attribués, occupation du disque du serveur Carbonio (`/opt/zextras`, mesuré par l'agent) et du NAS de sauvegarde (copie 1 et 2), part des e-mails sur chacun | — |
 | **Agents** | version, dernier contact, expiration du certificat, dernières statistiques mail | « Agent silencieux » (existant) |
 
-Réglages : **Supervision → Réglages de la supervision** (seuils, planification cron, part des fichiers
+Réglages : **Supervision → Réglages de la supervision** (seuils, seuil des boîtes presque pleines, planification cron, part des fichiers
 vérifiés, fuseau). Une vérification complète relit tout le dépôt : à réserver à une plage creuse.
 
 ## Garde-fous

@@ -21,7 +21,7 @@ import {
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
 
-const RISKS = ["never", "stale", "failed", "partial", "no_policy"];
+const RISKS = ["never", "stale", "failed", "partial", "no_policy", "quota"];
 const DAY = 86400;
 
 function duration(seconds: number, t: TFunction) {
@@ -242,6 +242,31 @@ function SettingsForm({
         </label>
       </div>
       <p className="muted">{t("monitoring.cronHelp")}</p>
+      <div className="row">
+        <label>
+          {t("monitoring.quotaPercent")}
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={form.mailbox_alert_percent}
+            onChange={(e) =>
+              set("mailbox_alert_percent", Number(e.target.value))
+            }
+          />
+        </label>
+        <label>
+          {t("monitoring.quotaGb")}
+          <input
+            type="number"
+            min={0}
+            step="0.5"
+            value={form.mailbox_alert_gb}
+            onChange={(e) => set("mailbox_alert_gb", Number(e.target.value))}
+          />
+        </label>
+      </div>
+      <p className="muted">{t("monitoring.quotaHelp")}</p>
       <NoticeBar notice={notice} />
       <div className="actions">
         <button type="submit">{t("save")}</button>
@@ -405,6 +430,8 @@ export function MonitoringPage() {
                           <td>
                             {t(`monitoring.risk.${key}`, {
                               hours: d.settings.stale_hours,
+                              pct: d.settings.mailbox_alert_percent,
+                              gb: d.settings.mailbox_alert_gb,
                             })}
                           </td>
                           <td className={`num ${cat.count ? "bad-text" : ""}`}>

@@ -24,6 +24,8 @@ const overview: MonitoringOverview = {
     integrity_cron: "30 3 * * 0",
     integrity_sample: 0.1,
     integrity_timezone: "UTC",
+    mailbox_alert_percent: 90,
+    mailbox_alert_gb: 0,
   },
   storage: [
     {

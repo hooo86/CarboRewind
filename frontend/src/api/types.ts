@@ -131,6 +131,10 @@ export interface Dashboard {
   agents_active: number | null;
   last_agent_heartbeat: string | null;
   storage?: StorageReport[];
+  mail_used_bytes?: number;
+  mail_quota_bytes?: number;
+  mailboxes_nearly_full?: number;
+  mailbox_alert_percent?: number;
 }
 
 export type RestoreMode = "new_folder" | "original";
@@ -305,6 +309,10 @@ export interface StorageReport {
   free_bytes?: number | null;
   error?: string | null;
   reported_at: string;
+  mail_store?: Omit<
+    StorageReport,
+    "agent" | "reported_at" | "replica" | "apply" | "mail_store"
+  > | null;
   replica?: Omit<
     StorageReport,
     "agent" | "reported_at" | "replica" | "apply"
@@ -551,11 +559,13 @@ export interface MonitoringSettings {
   integrity_cron: string;
   integrity_sample: number;
   integrity_timezone: string;
+  mailbox_alert_percent: number;
+  mailbox_alert_gb: number;
 }
 
 export interface StorageSeries {
   agent: string;
-  target: "primary" | "replica";
+  target: "primary" | "replica" | "server";
   total_bytes: number;
   free_bytes: number;
   used_bytes: number;

@@ -364,14 +364,12 @@ describe("dashboard storage", () => {
     });
     window.history.pushState({}, "", "/");
     render(<App />);
-    const nas = await screen.findByText(
-      /network share \/\/nas\/backups \(cifs\)/,
-    );
-    expect(nas).toHaveTextContent("5 GB free of 100 GB");
-    expect(nas).toHaveClass("warn");
-    expect(screen.getByText(/local disk \/srv\/repo/)).toHaveTextContent(
-      "unreachable!",
-    );
+    const nas = await screen.findByRole("meter", {
+      name: "Backup NAS — //nas/backups",
+    });
+    expect(nas).toHaveAttribute("aria-valuenow", "95");
+    expect(screen.getByText("95 GB / 100 GB (95 %)")).toHaveClass("bad-text");
+    expect(screen.getByText("unreachable!")).toBeInTheDocument();
   });
 });
 

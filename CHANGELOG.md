@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Tableau de bord : stockage global des e-mails (volume des boîtes, quotas attribués), jauges
+  d'occupation du disque du serveur Carbonio et du NAS de sauvegarde (copie 1 et 2) avec la part des
+  e-mails sur chacun ; alerte quand une boîte atteint un seuil réglable (% du quota ou taille en Go),
+  événement de notification `mailbox_quota`, métrique `carborewind_mailboxes_used_bytes`.
 - Logo (favicon, menu, page de connexion, README).
 - Double authentification TOTP : enrôlement par QR code, codes de secours, connexion en deux étapes,
   politique « obligatoire pour les administrateurs / pour tous » ; page **Mon compte** (mot de passe,

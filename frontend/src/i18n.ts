@@ -141,6 +141,8 @@ export const resources = {
             "Corruption détectée par la vérification d'intégrité",
           replica_lag: "Copie 2 en retard",
           storage_full: "Stockage plein dans moins de 14 jours (prévision)",
+          mailbox_quota:
+            "Boîtes mail proches de la saturation (récapitulatif quotidien)",
         },
         digestHour: "Heure du résumé",
         saved: "Paramètres enregistrés.",
@@ -340,6 +342,8 @@ export const resources = {
           failed: "Dernière sauvegarde en échec",
           partial: "Dernière sauvegarde partielle",
           no_policy: "Couverts par aucune politique active",
+          quota:
+            "Boîtes proches de la saturation (≥ {{pct}} % du quota ou ≥ {{gb}} Go)",
         },
         copy2: "Copie 2",
         lastCopy: "Dernière mise à jour réussie {{when}}.",
@@ -378,6 +382,10 @@ export const resources = {
         cronHelp:
           "Par défaut le dimanche à 3 h 30 sur 10 % des fichiers (chaque semaine un échantillon différent). 100 % relit tout le dépôt : à réserver à une plage creuse.",
         saved: "Réglages enregistrés.",
+        quotaPercent: "Alerte boîte pleine à (% du quota)",
+        quotaGb: "ou à partir de (Go)",
+        quotaHelp:
+          "0 = désactivé. La taille en Go sert aussi pour les boîtes sans quota. Un récapitulatif est envoyé par e-mail une fois par jour.",
       },
       mail: {
         title: "Trafic mail",
@@ -674,6 +682,22 @@ export const resources = {
         storageNetwork:
           "Stockage de {{agent}} : partage réseau {{where}} ({{fstype}}) —",
         storageFree: "{{free}} libres sur {{total}}",
+        storageTitle: "Stockage",
+        mailVolume: "Volume des boîtes mail",
+        quotaAllocated: "Quotas attribués",
+        usedOf: "{{used}} / {{total}} ({{pct}} %)",
+        serverDisk: "Disque du serveur Carbonio ({{agent}})",
+        mailShareServer: "Les e-mails occupent {{pct}} % du disque du serveur.",
+        backupNas: "NAS de sauvegarde — {{where}}",
+        backupLocal: "Sauvegardes sur le disque local",
+        mailShareNas:
+          "Le volume des e-mails représente {{pct}} % de la capacité du stockage de sauvegarde.",
+        copy2: "Copie 2 — {{where}}",
+        nearlyFull_one:
+          "{{count}} boîte a atteint le seuil d'alerte ({{pct}} % du quota).",
+        nearlyFull_other:
+          "{{count}} boîtes ont atteint le seuil d'alerte ({{pct}} % du quota).",
+        seeThem: "Voir les boîtes",
         replica: "copie 2 : {{where}}",
         storageUnreachable: "inaccessible !",
         recentJobs: "Jobs récents",
@@ -1071,6 +1095,7 @@ export const resources = {
           integrity_failed: "Corruption found by the integrity check",
           replica_lag: "Copy 2 is late",
           storage_full: "Storage full in less than 14 days (forecast)",
+          mailbox_quota: "Mailboxes nearly full (daily summary)",
         },
         digestHour: "Digest hour",
         saved: "Settings saved.",
@@ -1248,6 +1273,7 @@ export const resources = {
         target: {
           primary: "Copy 1 (repository)",
           replica: "Copy 2 (second NAS)",
+          server: "Carbonio server disk",
         },
         used: "{{used}} used of {{total}} ({{pct}} %)",
         fullIn: "full in about {{days}} days at the current rate",
@@ -1265,6 +1291,7 @@ export const resources = {
           failed: "Last backup failed",
           partial: "Last backup partial",
           no_policy: "Covered by no enabled policy",
+          quota: "Mailboxes nearly full (≥ {{pct}} % of quota or ≥ {{gb}} GB)",
         },
         copy2: "Copy 2",
         lastCopy: "Last successful refresh {{when}}.",
@@ -1302,6 +1329,10 @@ export const resources = {
         cronHelp:
           "Default: Sunday 03:30 on 10 % of the files (a different sample every week). 100 % reads the whole repository: keep it for a quiet time.",
         saved: "Settings saved.",
+        quotaPercent: "Mailbox full alert at (% of quota)",
+        quotaGb: "or from (GB)",
+        quotaHelp:
+          "0 = off. The GB size also covers mailboxes without quota. A summary is e-mailed once a day.",
       },
       mail: {
         title: "Mail traffic",
@@ -1592,6 +1623,22 @@ export const resources = {
         storageNetwork:
           "Storage of {{agent}}: network share {{where}} ({{fstype}}) —",
         storageFree: "{{free}} free of {{total}}",
+        storageTitle: "Storage",
+        mailVolume: "Mailbox volume",
+        quotaAllocated: "Quotas allocated",
+        usedOf: "{{used}} / {{total}} ({{pct}} %)",
+        serverDisk: "Carbonio server disk ({{agent}})",
+        mailShareServer: "Mail uses {{pct}} % of the server disk.",
+        backupNas: "Backup NAS — {{where}}",
+        backupLocal: "Backups on the local disk",
+        mailShareNas:
+          "The mail volume is {{pct}} % of the backup storage capacity.",
+        copy2: "Copy 2 — {{where}}",
+        nearlyFull_one:
+          "{{count}} mailbox reached the alert threshold ({{pct}} % of its quota).",
+        nearlyFull_other:
+          "{{count}} mailboxes reached the alert threshold ({{pct}} % of their quota).",
+        seeThem: "See them",
         replica: "copy 2: {{where}}",
         storageUnreachable: "unreachable!",
         recentJobs: "Recent jobs",
