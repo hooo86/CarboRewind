@@ -282,3 +282,25 @@ def test_cli_probe_runs(
     )
     assert main(["carbonio", "probe", "--account", alice.name]) == 0
     assert "✓ SyncRequest (initial, typed)" in capsys.readouterr().out
+
+
+def test_non_json_answers_are_explained(tmp_path: Path) -> None:
+    import httpx
+
+    from carborewind_agent.carbonio.soap import SoapClient, SoapFaultError
+
+    def page(status: int) -> SoapClient:
+        transport = httpx.MockTransport(
+            lambda r: httpx.Response(
+                status, text="<html><body>Request Entity Too Large</body></html>"
+            )
+        )
+        return SoapClient(httpx.Client(transport=transport), "https://x/service/soap", retries=0)
+
+    with pytest.raises(SoapFaultError) as big:
+        page(413).invoke("AddMsg", "urn:zimbraMail")
+    assert big.value.code == "client.TOO_LARGE" and "HTTP 413" in str(big.value)
+    with pytest.raises(SoapFaultError) as other:
+        page(200).invoke("AddMsg", "urn:zimbraMail")
+    assert other.value.code == "client.BAD_RESPONSE"
+    assert "HTTP 200" in str(other.value) and "Request Entity Too Large" in str(other.value)

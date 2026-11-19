@@ -77,7 +77,16 @@ class SoapClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise SoapFaultError("client.BAD_RESPONSE", f"non-JSON answer to {name}") from exc
+            snippet = " ".join(response.text.split())[:160]
+            if response.status_code == 413:
+                raise SoapFaultError(
+                    "client.TOO_LARGE",
+                    f"{name}: request too large for Carbonio (HTTP 413): {snippet!r}",
+                ) from exc
+            raise SoapFaultError(
+                "client.BAD_RESPONSE",
+                f"non-JSON answer to {name} (HTTP {response.status_code}): {snippet!r}",
+            ) from exc
         fault = payload.get("Body", {}).get("Fault")
         if fault is not None:
             code = fault.get("Detail", {}).get("Error", {}).get("Code", "service.FAILURE")
