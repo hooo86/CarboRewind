@@ -212,6 +212,8 @@ export const resources = {
           "Archiver maintenant avec « {{name}} » ? Les messages archivés et vérifiés seront supprimés des boîtes.",
       },
       nav: {
+        administration: "Administration",
+        configuration: "Configuration",
         dashboard: "Tableau de bord",
         accounts: "Comptes",
         jobs: "Jobs",
@@ -1317,6 +1319,8 @@ export const resources = {
           'Archive now with "{{name}}"? Archived and verified messages will be deleted from the mailboxes.',
       },
       nav: {
+        administration: "Administration",
+        configuration: "Configuration",
         dashboard: "Dashboard",
         accounts: "Accounts",
         jobs: "Jobs",
