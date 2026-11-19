@@ -71,6 +71,7 @@ def test_port_open() -> None:
     port = server.getsockname()[1]
     try:
         assert port_open(port)
+        assert port_open(port, "127.0.0.1")
     finally:
         server.close()
     assert not port_open(port, timeout=0.5)
@@ -95,3 +96,21 @@ def test_monitor_reports_and_survives_errors(
     monitor.tick = boom  # type: ignore[method-assign]
     monitor.run(stop)
     assert calls == [1]
+
+
+def test_port_open_tries_the_server_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    import carborewind_agent.servicewatch as sw
+
+    tried: list[str] = []
+
+    def connect(address: tuple[str, int], timeout: float) -> socket.socket:
+        tried.append(address[0])
+        if address[0] != "mail.example.test":
+            raise ConnectionRefusedError
+        return socket.socket()
+
+    monkeypatch.setattr(sw.socket, "getfqdn", lambda: "mail.example.test")
+    monkeypatch.setattr(sw.socket, "gethostname", lambda: "mail")
+    monkeypatch.setattr(sw.socket, "create_connection", connect)
+    assert port_open(389)
+    assert tried == ["127.0.0.1", "mail.example.test"]

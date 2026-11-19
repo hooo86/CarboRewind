@@ -30,12 +30,26 @@ log = logging.getLogger(__name__)
 STALE = 15 * 60  # seconds
 
 
-def port_open(port: int, host: str = "127.0.0.1", timeout: float = 2.0) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
+def _hosts() -> list[str]:
+    """Where Carbonio services listen: loopback, and the server's own name (LDAP, for one,
+    listens only on ``mail.example.com:389``, not on 127.0.0.1)."""
+    out = ["127.0.0.1"]
+    for name in (socket.getfqdn(), socket.gethostname()):
+        if name and name not in out and name != "localhost":
+            out.append(name)
+    return out
+
+
+def port_open(port: int, host: str | None = None, timeout: float = 2.0) -> bool:
+    """True when something accepts connections on ``port`` (on ``host``, or on any of
+    the server's own addresses)."""
+    for candidate in [host] if host else _hosts():
+        try:
+            with socket.create_connection((candidate, port), timeout=timeout):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def collect(

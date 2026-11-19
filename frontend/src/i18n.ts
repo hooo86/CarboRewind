@@ -1005,8 +1005,7 @@ export const resources = {
         unprotected_other:
           "{{count}} comptes n'ont pas de sauvegarde réussie depuis 24 h.",
         noPolicy: "Aucune politique de sauvegarde : rien n'est planifié.",
-        servicesDown:
-          "Service(s) Carbonio arrêté(s) : {{list}} — les e-mails restent bloqués dans la file d'attente.",
+        servicesDown: "Service(s) Carbonio arrêté(s) : {{list}}.",
         seeMonitoring: "Voir la supervision",
         seeAccounts: "Voir les comptes",
         createPolicy: "Créer une politique",
@@ -1533,7 +1532,7 @@ export const resources = {
         services: "Carbonio services",
         servicesDown: "Carbonio services down",
         servicesDownAlert:
-          "Carbonio service(s) down: {{list}}. Messages wait in the queue: restart with \"su - zextras -c 'zmcontrol start'\".",
+          "Carbonio service(s) down: {{list}}. Check with \"su - zextras -c 'zmcontrol status'\"; if it is Amavis or the MTA, messages wait in the queue.",
         noServices:
           "No report: the agent (recent version) sends the state of the services every minute.",
         servicesOf: "{{agent}}, report of {{date}}",
@@ -2093,8 +2092,7 @@ export const resources = {
         unprotected_other:
           "{{count}} accounts have no successful backup in the last 24 h.",
         noPolicy: "No backup policy: nothing is scheduled.",
-        servicesDown:
-          "Carbonio service(s) down: {{list}} — e-mails are stuck in the queue.",
+        servicesDown: "Carbonio service(s) down: {{list}}.",
         seeMonitoring: "Open monitoring",
         seeAccounts: "See accounts",
         createPolicy: "Create a policy",

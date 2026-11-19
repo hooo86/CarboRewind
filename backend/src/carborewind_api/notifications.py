@@ -206,9 +206,9 @@ TEXTS: dict[str, dict[str, str]] = {
         "service_down": "[CarboRewind] Service Carbonio arrêté : {service}",
         "service_down_body": (
             "Le service {service} ne fonctionne plus sur le serveur de l'agent {agent} depuis "
-            "{since}.\nTant qu'Amavis ou le MTA sont arrêtés, les messages restent dans la file "
-            "d'attente (rien n'est perdu). Vérifiez avec : su - zextras -c \"zmcontrol status\" "
-            'puis redémarrez avec : su - zextras -c "zmcontrol start".\n'
+            "{since}.\nSi c'est Amavis ou le MTA, les messages restent dans la file d'attente "
+            '(rien n\'est perdu). Vérifiez avec : su - zextras -c "zmcontrol status" ; '
+            'redémarrez avec : su - zextras -c "zmcontrol start".\n'
         ),
         "service_up": "[CarboRewind] Service Carbonio rétabli : {service}",
         "service_up_body": "Le service {service} fonctionne à nouveau (arrêté depuis {since}).\n",
@@ -306,8 +306,8 @@ TEXTS: dict[str, dict[str, str]] = {
         "service_down": "[CarboRewind] Carbonio service down: {service}",
         "service_down_body": (
             "The service {service} has been down on the server of agent {agent} since "
-            "{since}.\nWhile Amavis or the MTA are down, messages wait in the queue (nothing "
-            'is lost). Check with: su - zextras -c "zmcontrol status" and restart with: '
+            "{since}.\nIf it is Amavis or the MTA, messages wait in the queue (nothing is "
+            'lost). Check with: su - zextras -c "zmcontrol status"; restart with: '
             'su - zextras -c "zmcontrol start".\n'
         ),
         "service_up": "[CarboRewind] Carbonio service back: {service}",
