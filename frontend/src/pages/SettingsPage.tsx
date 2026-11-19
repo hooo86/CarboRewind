@@ -5,6 +5,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { AgentSettingsForm } from "../components/AgentSettingsForm";
 import { BlacklistSettingsTab } from "../components/Blacklist";
+import { RestoreTestSettingsTab } from "../components/RestoreTests";
+import { TelegramSection } from "../components/Telegram";
 import { LimitsForm } from "./MailTrafficPage";
 import { MonitoringSettingsForm } from "./MonitoringPage";
 import { PolicyCard } from "./UsersPage";
@@ -21,7 +23,7 @@ import {
 import { StorageSettingsSection } from "../components/StorageSettingsForm";
 import { formatDate } from "../utils/format";
 
-const EVENTS = [
+export const EVENTS = [
   "job_failed",
   "backup_partial",
   "restore_failed",
@@ -39,6 +41,7 @@ const EVENTS = [
   "archive_report",
   "blacklisted",
   "blacklist_cleared",
+  "restore_test_failed",
 ];
 
 type Form = Omit<
@@ -515,7 +518,12 @@ function Outbox({ refresh }: { refresh: number }) {
                   {rows.map((n) => (
                     <tr key={n.id}>
                       <td>{formatDate(n.created_at)}</td>
-                      <td className="wrap">{n.subject}</td>
+                      <td className="wrap">
+                        {n.channel === "telegram" && (
+                          <span className="badge info">Telegram</span>
+                        )}{" "}
+                        {n.subject}
+                      </td>
                       <td>
                         <StatusBadge
                           status={
@@ -579,6 +587,7 @@ const TABS = [
   "mail",
   "security",
   "blacklist",
+  "restoreTest",
   "agent",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -635,6 +644,7 @@ export function SettingsPage() {
               />
             )}
           </LoadView>
+          <TelegramSection events={EVENTS} />
           <Outbox refresh={refresh} />
         </>
       )}
@@ -643,6 +653,7 @@ export function SettingsPage() {
       {tab === "mail" && <MailLimitsTab />}
       {tab === "security" && <PolicyCard />}
       {tab === "blacklist" && <BlacklistSettingsTab />}
+      {tab === "restoreTest" && <RestoreTestSettingsTab />}
       {tab === "agent" && <AgentTab />}
     </>
   );

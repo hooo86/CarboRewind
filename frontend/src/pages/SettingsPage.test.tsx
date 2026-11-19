@@ -583,3 +583,162 @@ describe("fallback SMTP and blacklists", () => {
     expect(within(table).getByText("clean")).toHaveClass("ok");
   });
 });
+
+describe("Telegram and restore tests", () => {
+  it("sets up the Telegram bot, finds the group and tests it", async () => {
+    let cfg = {
+      enabled: false,
+      token_set: false,
+      chat_ids: [] as string[],
+      events: { job_failed: true, migration_done: false },
+    };
+    const { calls } = open(user("super_admin"), {
+      "GET /api/settings/telegram": () => ({ body: cfg }),
+      "PUT /api/settings/telegram": (c: { body: unknown }) => {
+        const b = c.body as {
+          enabled: boolean;
+          token: string | null;
+          chat_ids: string[];
+        };
+        cfg = {
+          ...cfg,
+          enabled: b.enabled,
+          chat_ids: b.chat_ids,
+          token_set: cfg.token_set || !!b.token,
+        };
+        return { body: cfg };
+      },
+      "GET /api/settings/telegram/chats": [
+        { id: "-1001", title: "Alertes CarboRewind", type: "group" },
+      ],
+      "POST /api/settings/telegram/test": { ok: true, error: null },
+    });
+    const form = await screen.findByRole("form", { name: "Telegram alerts" });
+    fireEvent.change(within(form).getByLabelText("Bot token"), {
+      target: { value: "123456789:AAAA" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Save Telegram" }),
+    );
+    await waitFor(() =>
+      expect(
+        calls.find(
+          (c) => c.url.endsWith("/api/settings/telegram") && c.method === "PUT",
+        )?.body,
+      ).toMatchObject({ token: "123456789:AAAA", enabled: false }),
+    );
+    const again = await screen.findByRole("form", { name: "Telegram alerts" });
+    fireEvent.click(within(again).getByRole("button", { name: "Find groups" }));
+    fireEvent.click(
+      await within(again).findByRole("button", {
+        name: 'Add "Alertes CarboRewind" (-1001)',
+      }),
+    );
+    expect(within(again).getByLabelText(/Groups or people/)).toHaveValue(
+      "-1001",
+    );
+    fireEvent.click(within(again).getByLabelText("Enable Telegram alerts"));
+    fireEvent.click(within(again).getByLabelText(/Migration batch finished/));
+    fireEvent.click(
+      within(again).getByRole("button", { name: "Save Telegram" }),
+    );
+    await waitFor(() => {
+      const puts = calls.filter(
+        (c) => c.url.endsWith("/api/settings/telegram") && c.method === "PUT",
+      );
+      expect(puts.at(-1)?.body).toMatchObject({
+        enabled: true,
+        token: null,
+        chat_ids: ["-1001"],
+        events: { job_failed: true, migration_done: true },
+      });
+    });
+    const enabled = await screen.findByRole("form", {
+      name: "Telegram alerts",
+    });
+    fireEvent.click(
+      within(enabled).getByRole("button", { name: "Send a test message" }),
+    );
+    expect(
+      await within(enabled).findByText(/Test message sent/),
+    ).toBeInTheDocument();
+  });
+
+  it("configures the restore test", async () => {
+    const tests = {
+      settings: {
+        enabled: false,
+        schedule: "45 3 * * 6",
+        timezone: "UTC",
+        target_account_id: null,
+        messages: 20,
+        cleanup: true,
+      },
+      target_email: null,
+      history: [
+        {
+          job_id: "r1",
+          status: "succeeded",
+          source: "ana@lnhc.dz",
+          seq: 4,
+          target: "test@lnhc.dz",
+          selected: 20,
+          restored: 18,
+          failed: 2,
+          ok: false,
+          cleaned: true,
+          error: "2 item(s) could not be restored",
+          created_at: "2026-11-21T03:45:00Z",
+          finished_at: "2026-11-21T03:47:00Z",
+        },
+      ],
+    };
+    const { calls } = open(
+      user("super_admin"),
+      {
+        "GET /api/monitoring/restore-tests": tests,
+        "PUT /api/monitoring/restore-tests": (c: { body: unknown }) => ({
+          body: { ...tests, settings: c.body },
+        }),
+        "GET /api/accounts": {
+          items: [
+            {
+              id: "t1",
+              email: "test@lnhc.dz",
+              domain_id: "d",
+              domain: "lnhc.dz",
+            },
+          ],
+          total: 1,
+          limit: 20,
+          offset: 0,
+        },
+      },
+      "/settings?tab=restoreTest",
+    );
+    const form = await screen.findByRole("form", {
+      name: "Automatic restore test",
+    });
+    expect(within(form).getByText("failed")).toHaveClass("bad");
+    expect(within(form).getByText("18 / 20")).toBeInTheDocument();
+    fireEvent.click(within(form).getByLabelText("Test automatically"));
+    fireEvent.change(within(form).getByLabelText(/Test mailbox/), {
+      target: { value: "test@lnhc.dz" },
+    });
+    fireEvent.change(within(form).getByLabelText("Messages per test"), {
+      target: { value: "10" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(
+      await within(form).findByText("Settings saved."),
+    ).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      enabled: true,
+      schedule: "45 3 * * 6",
+      timezone: "UTC",
+      target_account_id: "t1",
+      messages: 10,
+      cleanup: true,
+    });
+  });
+});

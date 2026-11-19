@@ -42,3 +42,20 @@ dépôt chiffré de l'agent et réécrit les éléments choisis dans une boîte 
 - Pas encore de restauration d'un **compte supprimé** dans un compte recréé (prochaine étape) ; il peut
   déjà servir de source vers un autre compte existant.
 - Pas de mode « écraser » : on ne remplace jamais un élément existant.
+
+
+## Test de restauration automatique
+
+**Paramètres → Test de restauration** ; résultats dans **Supervision**.
+
+* À chaque passage (planification cron, le samedi à 3 h 45 par défaut, ou « Lancer un test
+  maintenant ») : un compte actif ayant une sauvegarde est tiré au hasard, puis N messages
+  (20 par défaut) de sa dernière sauvegarde, également au hasard.
+* Ils sont **réellement** restaurés par l'agent dans une **boîte de test** dédiée (jamais la boîte
+  source), dans un dossier « Test de restauration <date> » : lecture du dépôt, déchiffrement,
+  écriture dans Carbonio, comme une restauration demandée par un utilisateur.
+* Le test réussit si tous les messages tirés ont été restaurés. Sinon, ou si le job échoue,
+  l'alerte `restore_test_failed` part (e-mail et Telegram).
+* Avec « Supprimer le dossier de test », l'agent efface ce dossier après le test pour ne pas
+  remplir la boîte de test.
+* Créer d'abord dans Carbonio une boîte dédiée, par exemple `test-restauration@domaine`.

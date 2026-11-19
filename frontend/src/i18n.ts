@@ -119,6 +119,60 @@ export const resources = {
         neverChecked: "Jamais vérifié",
         disabled: "vérification automatique désactivée",
       },
+      telegram: {
+        title: "Alertes Telegram",
+        intro:
+          "Gratuit, et indépendant de la messagerie : les alertes arrivent même quand Carbonio est en panne.",
+        step1:
+          "Dans Telegram, écrivez à @BotFather, tapez /newbot et copiez le jeton qu'il donne.",
+        step2:
+          "Créez un groupe (par ex. « Alertes CarboRewind »), ajoutez-y le bot et les personnes à prévenir, puis écrivez un message dans le groupe.",
+        step3:
+          "Collez le jeton ci-dessous, enregistrez, cliquez sur « Détecter les groupes », ajoutez le groupe, cochez « Activer » et enregistrez.",
+        enabled: "Activer les alertes Telegram",
+        token: "Jeton du bot",
+        changeToken: "Changer le jeton",
+        chats: "Groupes ou personnes (identifiants, un par ligne)",
+        discover: "Détecter les groupes",
+        found: "Groupes et personnes ayant écrit au bot",
+        add: "Ajouter « {{title}} » ({{id}})",
+        noChat:
+          "Aucun groupe trouvé : ajoutez le bot au groupe, écrivez-y un message, puis réessayez.",
+        events: "Alertes envoyées sur Telegram",
+        save: "Enregistrer Telegram",
+        test: "Envoyer un message de test",
+        testOk: "Message de test envoyé : vérifiez le groupe Telegram.",
+        saved: "Réglages Telegram enregistrés.",
+      },
+      restoreTest: {
+        title: "Test de restauration automatique",
+        intro:
+          "À chaque passage, des messages tirés au hasard dans la dernière sauvegarde d'un compte tiré au hasard sont réellement restaurés dans une boîte de test, comme lors d'une vraie restauration. Un échec déclenche une alerte.",
+        enabled: "Tester automatiquement",
+        target: "Boîte de test (jamais une boîte d'utilisateur)",
+        targetHelp:
+          "Créez dans Carbonio une boîte dédiée, par exemple test-restauration@votre-domaine. Les messages y sont restaurés dans un dossier « Test de restauration <date> ».",
+        count: "Messages par test",
+        schedule: "Planification (cron)",
+        cleanup: "Supprimer le dossier de test après la restauration",
+        saved: "Réglages enregistrés.",
+        unknownMailbox: "boîte de test inconnue",
+        history: "Derniers tests",
+        noRun: "Aucun test pour l'instant.",
+        date: "Date",
+        source: "Compte testé",
+        result: "Résultat",
+        messages: "Restaurés / tirés",
+        passed: "réussi",
+        failedBadge: "échec",
+        runNow: "Lancer un test maintenant",
+        started: "Test lancé : il apparaîtra ici dans quelques minutes.",
+        settings: "Réglages",
+        notConfigured:
+          "Pas encore configuré : choisissez une boîte de test dans Paramètres → Test de restauration.",
+        lastFailed:
+          "Le dernier test de restauration a échoué : une restauration réelle pourrait échouer aussi.",
+      },
       agentSettings: {
         title: "Agent du serveur Carbonio",
         intro:
@@ -328,6 +382,7 @@ export const resources = {
           mail: "Limites d'envoi",
           security: "Sécurité",
           blacklist: "Listes noires",
+          restoreTest: "Test de restauration",
           agent: "Agent",
         },
         otherHelp:
@@ -379,6 +434,7 @@ export const resources = {
           mail_queue: "File d'attente mail au-dessus du seuil",
           blacklisted: "Adresse du serveur en liste noire",
           blacklist_cleared: "Adresse retirée d'une liste noire",
+          restore_test_failed: "Test de restauration automatique en échec",
         },
         digestHour: "Heure du résumé",
         saved: "Paramètres enregistrés.",
@@ -1343,6 +1399,60 @@ export const resources = {
         neverChecked: "Never checked",
         disabled: "automatic check off",
       },
+      telegram: {
+        title: "Telegram alerts",
+        intro:
+          "Free, and independent of the mail system: alerts arrive even when Carbonio is down.",
+        step1:
+          "In Telegram, write to @BotFather, type /newbot and copy the token it gives.",
+        step2:
+          'Create a group (e.g. "CarboRewind alerts"), add the bot and the people to warn, then write a message in the group.',
+        step3:
+          'Paste the token below, save, click "Find groups", add the group, tick "Enable" and save.',
+        enabled: "Enable Telegram alerts",
+        token: "Bot token",
+        changeToken: "Change the token",
+        chats: "Groups or people (ids, one per line)",
+        discover: "Find groups",
+        found: "Groups and people who wrote to the bot",
+        add: 'Add "{{title}}" ({{id}})',
+        noChat:
+          "No group found: add the bot to the group, write a message there, then try again.",
+        events: "Alerts sent to Telegram",
+        save: "Save Telegram",
+        test: "Send a test message",
+        testOk: "Test message sent: look at the Telegram group.",
+        saved: "Telegram settings saved.",
+      },
+      restoreTest: {
+        title: "Automatic restore test",
+        intro:
+          "Each run really restores messages drawn at random from the latest backup of an account drawn at random into a test mailbox, as a real restore would. A failure sends an alert.",
+        enabled: "Test automatically",
+        target: "Test mailbox (never a user's mailbox)",
+        targetHelp:
+          'Create a dedicated mailbox in Carbonio, e.g. restore-test@your-domain. Messages are restored there into a "Test de restauration <date>" folder.',
+        count: "Messages per test",
+        schedule: "Schedule (cron)",
+        cleanup: "Delete the test folder after the restore",
+        saved: "Settings saved.",
+        unknownMailbox: "unknown test mailbox",
+        history: "Latest tests",
+        noRun: "No test yet.",
+        date: "Date",
+        source: "Account tested",
+        result: "Result",
+        messages: "Restored / drawn",
+        passed: "passed",
+        failedBadge: "failed",
+        runNow: "Run a test now",
+        started: "Test started: it will show here within minutes.",
+        settings: "Settings",
+        notConfigured:
+          "Not set up yet: choose a test mailbox in Settings → Restore test.",
+        lastFailed:
+          "The last restore test failed: a real restore could fail too.",
+      },
       agentSettings: {
         title: "Carbonio server agent",
         intro:
@@ -1550,6 +1660,7 @@ export const resources = {
           mail: "Sending limits",
           security: "Security",
           blacklist: "Blacklists",
+          restoreTest: "Restore test",
           agent: "Agent",
         },
         otherHelp: "The other settings sit with the feature they belong to:",
@@ -1595,6 +1706,7 @@ export const resources = {
           mail_queue: "Mail queue above the threshold",
           blacklisted: "Server address blacklisted",
           blacklist_cleared: "Address removed from a blacklist",
+          restore_test_failed: "Automatic restore test failed",
         },
         digestHour: "Digest hour",
         saved: "Settings saved.",

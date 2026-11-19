@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Alertes Telegram (bot gratuit, groupes détectés automatiquement, choix des alertes, test),
+  indépendantes de la messagerie. Migration 0015.
+- Test de restauration automatique : messages tirés au hasard réellement restaurés dans une boîte
+  de test, dossier nettoyé ensuite, alerte en cas d'échec, historique dans la Supervision.
 - Serveur SMTP de secours pour les notifications (bascule automatique, test dédié).
 - Surveillance des listes noires (DNSBL) des adresses publiques du serveur de messagerie, avec
   alerte à l'inscription et au retrait, tableau dans la Supervision, bandeau sur le tableau de

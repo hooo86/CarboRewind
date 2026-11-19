@@ -1,5 +1,9 @@
 import { request } from "./client";
 import type {
+  RestoreTests,
+  RestoreTestSettings,
+  TelegramSettings,
+  TelegramSettingsInput,
   BlacklistSettings,
   BlacklistStatus,
   AgentTuning,
@@ -333,6 +337,25 @@ export const api = {
     request<BlacklistStatus>("PUT", "/api/monitoring/blacklist", body),
   checkBlacklist: () =>
     request<BlacklistStatus>("POST", "/api/monitoring/blacklist/check"),
+  telegram: () => request<TelegramSettings>("GET", "/api/settings/telegram"),
+  saveTelegram: (body: TelegramSettingsInput) =>
+    request<TelegramSettings>("PUT", "/api/settings/telegram", body),
+  testTelegram: () =>
+    request<{ ok: boolean; error: string | null }>(
+      "POST",
+      "/api/settings/telegram/test",
+    ),
+  telegramChats: () =>
+    request<{ id: string; title: string; type: string }[]>(
+      "GET",
+      "/api/settings/telegram/chats",
+    ),
+  restoreTests: () =>
+    request<RestoreTests>("GET", "/api/monitoring/restore-tests"),
+  saveRestoreTests: (body: RestoreTestSettings) =>
+    request<RestoreTests>("PUT", "/api/monitoring/restore-tests", body),
+  runRestoreTest: () =>
+    request<RestoreTests>("POST", "/api/monitoring/restore-tests/run"),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

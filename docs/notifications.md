@@ -24,3 +24,20 @@ chiffrement, identifiant, mot de passe chiffré, et expéditeur facultatif). Le 
 indique « sent by the fallback server » avec l'erreur du serveur principal ; si les deux
 échouent, le message est retenté plus tard avec les deux erreurs. Un bouton envoie un e-mail de
 test par le serveur de secours.
+
+
+## Alertes Telegram
+
+**Paramètres → Notifications → Alertes Telegram** : gratuites, et indépendantes de la messagerie
+(elles arrivent même si Carbonio est en panne).
+
+1. Dans Telegram, écrire à **@BotFather**, taper `/newbot`, copier le jeton.
+2. Créer un groupe, y ajouter le bot et les personnes à prévenir, écrire un message dans le groupe.
+3. Coller le jeton, enregistrer, « Détecter les groupes », ajouter le groupe, activer, enregistrer.
+
+* Le jeton est stocké chiffré, jamais renvoyé par l'API ni écrit dans les erreurs.
+* Par défaut, seules les alertes urgentes partent sur Telegram (échec définitif, agent muet,
+  corruption, stockage plein, limite d'envoi, service arrêté/rétabli, file d'attente, liste
+  noire, test de restauration en échec) ; le choix se fait événement par événement.
+* Même file d'envoi et mêmes nouvelles tentatives que les e-mails ; le journal d'envoi marque les
+  messages Telegram. Le serveur CarboRewind doit joindre `api.telegram.org` en HTTPS.

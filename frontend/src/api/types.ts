@@ -323,8 +323,54 @@ export interface BlacklistStatus {
   results: BlacklistResult[];
 }
 
+export interface TelegramSettings {
+  enabled: boolean;
+  token_set: boolean;
+  chat_ids: string[];
+  events: Record<string, boolean>;
+}
+
+export interface TelegramSettingsInput {
+  enabled: boolean;
+  token: string | null;
+  chat_ids: string[];
+  events: Record<string, boolean>;
+}
+
+export interface RestoreTestSettings {
+  enabled: boolean;
+  schedule: string;
+  timezone: string;
+  target_account_id: string | null;
+  messages: number;
+  cleanup: boolean;
+}
+
+export interface RestoreTestRun {
+  job_id: string;
+  status: JobStatus;
+  source: string | null;
+  seq: number | null;
+  target: string;
+  selected: number | null;
+  restored: number | null;
+  failed: number | null;
+  ok: boolean | null;
+  cleaned: boolean | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface RestoreTests {
+  settings: RestoreTestSettings;
+  target_email: string | null;
+  history: RestoreTestRun[];
+}
+
 export interface OutboxEntry {
   id: number;
+  channel?: "email" | "telegram";
   event: string;
   subject: string;
   status: "pending" | "sent" | "failed";
