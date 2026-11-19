@@ -389,7 +389,7 @@ class MailboxMigration:
                 result.failed[f"{folder.name}:{uid}"] = exc.code
                 if len(current["failed"]) < MAX_FAILED_PER_FOLDER:
                     current["failed"].append(uid)
-                log.error("message copy failed", extra={"uid": uid, "code": exc.code})
+                log.error("message copy failed (uid %s): %s", uid, exc)
                 continue
             report.copied += 1
             result.copied += 1

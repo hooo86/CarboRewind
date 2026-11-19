@@ -109,6 +109,7 @@ class FakeCarbonio:
         self.vip_quota = 5 * 1024**3
         # zmcontrol-like status: service -> (running, checked at, s); queue name -> count.
         self.services: dict[str, tuple[bool, int]] = {}
+        self.upload_reply: str | None = None  # e.g. "401,'null'": the servlet refuses
         self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
 
     # ------------------------------------------------------------------ setup helpers
@@ -154,6 +155,8 @@ class FakeCarbonio:
             return self._rest_get(request)
         if request.method == "POST" and path == "/service/upload":
             account = self._cookie_account(request)
+            if self.upload_reply is not None:
+                return httpx.Response(200, text=self.upload_reply)
             aid = secrets.token_hex(6)
             self.uploads[aid] = request.content
             self.calls.append(f"upload:{account}")

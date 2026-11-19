@@ -8,6 +8,7 @@ still to verify (🔎). Edition-specific code stays behind this class so that an
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -16,7 +17,10 @@ from urllib.parse import quote
 
 import httpx
 
+from .mime7bit import to_7bit
 from .soap import NS_ADMIN, NS_MAIL, SoapClient, SoapFaultError, content
+
+log = logging.getLogger(__name__)
 
 MUST_RESYNC = "mail.MUST_RESYNC"
 
@@ -460,12 +464,21 @@ class CarbonioClient:
 
         UTF-8/ASCII messages are sent inline; anything else (8-bit legacy charsets) is first
         uploaded byte-for-byte to ``/service/upload?fmt=raw`` and referenced by its ``aid``.
+        If the upload servlet refuses, the message is downgraded to 7 bits (same content,
+        base64 / RFC 2047 transfer encoding, see :mod:`.mime7bit`) and sent inline.
         """
         msg: dict[str, Any] = {"l": str(folder_id), "f": flags, "tn": tags}
         try:
             msg["content"] = {"_content": raw.decode("utf-8")}
         except UnicodeDecodeError:
-            msg["aid"] = self.upload(account_id, raw)
+            try:
+                msg["aid"] = self.upload(account_id, raw)
+            except (SoapFaultError, httpx.HTTPError) as exc:
+                ascii_text = to_7bit(raw)
+                if ascii_text is None:
+                    raise
+                log.warning("upload refused (%s), message sent re-encoded in 7 bits", exc)
+                msg["content"] = {"_content": ascii_text}
         if received_ms is not None:
             msg["d"] = received_ms
         resp = self._mail.invoke("AddMsg", NS_MAIL, {"m": msg}, token=self.delegate(account_id))
@@ -483,12 +496,16 @@ class CarbonioClient:
             headers={
                 "Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}",
                 "Content-Type": "message/rfc822",
+                "Content-Disposition": 'attachment; filename="message.eml"',
             },
         )
         response.raise_for_status()
         parts = [p.strip().strip("'\"") for p in response.text.strip().split(",")]
         if len(parts) < 3 or parts[0] != "200" or not parts[2]:
-            raise SoapFaultError("client.BAD_RESPONSE", "unexpected upload answer")
+            raise SoapFaultError(
+                "client.BAD_RESPONSE",
+                f"unexpected upload answer: {' '.join(response.text.split())[:120]!r}",
+            )
         return parts[2]
 
     def import_rest(
