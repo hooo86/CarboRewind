@@ -107,6 +107,9 @@ class FakeCarbonio:
         self.quota_denied = False
         self.quota_missing: set[str] = set()  # accounts GetQuotaUsage does not list
         self.vip_quota = 5 * 1024**3
+        # zmcontrol-like status: service -> (running, checked at, s); queue name -> count.
+        self.services: dict[str, tuple[bool, int]] = {}
+        self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
 
     # ------------------------------------------------------------------ setup helpers
 
@@ -264,6 +267,27 @@ class FakeCarbonio:
             ],
             "more": offset + limit < len(boxes),
         }
+
+    def _GetServiceStatusRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        return {
+            "status": [
+                {
+                    "server": "mail.example.test",
+                    "service": name,
+                    "t": t,
+                    "_content": "1" if up else "0",
+                }
+                for name, (up, t) in self.services.items()
+            ]
+        }
+
+    def _GetMailQueueInfoRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if self.queues is None:
+            raise _Fault("service.FAILURE", "queue info unavailable")
+        queues = [{"name": k, "n": v} for k, v in self.queues.items()]
+        return {"server": [{"name": body["server"]["name"], "queue": queues}]}
 
     def _ModifyAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)

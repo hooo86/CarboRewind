@@ -26,6 +26,10 @@ const EVENTS = [
   "replica_lag",
   "storage_full",
   "mailbox_quota",
+  "service_down",
+  "service_up",
+  "mail_queue",
+  "archive_report",
 ];
 
 type Form = Omit<

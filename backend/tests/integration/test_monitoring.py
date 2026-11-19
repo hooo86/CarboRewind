@@ -401,3 +401,65 @@ def test_mail_storage_and_nearly_full_mailboxes(
         ).status_code
         == 422
     )
+
+
+def test_carbonio_services_and_mail_queue(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+
+    def report(amavis: bool | None, queue: int = 3) -> None:
+        body = {
+            "checked_at": "2026-11-19T10:00:00+00:00",
+            "services": [
+                {"name": "mta", "ok": True, "source": "carbonio", "checked": 1},
+                {"name": "amavis", "ok": amavis, "source": "carbonio", "checked": 1},
+                {"name": "port:amavis", "ok": bool(amavis), "source": "port", "port": 10024},
+            ],
+            "queue": {"deferred": queue, "active": 0},
+            "errors": [],
+        }
+        assert agent.post("/services", body).status_code == 204
+
+    def events(name: str) -> list[Notification]:
+        with Session(engine) as s:
+            return list(s.scalars(select(Notification).where(Notification.event == name)))
+
+    report(True)
+    report(False)  # one report down: maybe a restart, no alert yet
+    assert events("service_down") == []
+    report(None)  # unknown (stale record) changes nothing
+    report(False)
+    down = events("service_down")
+    assert {n.subject for n in down} == {
+        "[CarboRewind] Service Carbonio arrêté : amavis",
+        "[CarboRewind] Service Carbonio arrêté : port:amavis",
+    }
+    report(False)
+    assert len(events("service_down")) == 2  # alerted once per outage
+    ov = api.get("/api/monitoring/overview", headers=h).json()
+    mine = next(v for v in ov["services"] if v["down"])
+    assert mine["down"] == ["amavis", "port:amavis"] and mine["queue_total"] == 3
+    assert mine["services"][0]["since"] is not None and mine["stale"] is False
+    dash = api.get("/api/dashboard", headers=h).json()
+    assert "amavis" in dash["services_down"] and dash["mail_queue_total"] >= 3
+    metrics = api.get(
+        "/metrics", headers={"X-Forwarded-For": "203.0.113.1", "Authorization": "Bearer prom-token"}
+    )
+    assert 'carborewind_carbonio_service_up{agent="' in metrics.text
+    assert 'service="amavis"} 0' in metrics.text
+
+    report(True, queue=450)
+    assert {n.subject for n in events("service_up")} == {
+        "[CarboRewind] Service Carbonio rétabli : amavis",
+        "[CarboRewind] Service Carbonio rétabli : port:amavis",
+    }
+    (queue,) = events("mail_queue")
+    assert "450" in queue.subject and "deferred: 450" in queue.body
+    report(True, queue=500)
+    assert len(events("mail_queue")) == 1  # at most every 3 hours
+    r = api.put(
+        "/api/monitoring/settings",
+        json={"service_down_reports": 0},
+        headers=h,
+    )
+    assert r.status_code == 422

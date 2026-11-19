@@ -31,6 +31,8 @@ export function Layout() {
     canManageMigrations,
     canManageUsers,
   } = useAuth();
+  // Archived messages are mail content: not for read-only viewers.
+  const canReadArchives = (user?.roles ?? []).some((r) => r.role !== "viewer");
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -48,6 +50,9 @@ export function Layout() {
             <NavLink to="/monitoring">{t("nav.monitoring")}</NavLink>
           )}
           {canManageSettings && <NavLink to="/mail">{t("nav.mail")}</NavLink>}
+          {canReadArchives && (
+            <NavLink to="/archives">{t("nav.archives")}</NavLink>
+          )}
           {canManageMigrations && (
             <NavLink to="/migrations">{t("nav.migrations")}</NavLink>
           )}

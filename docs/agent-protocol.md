@@ -110,6 +110,22 @@ Voir [storage.md](storage.md).
 
 Voir [mail-traffic.md](mail-traffic.md).
 
+### Archivage
+
+| Appel | Rôle |
+|---|---|
+| `POST /jobs/{id}/archive-stored` | `{entries: [...]}` : index des messages archivés (idempotent), **avant** toute suppression |
+| `POST /jobs/{id}/archive-complete` | résultat d'un job `archive` (simulation, copie ou archivage) : candidats, archivés, identifiants retirés des boîtes, erreurs |
+| `POST /jobs/{id}/fetch-complete` | `{data}` (base64, 20 Mio au plus) : message demandé par l'interface, gardé chiffré une heure |
+
+Voir [archives.md](archives.md).
+
+### Services Carbonio
+
+| Appel | Rôle |
+|---|---|
+| `POST /services` | chaque minute : état des services (`GetServiceStatusRequest`, comme `zmcontrol status`), ports locaux (25, 10024, 7025, 389) et taille des files d'attente (`GetMailQueueInfoRequest`) |
+
 ## Commandes
 
 ```bash

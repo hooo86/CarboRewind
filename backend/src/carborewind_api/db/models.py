@@ -347,6 +347,8 @@ class Agent(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Repository location and free space, reported with each inventory.
     storage: Mapped[dict[str, Any] | None]
+    # Carbonio services and mail queue, reported every minute (see monitoring.record_services).
+    services: Mapped[dict[str, Any] | None]
     created_at: Mapped[datetime] = _created_at()
 
 

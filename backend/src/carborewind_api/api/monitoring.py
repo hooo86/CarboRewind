@@ -36,6 +36,8 @@ class SettingsIn(BaseModel):
     integrity_timezone: str = Field(default="UTC", max_length=64)
     mailbox_alert_percent: int = Field(default=90, ge=0, le=100)
     mailbox_alert_gb: float = Field(default=0.0, ge=0, le=100_000)
+    service_down_reports: int = Field(default=2, ge=1, le=60)
+    mail_queue_alert: int = Field(default=200, ge=0, le=1_000_000)
 
     @field_validator("integrity_cron")
     @classmethod
@@ -65,6 +67,7 @@ class Overview(BaseModel):
     next_integrity_at: datetime | None
     jobs_failed_24h: dict[str, int]
     agents: list[dict[str, Any]]
+    services: list[dict[str, Any]] = Field(default_factory=list)
     metrics_token_configured: bool
 
 
@@ -86,6 +89,12 @@ async def overview(principal: Admin, db: DbSession, settings: AppSettings) -> Ov
             .group_by(Job.kind)
         )
     )
+    active = list(
+        await db.scalars(
+            select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
+        )
+    )
+    services = [v for a in active if (v := monitoring.services_view(a, now)) is not None]
     agents = [
         {
             "name": a.name,
@@ -94,9 +103,7 @@ async def overview(principal: Admin, db: DbSession, settings: AppSettings) -> Ov
             "cert_not_after": a.cert_not_after,
             "mail_reported_at": ((a.storage or {}).get("mail") or {}).get("reported_at"),
         }
-        for a in await db.scalars(
-            select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
-        )
+        for a in active
     ]
     nxt = None
     if cfg.integrity_enabled:
@@ -118,6 +125,7 @@ async def overview(principal: Admin, db: DbSession, settings: AppSettings) -> Ov
         next_integrity_at=nxt.astimezone(UTC) if nxt else None,
         jobs_failed_24h=failed,
         agents=agents,
+        services=services,
         metrics_token_configured=settings.metrics_token is not None,
     )
 

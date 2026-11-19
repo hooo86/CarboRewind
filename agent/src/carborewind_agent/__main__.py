@@ -174,6 +174,14 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         )
         threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
 
+    if settings.service_monitor:
+        from .servicewatch import ServiceMonitor
+
+        services = ServiceMonitor(
+            AgentApi(settings, server_ca=server_ca), carbonio, settings.service_ports
+        )
+        threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()
+
     def stop(*_: object) -> None:
         stop_mail.set()
         worker.stop()

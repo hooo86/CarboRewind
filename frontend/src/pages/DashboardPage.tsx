@@ -102,6 +102,19 @@ function StorageOverview({ d }: { d: Dashboard }) {
             <span className="tile-label">{t("dashboard.quotaAllocated")}</span>
           </div>
         ) : null}
+        {d.archived_messages ? (
+          <div className="tile">
+            <span className="tile-value">
+              {formatBytes(d.archived_bytes ?? 0)}
+            </span>
+            <span className="tile-label">
+              {t("dashboard.archived", {
+                count: d.archived_messages,
+                freed: formatBytes(d.archived_removed_bytes ?? 0),
+              })}
+            </span>
+          </div>
+        ) : null}
       </div>
       {(d.mailboxes_nearly_full ?? 0) > 0 && (
         <p role="alert" className="alert warn">
@@ -284,6 +297,15 @@ export function DashboardPage() {
   return (
     <>
       <h1>{t("dashboard.title")}</h1>
+      {stats.state === "ready" &&
+        (stats.data.services_down?.length ?? 0) > 0 && (
+          <p role="alert" className="alert error">
+            {t("alerts.servicesDown", {
+              list: stats.data.services_down?.join(", "),
+            })}{" "}
+            <Link to="/monitoring">{t("alerts.seeMonitoring")}</Link>
+          </p>
+        )}
       {policies.state === "ready" && !policies.data.some((p) => p.enabled) && (
         <p role="alert" className="alert warn">
           {t("alerts.noPolicy")}{" "}

@@ -201,6 +201,39 @@ class CarbonioClient:
             out[c["id"]] = (c.get("name", c["id"]), int(quota) if quota.isdigit() else None)
         return out
 
+    def service_status(self) -> list[tuple[str, str, bool, int]]:
+        """``(server, service, running, checked at in s)`` from ``GetServiceStatusRequest``.
+
+        Carbonio's stats service records this every few minutes (what ``zmcontrol status``
+        shows), so it needs no shell access on the server.
+        """
+        resp = self._admin.invoke("GetServiceStatus", NS_ADMIN, {}, token=self._admin_auth())
+        out = []
+        for entry in resp.get("status", []):
+            content = str(entry.get("_content", "")).strip()
+            out.append(
+                (
+                    str(entry.get("server", "")),
+                    str(entry.get("service", "")),
+                    content == "1",
+                    int(entry.get("t") or 0),
+                )
+            )
+        return out
+
+    def mail_queue(self, server: str) -> dict[str, int]:
+        """Messages per MTA queue (``GetMailQueueInfoRequest``): deferred, active, hold…"""
+        resp = self._admin.invoke(
+            "GetMailQueueInfo", NS_ADMIN, {"server": {"name": server}}, token=self._admin_auth()
+        )
+        out: dict[str, int] = {}
+        for srv in resp.get("server", []):
+            for queue in srv.get("queue", []):
+                out[str(queue.get("name"))] = out.get(str(queue.get("name")), 0) + int(
+                    queue.get("n") or 0
+                )
+        return out
+
     def mailbox_size(self, account_id: str) -> int:
         """Bytes used by one mailbox (``GetMailboxRequest``, exact, no cache)."""
         resp = self._admin.invoke(

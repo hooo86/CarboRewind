@@ -432,6 +432,33 @@ class MailStatsIn(BaseModel):
     log: str | None = Field(default=None, max_length=4096)
 
 
+class ServiceIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(min_length=1, max_length=255)
+    ok: bool | None
+    source: Literal["carbonio", "port"]
+    port: int | None = Field(default=None, ge=1, le=65535)
+    checked: int | None = None
+
+
+class ServicesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    checked_at: datetime | None = None
+    services: list[ServiceIn] = Field(default_factory=list, max_length=500)
+    queue: dict[str, int] | None = Field(default=None, max_length=20)
+    errors: list[str] = Field(default_factory=list, max_length=20)
+
+
+@router.post("/services", status_code=status.HTTP_204_NO_CONTENT)
+async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> None:
+    """State of the Carbonio services and of the mail queue, every minute."""
+    report = body.model_dump(mode="json")
+    report["errors"] = [e[:300] for e in body.errors]
+    await monitoring.record_services(db, agent, report, datetime.now(UTC))
+
+
 @router.post("/mail-stats")
 async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> dict[str, Any]:
     """Hourly mail counters from the MTA log; answers with the account actions to apply."""

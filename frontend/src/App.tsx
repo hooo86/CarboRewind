@@ -14,6 +14,7 @@ import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MailTrafficPage } from "./pages/MailTrafficPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
+import { ArchivesPage } from "./pages/ArchivesPage";
 import { MigrationBatchPage } from "./pages/MigrationBatchPage";
 import { MigrationsPage } from "./pages/MigrationsPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
@@ -43,6 +44,7 @@ export function AppRoutes() {
         <Route path="migrations" element={<MigrationsPage />} />
         <Route path="mail" element={<MailTrafficPage />} />
         <Route path="monitoring" element={<MonitoringPage />} />
+        <Route path="archives" element={<ArchivesPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="me" element={<AccountSecurityPage />} />
         <Route path="migrations/:id" element={<MigrationBatchPage />} />

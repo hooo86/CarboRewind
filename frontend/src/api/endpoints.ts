@@ -1,5 +1,13 @@
 import { request } from "./client";
 import type {
+  ArchivedMessage,
+  ArchiveMode,
+  ArchivePolicy,
+  ArchivePolicyInput,
+  ArchiveRun,
+  ArchiveSearch,
+  ArchiveSummary,
+  OpenedMessage,
   AccountDetail,
   AccountFacets,
   AccountItem,
@@ -262,6 +270,45 @@ export const api = {
       "POST",
       `/api/migrations/batches/${id}/forget-passwords`,
     ),
+  archivePolicies: () =>
+    request<ArchivePolicy[]>("GET", "/api/archives/policies"),
+  createArchivePolicy: (body: ArchivePolicyInput) =>
+    request<ArchivePolicy>("POST", "/api/archives/policies", body),
+  updateArchivePolicy: (id: string, body: Partial<ArchivePolicyInput>) =>
+    request<ArchivePolicy>("PATCH", `/api/archives/policies/${id}`, body),
+  deleteArchivePolicy: (id: string) =>
+    request<undefined>("DELETE", `/api/archives/policies/${id}`),
+  runArchivePolicy: (id: string, simulate: boolean) =>
+    request<{ run: string; mode: ArchiveMode; jobs: number }>(
+      "POST",
+      `/api/archives/policies/${id}/run`,
+      { simulate },
+    ),
+  archiveRuns: (policyId?: string, limit = 50) =>
+    request<Page<ArchiveRun>>("GET", "/api/archives/runs", undefined, {
+      policy_id: policyId,
+      limit,
+    }),
+  archiveSummary: () => request<ArchiveSummary>("GET", "/api/archives/summary"),
+  archivedMessages: (search: ArchiveSearch) =>
+    request<Page<ArchivedMessage>>("GET", "/api/archives/messages", undefined, {
+      ...search,
+    }),
+  openArchivedMessage: (id: number) =>
+    request<{ job_id: string }>("POST", `/api/archives/messages/${id}/open`),
+  openedMessage: (jobId: string) =>
+    request<OpenedMessage>("GET", `/api/archives/open/${jobId}`),
+  emlUrl: (jobId: string) => `/api/archives/open/${jobId}/eml`,
+  restoreArchived: (
+    ids: number[],
+    mode: "new_folder" | "original",
+    targetAccountId?: string,
+  ) =>
+    request<Job[]>("POST", "/api/archives/restore", {
+      ids,
+      mode,
+      target_account_id: targetAccountId,
+    }),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

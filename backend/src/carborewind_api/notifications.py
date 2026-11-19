@@ -62,6 +62,9 @@ EVENTS = (
     "storage_full",
     "mailbox_quota",
     "archive_report",
+    "service_down",
+    "service_up",
+    "mail_queue",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -200,6 +203,21 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
         ),
+        "service_down": "[CarboRewind] Service Carbonio arrêté : {service}",
+        "service_down_body": (
+            "Le service {service} ne fonctionne plus sur le serveur de l'agent {agent} depuis "
+            "{since}.\nTant qu'Amavis ou le MTA sont arrêtés, les messages restent dans la file "
+            "d'attente (rien n'est perdu). Vérifiez avec : su - zextras -c \"zmcontrol status\" "
+            'puis redémarrez avec : su - zextras -c "zmcontrol start".\n'
+        ),
+        "service_up": "[CarboRewind] Service Carbonio rétabli : {service}",
+        "service_up_body": "Le service {service} fonctionne à nouveau (arrêté depuis {since}).\n",
+        "mail_queue": "[CarboRewind] File d'attente mail : {count} message(s)",
+        "mail_queue_body": (
+            "La file d'attente du MTA ({agent}) contient {count} message(s) (seuil : {limit}) : "
+            "{detail}.\nUn service arrêté (Amavis…) ou un destinataire injoignable bloque "
+            "l'envoi.\n"
+        ),
         "archive_report": "[CarboRewind] Archivage « {policy} » : {archived} message(s) archivé(s)",
         "archive_report_body": (
             "Passage de la politique d'archivage « {policy} » ({mode}) sur {accounts} compte(s) :\n"
@@ -284,6 +302,21 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota": "[CarboRewind] {count} mailbox(es) nearly full",
         "mailbox_quota_body": (
             "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
+        ),
+        "service_down": "[CarboRewind] Carbonio service down: {service}",
+        "service_down_body": (
+            "The service {service} has been down on the server of agent {agent} since "
+            "{since}.\nWhile Amavis or the MTA are down, messages wait in the queue (nothing "
+            'is lost). Check with: su - zextras -c "zmcontrol status" and restart with: '
+            'su - zextras -c "zmcontrol start".\n'
+        ),
+        "service_up": "[CarboRewind] Carbonio service back: {service}",
+        "service_up_body": "The service {service} works again (down since {since}).\n",
+        "mail_queue": "[CarboRewind] Mail queue: {count} message(s)",
+        "mail_queue_body": (
+            "The MTA queue ({agent}) holds {count} message(s) (threshold: {limit}): "
+            "{detail}.\nA stopped service (Amavis…) or an unreachable recipient blocks "
+            "delivery.\n"
         ),
         "archive_report": '[CarboRewind] Archiving "{policy}": {archived} message(s) archived',
         "archive_report_body": (

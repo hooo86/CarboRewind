@@ -1,4 +1,4 @@
-"""archiving: policies, archived messages index, fetched contents; job kinds archive/fetch
+"""archiving (policies, index, fetched contents, job kinds archive/fetch); Carbonio services
 
 Revision ID: 0013
 Revises: 0012
@@ -20,6 +20,10 @@ KINDS = "'backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 're
 
 
 def upgrade() -> None:
+    op.add_column(
+        "agents",
+        sa.Column("services", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+    )
     op.drop_constraint(op.f("ck_jobs_job_kind"), "jobs", type_="check")
     op.create_check_constraint(
         op.f("ck_jobs_job_kind"), "jobs", f"kind IN ({KINDS}, 'archive', 'fetch')"
@@ -210,6 +214,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("agents", "services")
     op.drop_table("fetched_contents")
     op.drop_index(
         "ix_archived_messages_subject_trgm",

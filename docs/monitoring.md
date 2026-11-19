@@ -17,6 +17,39 @@ Menu **Supervision** (super-administrateurs) et métriques Prometheus.
 Réglages : **Supervision → Réglages de la supervision** (seuils, seuil des boîtes presque pleines, planification cron, part des fichiers
 vérifiés, fuseau). Une vérification complète relit tout le dépôt : à réserver à une plage creuse.
 
+## Services Carbonio et file d'attente
+
+Un fil de l'agent relève chaque minute, sur le serveur Carbonio :
+
+* l'état de chaque service tel que `zmcontrol status` l'affiche (amavis, antispam, antivirus,
+  mta, mailbox, opendkim, cbpolicyd…), par l'API d'administration (`GetServiceStatusRequest`,
+  aucun accès shell). Un relevé de plus de 15 minutes est ignoré (état « inconnu ») : le service
+  `stats` qui l'enregistre peut lui-même être arrêté ;
+* les ports locaux essentiels : MTA 25, Amavis 10024, LMTP 7025, LDAP 389 (réglable :
+  `CARBOREWIND_AGENT_SERVICE_PORTS='{"mta":25,"amavis":10024}'`, `CARBOREWIND_AGENT_SERVICE_MONITOR=false`
+  pour désactiver). Ces sondes fonctionnent même si l'API d'administration ne répond plus ;
+* la taille des files d'attente du MTA (deferred, active, incoming, hold).
+
+Alertes (Paramètres → Notifications) :
+
+| Événement | Quand |
+|---|---|
+| `service_down` | un service est arrêté sur **2 relevés consécutifs** (réglable) : un redémarrage de quelques secondes n'alerte pas ; une seule alerte par panne |
+| `service_up` | le service fonctionne à nouveau |
+| `mail_queue` | la file d'attente dépasse le seuil (200 messages par défaut, 0 = désactivé), au plus toutes les 3 heures |
+
+La page **Supervision** affiche les services (arrêtés en premier) et la file d'attente ; le tableau
+de bord affiche un bandeau rouge tant qu'un service est arrêté. Métriques Prometheus :
+`carborewind_carbonio_service_up{agent,service}` et `carborewind_mail_queue_messages{agent}`.
+
+Quand Amavis est arrêté, Postfix ne peut plus lui confier les messages : **envoi et réception
+s'arrêtent**, les messages attendent dans la file (rien n'est perdu). Correction :
+
+```bash
+sudo su - zextras -c "zmcontrol start"
+sudo su - zextras -c "postqueue -f"
+```
+
 ## Garde-fous
 
 - **Espace disque** : l'agent refuse d'écrire une sauvegarde quand il ne resterait pas assez de place

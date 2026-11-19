@@ -584,6 +584,8 @@ UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num 
 
 -- Running upgrade 0012 -> 0013
 
+ALTER TABLE agents ADD COLUMN services JSONB;
+
 ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
 
 ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate', 'archive', 'fetch'));

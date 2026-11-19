@@ -135,6 +135,11 @@ export interface Dashboard {
   mail_quota_bytes?: number;
   mailboxes_nearly_full?: number;
   mailbox_alert_percent?: number;
+  archived_messages?: number;
+  archived_bytes?: number;
+  archived_removed_bytes?: number;
+  services_down?: string[];
+  mail_queue_total?: number | null;
 }
 
 export type RestoreMode = "new_folder" | "original";
@@ -561,6 +566,27 @@ export interface MonitoringSettings {
   integrity_timezone: string;
   mailbox_alert_percent: number;
   mailbox_alert_gb: number;
+  service_down_reports: number;
+  mail_queue_alert: number;
+}
+
+export interface ServiceState {
+  name: string;
+  ok: boolean | null;
+  source: "carbonio" | "port";
+  port?: number | null;
+  since?: string | null;
+}
+
+export interface ServicesView {
+  agent: string;
+  checked_at: string | null;
+  stale: boolean;
+  services: ServiceState[];
+  down: string[];
+  queue: Record<string, number> | null;
+  queue_total: number | null;
+  errors: string[];
 }
 
 export interface StorageSeries {
@@ -618,5 +644,116 @@ export interface MonitoringOverview {
     cert_not_after: string | null;
     mail_reported_at: string | null;
   }[];
+  services?: ServicesView[];
   metrics_token_configured: boolean;
+}
+
+export type ArchiveMode = "simulate" | "copy" | "archive";
+
+export interface ArchivePolicyInput {
+  name: string;
+  enabled: boolean;
+  mode: ArchiveMode;
+  domain_ids: string[];
+  account_ids: string[];
+  exclude_account_ids: string[];
+  older_than_days: number;
+  exclude_folders: string[];
+  keep_flagged: boolean;
+  keep_unread: boolean;
+  include_admins: boolean;
+  max_per_run: number;
+  schedule: string;
+  timezone: string;
+  retention_days: number;
+}
+
+export interface ArchivePolicy extends ArchivePolicyInput {
+  id: string;
+  effective_mode: ArchiveMode;
+  simulation_valid: boolean;
+  cutoff: string;
+  criteria_changed_at: string;
+  simulated_at: string | null;
+  last_run_at: string | null;
+  created_at: string;
+  archived_count: number;
+  archived_bytes: number;
+}
+
+export interface ArchiveRun {
+  id: string;
+  run: string | null;
+  mode: ArchiveMode | null;
+  policy: string | null;
+  account_email: string | null;
+  status: JobStatus;
+  progress: {
+    candidates?: number;
+    candidate_bytes?: number;
+    truncated?: boolean;
+    archived?: number;
+    archived_bytes?: number;
+    removed_count?: number;
+    removed_bytes?: number;
+    error_count?: number;
+    by_folder?: Record<string, [number, number]>;
+  } | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface ArchiveSummary {
+  messages: number;
+  bytes: number;
+  removed_messages: number;
+  removed_bytes: number;
+  accounts: number;
+  last_archived_at: string | null;
+}
+
+export interface ArchivedMessage {
+  id: number;
+  account_id: string;
+  account_email: string;
+  folder_path: string;
+  subject: string | null;
+  sender: string | null;
+  recipients: string | null;
+  item_date: string | null;
+  size: number;
+  has_attachments: boolean;
+  archived_at: string;
+  removed_at: string | null;
+}
+
+export interface ArchiveSearch {
+  account?: string;
+  q?: string;
+  sender?: string;
+  recipient?: string;
+  folder?: string;
+  date_from?: string;
+  date_to?: string;
+  removed?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface OpenedMessage {
+  status: JobStatus;
+  error: string | null;
+  message: {
+    subject: string | null;
+    from: string | null;
+    to: string | null;
+    cc: string | null;
+    date: string | null;
+    text: string;
+    truncated: boolean;
+    html_only: boolean;
+    attachments: { name: string | null; content_type: string; size: number }[];
+    size: number;
+  } | null;
 }

@@ -65,6 +65,10 @@ class MonitoringSettings:
     # quota, from this size in GB (0 = off).
     mailbox_alert_percent: int = 90
     mailbox_alert_gb: float = 0.0
+    # Carbonio services: alert once a service is down on this many reports in a row (one a
+    # minute); mail queue (deferred + active + incoming + hold) alert from this size (0 = off).
+    service_down_reports: int = 2
+    mail_queue_alert: int = 200
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> MonitoringSettings:
@@ -89,6 +93,121 @@ async def save_settings(db: AsyncSession, cfg: MonitoringSettings) -> None:
             index_elements=["key"], set_={"value": value, "updated_at": func.now()}
         )
     )
+
+
+# ------------------------------------------------------------------ Carbonio services
+
+SERVICES_STALE = timedelta(minutes=5)
+QUEUE_ALERT_EVERY_HOURS = 3
+
+
+async def record_services(
+    db: AsyncSession, agent: Agent, report: dict[str, Any], now: datetime
+) -> list[str]:
+    """Keep the state of each Carbonio service; alert when one goes down or comes back.
+
+    A service counts as down after ``service_down_reports`` reports in a row (a restart
+    takes a few seconds and must not page anybody); unknown states (stale records) change
+    nothing. Returns the names of the services alerted as down by this report.
+    """
+    cfg = await load_settings(db)
+    previous = (agent.services or {}).get("state", {})
+    state: dict[str, dict[str, Any]] = {}
+    alerted: list[str] = []
+    for svc in report.get("services", []):
+        name = str(svc.get("name"))
+        old = previous.get(name, {})
+        cur = {
+            "ok": old.get("ok", True),
+            "since": old.get("since"),
+            "fails": int(old.get("fails", 0)),
+            "alerted": bool(old.get("alerted")),
+        }
+        ok = svc.get("ok")
+        if ok is False:
+            cur["fails"] += 1
+            cur["since"] = cur["since"] if cur["ok"] is False else now.isoformat()
+            cur["ok"] = False
+            if cur["fails"] >= max(1, cfg.service_down_reports) and not cur["alerted"]:
+                cur["alerted"] = True
+                alerted.append(name)
+                await notify(
+                    db,
+                    "service_down",
+                    dedup_key=f"service_down:{agent.id}:{name}:{cur['since']}",
+                    service=name,
+                    agent=agent.name,
+                    since=cur["since"],
+                )
+        elif ok is True:
+            if cur["alerted"]:
+                await notify(
+                    db,
+                    "service_up",
+                    dedup_key=f"service_up:{agent.id}:{name}:{cur['since']}",
+                    service=name,
+                    agent=agent.name,
+                    since=cur["since"],
+                )
+            cur = {
+                "ok": True,
+                "since": now.isoformat() if cur["ok"] is False else cur["since"],
+                "fails": 0,
+                "alerted": False,
+            }
+        state[name] = cur
+    raw_queue = report.get("queue")
+    queue: dict[str, int] = raw_queue if isinstance(raw_queue, dict) else {}
+    total = sum(int(v) for v in queue.values()) if isinstance(raw_queue, dict) else None
+    if total is not None and cfg.mail_queue_alert and total >= cfg.mail_queue_alert:
+        window = now.hour // QUEUE_ALERT_EVERY_HOURS
+        await notify(
+            db,
+            "mail_queue",
+            dedup_key=f"mail_queue:{agent.id}:{now:%Y%m%d}:{window}",
+            count=total,
+            limit=cfg.mail_queue_alert,
+            agent=agent.name,
+            detail=", ".join(f"{k}: {v}" for k, v in sorted(queue.items())),
+        )
+    agent.services = {
+        "checked_at": report.get("checked_at") or now.isoformat(),
+        "received_at": now.isoformat(),
+        "services": [
+            {**svc, "since": state.get(str(svc.get("name")), {}).get("since")}
+            for svc in report.get("services", [])
+        ],
+        "queue": raw_queue,
+        "queue_total": total,
+        "errors": report.get("errors", [])[:5],
+        "state": state,
+    }
+    return alerted
+
+
+def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
+    """What the interface shows: services (down first), queue, freshness."""
+    data = agent.services
+    if not data:
+        return None
+    received = data.get("received_at")
+    stale = True
+    if received:
+        stale = now - datetime.fromisoformat(received) > SERVICES_STALE
+    services = sorted(
+        data.get("services", []),
+        key=lambda s: (s.get("ok") is not False, s.get("source") != "carbonio", s.get("name")),
+    )
+    return {
+        "agent": agent.name,
+        "checked_at": data.get("checked_at"),
+        "stale": stale,
+        "services": services,
+        "down": [s["name"] for s in services if s.get("ok") is False],
+        "queue": data.get("queue"),
+        "queue_total": data.get("queue_total"),
+        "errors": data.get("errors", []),
+    }
 
 
 # ------------------------------------------------------------------ storage

@@ -26,6 +26,8 @@ const overview: MonitoringOverview = {
     integrity_timezone: "UTC",
     mailbox_alert_percent: 90,
     mailbox_alert_gb: 0,
+    service_down_reports: 2,
+    mail_queue_alert: 200,
   },
   storage: [
     {
@@ -238,5 +240,68 @@ describe("monitoring page", () => {
     expect(
       await screen.findByText("Super-administrators only."),
     ).toBeInTheDocument();
+  });
+
+  it("shows the Carbonio services, the stuck queue and the alert settings", async () => {
+    const calls = open(user("super_admin"), {
+      "GET /api/monitoring/overview": {
+        ...overview,
+        services: [
+          {
+            agent: "mail",
+            checked_at: iso(now),
+            stale: false,
+            services: [
+              {
+                name: "amavis",
+                ok: false,
+                source: "carbonio",
+                since: iso(now - 600000),
+              },
+              { name: "port:amavis", ok: false, source: "port", port: 10024 },
+              { name: "mta", ok: true, source: "carbonio" },
+              { name: "stats", ok: null, source: "carbonio" },
+            ],
+            down: ["amavis", "port:amavis"],
+            queue: { deferred: 340, active: 2 },
+            queue_total: 342,
+            errors: [],
+          },
+        ],
+      },
+    });
+    expect(
+      await screen.findByText(
+        /Carbonio service\(s\) down: amavis, port:amavis/,
+      ),
+    ).toBeInTheDocument();
+    const tiles = screen.getByRole("region", { name: "Overall health" });
+    expect(
+      within(tiles).getByText("Carbonio services down"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("amavis — stopped")).toBeInTheDocument();
+    expect(
+      screen.getByText("port amavis (10024) — stopped"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("mta — running")).toBeInTheDocument();
+    expect(screen.getByText("stats — unknown")).toBeInTheDocument();
+    expect(
+      screen.getByText("queue: 342 messages (deferred 340, active 2)"),
+    ).toHaveClass("bad-text");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Monitoring settings" }),
+    );
+    fireEvent.change(
+      await screen.findByLabelText("Mail queue alert from (messages, 0 = off)"),
+      {
+        target: { value: "50" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === "PUT")?.body as Record<string, unknown>,
+      ).toMatchObject({ mail_queue_alert: 50, service_down_reports: 2 }),
+    );
   });
 });

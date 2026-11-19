@@ -117,4 +117,26 @@ describe("dashboard", () => {
     await waitFor(() => expect(screen.getByText(/Copy 2/)).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Start backup" })).toBeNull();
   });
+
+  it("warns when Carbonio services are down and shows the archive", async () => {
+    open(user("super_admin"), {
+      "GET /api/dashboard": {
+        ...dashboard,
+        services_down: ["amavis"],
+        mail_queue_total: 120,
+        archived_messages: 3,
+        archived_bytes: 3 * 1024 ** 2,
+        archived_removed_bytes: 2 * 1024 ** 2,
+      },
+    });
+    expect(
+      await screen.findByText(/Carbonio service\(s\) down: amavis/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open monitoring" }),
+    ).toHaveAttribute("href", "/monitoring");
+    expect(
+      screen.getByText("archived (3 messages, 2 MB freed)"),
+    ).toBeInTheDocument();
+  });
 });

@@ -57,6 +57,12 @@ class AgentSettings(BaseSettings):
         ]
     )
     mail_state_file: Path = Path("/var/lib/carborewind/mail-stats.json")
+    # Carbonio services: status read every minute (admin API + local ports), alerts on the
+    # server. Ports probed on this host; an empty map disables the probes.
+    service_monitor: bool = True
+    service_ports: dict[str, int] = Field(
+        default_factory=lambda: {"mta": 25, "amavis": 10024, "lmtp": 7025, "ldap": 389}
+    )
     # Copy 02: mirror of the repository on a second share (set by `storage apply`).
     replica_path: Path | None = None
     # Hand-off with the root helper applying the storage settings of the interface.

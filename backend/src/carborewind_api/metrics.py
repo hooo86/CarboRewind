@@ -92,6 +92,25 @@ async def collect(db: AsyncSession) -> str:
             ).select_from(ArchivedMessage)
         )
     ).one()
+    for agent in await db.scalars(select(Agent).where(Agent.status == AgentStatus.ACTIVE)):
+        view = monitoring.services_view(agent, now)
+        if view is None or view["stale"]:
+            continue
+        for svc in view["services"]:
+            if svc.get("ok") is not None:
+                out.gauge(
+                    "carbonio_service_up",
+                    "Carbonio service running (1) or down (0), as reported by the agent",
+                    1 if svc["ok"] else 0,
+                    agent=agent.name,
+                    service=str(svc["name"]),
+                )
+        out.gauge(
+            "mail_queue_messages",
+            "Messages in the MTA queues (deferred, active, incoming, hold)",
+            view["queue_total"],
+            agent=agent.name,
+        )
     out.gauge("archived_messages", "Messages kept in the archive", int(archived))
     out.gauge("archived_bytes", "Size of the messages kept in the archive", int(archived_bytes))
     out.gauge(

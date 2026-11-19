@@ -1953,6 +1953,17 @@
             ],
             "title": "Last Agent Heartbeat"
           },
+          "mail_queue_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mail Queue Total"
+          },
           "mail_quota_bytes": {
             "default": 0,
             "title": "Mail Quota Bytes",
@@ -1984,6 +1995,13 @@
           "protected_24h": {
             "title": "Protected 24H",
             "type": "integer"
+          },
+          "services_down": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Services Down",
+            "type": "array"
           },
           "storage": {
             "items": {
@@ -5251,6 +5269,116 @@
         "title": "SecurityPolicyIn",
         "type": "object"
       },
+      "ServiceIn": {
+        "properties": {
+          "checked": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "source": {
+            "enum": [
+              "carbonio",
+              "port"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "source"
+        ],
+        "title": "ServiceIn",
+        "type": "object"
+      },
+      "ServicesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Errors",
+            "type": "array"
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "maxProperties": 20,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceIn"
+            },
+            "maxItems": 500,
+            "title": "Services",
+            "type": "array"
+          }
+        },
+        "title": "ServicesIn",
+        "type": "object"
+      },
       "SessionOut": {
         "properties": {
           "csrf_token": {
@@ -5301,6 +5429,13 @@
             "title": "Integrity Timezone",
             "type": "string"
           },
+          "mail_queue_alert": {
+            "default": 200,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Mail Queue Alert",
+            "type": "integer"
+          },
           "mailbox_alert_gb": {
             "default": 0.0,
             "maximum": 100000.0,
@@ -5320,6 +5455,13 @@
             "maximum": 1440.0,
             "minimum": 1.0,
             "title": "Replica Max Lag Hours",
+            "type": "integer"
+          },
+          "service_down_reports": {
+            "default": 2,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Service Down Reports",
             "type": "integer"
           },
           "stale_hours": {
@@ -6856,6 +6998,14 @@
             ],
             "title": "Replica"
           },
+          "services": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Services",
+            "type": "array"
+          },
           "settings": {
             "$ref": "#/components/schemas/SettingsIn"
           },
@@ -8267,6 +8417,41 @@
           }
         },
         "summary": "Mail Stats",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/services": {
+      "post": {
+        "description": "State of the Carbonio services and of the mail queue, every minute.",
+        "operationId": "services_api_agent_services_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServicesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Services",
         "tags": [
           "agent protocol"
         ]

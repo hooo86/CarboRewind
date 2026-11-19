@@ -267,6 +267,30 @@ function SettingsForm({
         </label>
       </div>
       <p className="muted">{t("monitoring.quotaHelp")}</p>
+      <div className="row">
+        <label>
+          {t("monitoring.serviceReports")}
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={form.service_down_reports}
+            onChange={(e) =>
+              set("service_down_reports", Number(e.target.value))
+            }
+          />
+        </label>
+        <label>
+          {t("monitoring.queueAlert")}
+          <input
+            type="number"
+            min={0}
+            value={form.mail_queue_alert}
+            onChange={(e) => set("mail_queue_alert", Number(e.target.value))}
+          />
+        </label>
+      </div>
+      <p className="muted">{t("monitoring.servicesHelp")}</p>
       <NoticeBar notice={notice} />
       <div className="actions">
         <button type="submit">{t("save")}</button>
@@ -345,8 +369,15 @@ export function MonitoringPage() {
               (c?.progress?.manifests_corrupted?.length ?? 0),
             0,
           );
+          const views = d.services ?? [];
+          const down = views.flatMap((v) => (v.stale ? [] : v.down));
           return (
             <>
+              {down.length > 0 && (
+                <p role="alert" className="alert error">
+                  {t("monitoring.servicesDownAlert", { list: down.join(", ") })}
+                </p>
+              )}
               {showSettings && (
                 <SettingsForm
                   initial={d.settings}
@@ -357,6 +388,12 @@ export function MonitoringPage() {
                 />
               )}
               <section className="tiles" aria-label={t("monitoring.health")}>
+                <div className={`tile ${down.length ? "bad" : "ok"}`}>
+                  <span className="tile-value">{down.length}</span>
+                  <span className="tile-label">
+                    {t("monitoring.servicesDown")}
+                  </span>
+                </div>
                 <div className={`tile ${risky ? "bad" : "ok"}`}>
                   <span className="tile-value">{risky}</span>
                   <span className="tile-label">{t("monitoring.atRisk")}</span>
@@ -393,6 +430,87 @@ export function MonitoringPage() {
                     {t("monitoring.corruptedFiles")}
                   </span>
                 </div>
+              </section>
+
+              <section className="card stack">
+                <h2>{t("monitoring.services")}</h2>
+                {views.length === 0 ? (
+                  <p className="muted">{t("monitoring.noServices")}</p>
+                ) : (
+                  views.map((v) => (
+                    <div key={v.agent} className="stack">
+                      <p className="muted">
+                        {t("monitoring.servicesOf", {
+                          agent: v.agent,
+                          date: formatDate(v.checked_at),
+                        })}
+                        {v.queue_total !== null && (
+                          <>
+                            {" — "}
+                            <span
+                              className={
+                                v.queue_total >= d.settings.mail_queue_alert &&
+                                d.settings.mail_queue_alert > 0
+                                  ? "bad-text"
+                                  : ""
+                              }
+                            >
+                              {t("monitoring.queue", {
+                                count: v.queue_total,
+                                detail: Object.entries(v.queue ?? {})
+                                  .map(([k, n]) => `${k} ${n}`)
+                                  .join(", "),
+                              })}
+                            </span>
+                          </>
+                        )}
+                      </p>
+                      {v.stale && (
+                        <p className="alert warn">
+                          {t("monitoring.servicesStale")}
+                        </p>
+                      )}
+                      <ul
+                        className="services"
+                        aria-label={t("monitoring.servicesOf", {
+                          agent: v.agent,
+                          date: "",
+                        })}
+                      >
+                        {v.services.map((svc) => (
+                          <li key={svc.name}>
+                            <span
+                              className={`badge ${svc.ok === false ? "bad" : svc.ok ? "ok" : "muted"}`}
+                              title={
+                                svc.ok === false && svc.since
+                                  ? t("monitoring.downSince", {
+                                      date: formatDate(svc.since),
+                                    })
+                                  : undefined
+                              }
+                            >
+                              {svc.source === "port"
+                                ? t("monitoring.port", {
+                                    name: svc.name.replace(/^port:/, ""),
+                                    port: svc.port,
+                                  })
+                                : svc.name}
+                              {" — "}
+                              {svc.ok === false
+                                ? t("monitoring.stopped")
+                                : svc.ok
+                                  ? t("monitoring.running")
+                                  : t("monitoring.unknown")}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {v.errors.length > 0 && (
+                        <p className="muted small">{v.errors.join(" ; ")}</p>
+                      )}
+                    </div>
+                  ))
+                )}
               </section>
 
               <h2>{t("monitoring.storage")}</h2>

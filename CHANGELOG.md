@@ -6,6 +6,16 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Archivage des e-mails : politiques (domaines, comptes, âge, dossiers exclus, drapeaux, non lus,
+  administrateurs), modes simulation / copie seule / archivage complet avec **simulation
+  obligatoire** avant toute suppression ; l'agent relit chaque message archivé, l'indexe avant de
+  le supprimer et vérifie la copie 2 ; écran **Archives** (recherche, lecture en texte seul,
+  téléchargement .eml, restauration), conservation et purge, compte rendu par e-mail. Migration
+  0013. Voir `docs/archives.md`.
+- Surveillance des services Carbonio (amavis, antispam, mta, mailbox, opendkim…) et des ports
+  essentiels chaque minute, avec alerte e-mail quand un service tombe et quand il revient ;
+  alerte sur la taille de la file d'attente mail ; bandeau sur le tableau de bord, bloc dans la
+  Supervision, métriques Prometheus.
 - Tableau de bord : stockage global des e-mails (volume des boîtes, quotas attribués), jauges
   d'occupation du disque du serveur Carbonio et du NAS de sauvegarde (copie 1 et 2) avec la part des
   e-mails sur chacun ; alerte quand une boîte atteint un seuil réglable (% du quota ou taille en Go),

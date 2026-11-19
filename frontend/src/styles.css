@@ -999,3 +999,46 @@ button.danger {
   margin: 0;
   font-size: 0.85rem;
 }
+
+/* Archives */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.viewer .headers {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+.viewer .headers dt {
+  color: var(--muted);
+}
+.viewer .headers dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mail-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-family: inherit;
+}
+.small {
+  font-size: 0.85em;
+}
+/* Carbonio services */
+.services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}

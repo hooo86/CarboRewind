@@ -81,6 +81,9 @@ class Dashboard(BaseModel):
     archived_messages: int = 0
     archived_bytes: int = 0
     archived_removed_bytes: int = 0
+    # Carbonio services down and size of the mail queue (global readers only).
+    services_down: list[str] = Field(default_factory=list)
+    mail_queue_total: int | None = None
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -232,7 +235,17 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
     )
     agents_active = last_heartbeat = None
     storage: list[dict[str, Any]] = []
+    services_down: list[str] = []
+    queue_total: int | None = None
     if scope is None:
+        now = datetime.now(UTC)
+        for a in await db.scalars(select(Agent).where(Agent.status == AgentStatus.ACTIVE)):
+            view = monitoring.services_view(a, now)
+            if view is None or view["stale"]:
+                continue
+            services_down += view["down"]
+            if view["queue_total"] is not None:
+                queue_total = (queue_total or 0) + int(view["queue_total"])
         agents_active = await db.scalar(
             select(func.count()).select_from(Agent).where(Agent.status == AgentStatus.ACTIVE)
         )
@@ -267,6 +280,8 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
     )
     archive = await summary_for(db, scope)
     return Dashboard(
+        services_down=services_down,
+        mail_queue_total=queue_total,
         archived_messages=archive.messages,
         archived_bytes=archive.bytes,
         archived_removed_bytes=archive.removed_bytes,

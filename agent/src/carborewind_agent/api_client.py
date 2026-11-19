@@ -174,6 +174,10 @@ class AgentApi:
     def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/migrate-complete", payload)
 
+    def services(self, report: dict[str, Any]) -> None:
+        """State of the Carbonio services and of the mail queue."""
+        self._post("/services", report)
+
     def archive_stored(self, job_id: str, entries: list[dict[str, Any]]) -> None:
         """Index of archived messages, sent before any of them is deleted."""
         self._post(f"/jobs/{job_id}/archive-stored", {"entries": entries})
