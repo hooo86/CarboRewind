@@ -974,3 +974,39 @@ def test_inventory_storage_report_reaches_the_dashboard(
     assert mine["agent"].startswith("mx-") and mine["reported_at"]
     bad = {**report, "kind": "tape"}
     assert agent.post("/inventory", {"accounts": [], "storage": bad}).status_code == 422
+
+
+def test_large_full_backup_completes(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    """A mailbox of 12 000 items: beyond PostgreSQL's 32 767 bind parameters per query."""
+    _drain(agent)
+    email = f"big@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    account_id = _account_id(engine, email)
+    api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+    claimed = agent.post("/jobs/claim").json()
+    added = {
+        str(1000 + n): {
+            **_item("a", f"Message {n}\x00"),
+            "blob": f"b1{n:062x}",
+            "meta_blob": f"b2{n:062x}",
+        }
+        for n in range(12_000)
+    }
+    body = {
+        "backup_type": "full",
+        "manifest_ref": "m/1",
+        "token": "1",
+        "item_count": len(added),
+        "size_bytes": 100 * len(added),
+        "new_bytes": 100 * len(added),
+        "folders": FOLDERS,
+        "added": added,
+    }
+    checkpoint = {"done": {"1000": {"subject": "a\x00b"}}, "progress": {"bytes": 1}}
+    beat = agent.post(f"/jobs/{claimed['job_id']}/heartbeat", {"checkpoint": checkpoint})
+    assert beat.status_code == 204, beat.text
+    r = agent.post(f"/jobs/{claimed['job_id']}/complete", body)
+    assert r.status_code == 204, r.text
+    assert api.get(f"/api/jobs/{claimed['job_id']}").json()["status"] == "succeeded"

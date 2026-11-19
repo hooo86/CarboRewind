@@ -687,6 +687,17 @@ async def _own_running_job(db: DbSession, agent: Agent, job_id: uuid.UUID) -> Jo
     return job
 
 
+def _json_no_nul(value: Any) -> Any:
+    """JSONB rejects \\u0000: drop it from every string (subjects saved in checkpoints)."""
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {_json_no_nul(k): _json_no_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_no_nul(v) for v in value]
+    return value
+
+
 class Heartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -702,7 +713,7 @@ async def heartbeat(
     job = await _own_running_job(db, agent, job_id)
     job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=settings.job_lease_seconds)
     if body.checkpoint is not None:
-        job.checkpoint = body.checkpoint
+        job.checkpoint = _json_no_nul(body.checkpoint)
     if body.progress is not None:
         job.progress = body.progress
 
@@ -718,12 +729,22 @@ class ItemIn(BaseModel):
     sender: str | None = Field(default=None, max_length=1000)
     date: datetime | None = None
 
+    @field_validator("subject", "sender")
+    @classmethod
+    def _strip_nul(cls, value: str | None) -> str | None:
+        return _no_nul(value)
+
 
 class FolderIn(BaseModel):
     id: int
     parent: int | None
     path: str = Field(max_length=4096)
     view: str = Field(max_length=32)
+
+    @field_validator("path")
+    @classmethod
+    def _strip_nul(cls, value: str) -> str:
+        return value.replace("\x00", "")
 
 
 class BackupResultIn(BaseModel):
@@ -740,6 +761,15 @@ class BackupResultIn(BaseModel):
     removed: list[int] = Field(default_factory=list)
     folders: list[FolderIn] = Field(default_factory=list)
     account_attrs: dict[str, Any] | None = None
+
+
+# Rows per bulk statement (3 parameters each for blobs: well under PostgreSQL's 65 535).
+_BATCH = 5000
+
+
+def _no_nul(value: str | None) -> str | None:
+    """PostgreSQL text cannot hold NUL characters, which some messages carry in headers."""
+    return value.replace("\x00", "") if value else value
 
 
 _VIEW = {
@@ -786,21 +816,24 @@ async def complete(
     for item in body.added.values():
         blobs[item.blob] = item.size
         blobs[item.meta_blob] = item.meta_size
-    if blobs:
+    # In batches: PostgreSQL takes at most 65 535 parameters per statement, and a full
+    # backup of a large mailbox sends tens of thousands of items at once.
+    rows = [{"id": k, "size": v, "stored_size": v} for k, v in blobs.items()]
+    for start in range(0, len(rows), _BATCH):
         await db.execute(
             insert(Blob)
-            .values([{"id": k, "size": v, "stored_size": v} for k, v in blobs.items()])
+            .values(rows[start : start + _BATCH])
             .on_conflict_do_nothing(index_elements=["id"])
         )
     # Close superseded / deleted versions, open the new ones.
-    closing = set(body.removed) | set(body.added)
-    if closing:
+    closing = sorted(set(body.removed) | set(body.added))
+    for start in range(0, len(closing), _BATCH):
         await db.execute(
             update(ItemVersion)
             .where(
                 ItemVersion.account_id == account.id,
                 ItemVersion.to_seq.is_(None),
-                ItemVersion.carbonio_item_id.in_(closing),
+                ItemVersion.carbonio_item_id.in_(closing[start : start + _BATCH]),
             )
             .values(to_seq=seq)
         )

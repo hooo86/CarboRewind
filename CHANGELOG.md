@@ -15,6 +15,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 - Archives : vue « Par boîte » (messages, volume, période, conservation légale) et restauration
   complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
 
+### Fixed
+- Sauvegarde des grosses boîtes (plus d'environ 11 000 messages) en échec « HTTP 500 » à la fin :
+  l'enregistrement du catalogue est désormais fait par lots (limite de 65 535 paramètres de
+  PostgreSQL). Les caractères NUL présents dans certains sujets sont retirés.
+
 ### Changed
 - Le menu « Politiques » s'appelle désormais « Sauvegardes ».
 
