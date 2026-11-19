@@ -35,6 +35,7 @@ export function Layout() {
           <NavLink to="/accounts">{t("nav.accounts")}</NavLink>
           <NavLink to="/jobs">{t("nav.jobs")}</NavLink>
           <NavLink to="/policies">{t("nav.policies")}</NavLink>
+          {canManageSettings && <NavLink to="/mail">{t("nav.mail")}</NavLink>}
           {canManageMigrations && (
             <NavLink to="/migrations">{t("nav.migrations")}</NavLink>
           )}

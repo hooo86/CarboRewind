@@ -101,6 +101,15 @@ Voir [migrations.md](migrations.md).
 
 Voir [storage.md](storage.md).
 
+### Trafic mail
+
+| Appel | Rôle |
+|---|---|
+| `POST /mail-stats` | `{hours: [{hour, sent: {email: [messages, destinataires]}, spam_in, spam_out, spam_senders}], log}` : compteurs absolus (renvoyer la même heure la remplace) ; la réponse liste les actions de compte en attente |
+| `POST /account-actions/{id}/done` | `{error}` : verrouillage / déverrouillage appliqué (`ModifyAccountRequest`) ou refusé |
+
+Voir [mail-traffic.md](mail-traffic.md).
+
 ## Commandes
 
 ```bash

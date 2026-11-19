@@ -48,6 +48,8 @@ passer les 🔎 en ✅.
 | Doublons d'une migration IMAP | `SearchRequest` (`query: inid:<dossier> msgid:"<id>"`, `limit 1`) → `m[]` non vide | 443 | 🔎 opérateur `msgid:` |
 | Quota hérité | `GetAllCosRequest` → attribut `zimbraMailQuota` de la classe de service ; `GetQuotaUsageRequest` → `limit` effectif | admin 7071 | 🔎 `limit` |
 | Taille d'une boîte | `GetMailboxRequest` (`mbox id`) → `mbox[0].s` (octets) | admin 7071 | 🔎 |
+| Verrouiller / réactiver un compte | `ModifyAccountRequest` (`id`, `a: zimbraAccountStatus = locked|active`) | admin 7071 | ✅ attribut standard |
+| Journal du MTA | `/var/log/carbonio.log` : lignes `postfix/cleanup`, `postfix/qmgr`, `amavis` | fichier | 🔎 chemin et format selon le syslog |
 | Import contacts et agendas | REST `POST /home/<compte>/<dossier>?fmt=ics|vcf&resolve=skip` | 443 | ✅ (forum Zextras : `postRestURL "/?fmt=tgz&resolve=skip"`) ; 🔎 contenu renvoyé par `?id=` pour un rendez-vous (iCalendar attendu) |
 | Fichiers (Files / `doc`) | non restaurables par ce chemin en CE : signalés « non pris en charge » | — | limite connue |
 | Export complet de contrôle | REST `GET /home/<compte>/?fmt=tgz` | 443 | ✅ |

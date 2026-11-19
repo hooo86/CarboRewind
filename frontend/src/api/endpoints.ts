@@ -12,6 +12,9 @@ import type {
   ImportReport,
   Job,
   JobStatus,
+  MailLimits,
+  MailOverview,
+  MailPeriod,
   MigrationBatch,
   MigrationBatchDetail,
   MigrationMailbox,
@@ -197,6 +200,22 @@ export const api = {
     request<undefined>(
       "POST",
       `/api/migrations/batches/${id}/forget-passwords`,
+    ),
+  mailOverview: (period: MailPeriod) =>
+    request<MailOverview>("GET", "/api/mail/overview", undefined, { period }),
+  saveMailLimits: (body: MailLimits) =>
+    request<MailLimits>("PUT", "/api/mail/limits", body),
+  ackMailAlert: (id: string) =>
+    request<undefined>("POST", `/api/mail/alerts/${id}/ack`),
+  accountLock: (
+    accountId: string,
+    action: "lock" | "unlock",
+    reason?: string,
+  ) =>
+    request<{ id: string | null; action: string; queued: boolean }>(
+      "POST",
+      `/api/mail/accounts/${accountId}/${action}`,
+      { reason: reason ?? null },
     ),
   storageSettings: () =>
     request<StorageSettings>("GET", "/api/settings/storage"),

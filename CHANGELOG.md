@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Trafic mail : messages et destinataires envoyés par boîte (par heure et par jour), spams reçus,
+  expéditeurs de spams (avec IP), spams émis par une boîte locale, lus dans le journal du MTA par
+  l'agent ; limites d'envoi avec alerte e-mail ou verrouillage automatique de la boîte, exemptions,
+  verrouillage/déverrouillage manuel. Écran **Trafic mail**, migration 0010. Voir `docs/mail-traffic.md`.
 - Stockage depuis l'interface (Paramètres) : copie 1 sur disque local ou NAS (SMB/CIFS), copie 2 sur
   un deuxième NAS (réplique du dépôt, job `replicate`, mise à jour automatique et à la demande), état
   et erreurs d'application affichés ; service root `carborewind-storage.path` dans le paquet de l'agent.

@@ -450,3 +450,76 @@ export interface StartResult {
   queued: number;
   skipped: { id: string; source: string; reason: string }[];
 }
+
+// ------------------------------------------------------------------ mail traffic
+
+export type MailPeriod = "1h" | "24h" | "7d" | "30d";
+
+export interface MailLimits {
+  enabled: boolean;
+  sent_messages_hour: number;
+  sent_recipients_hour: number;
+  sent_messages_day: number;
+  sent_recipients_day: number;
+  spam_sent_day: number;
+  action: "alert" | "lock";
+  exempt: string[];
+}
+
+export interface MailAlert {
+  id: string;
+  account_id: string | null;
+  email: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  window_start: string;
+  action: string;
+  created_at: string;
+  acknowledged_at: string | null;
+  account_status: string | null;
+}
+
+export interface MailOverview {
+  period: MailPeriod;
+  since: string;
+  totals: Record<
+    | "sent_messages"
+    | "sent_recipients"
+    | "spam_sent"
+    | "spam_received"
+    | "spam_senders",
+    number
+  >;
+  top_senders: {
+    email: string;
+    account_id: string | null;
+    status: string | null;
+    messages: number;
+    recipients: number;
+    spam_sent: number;
+  }[];
+  spam_recipients: { email: string; count: number }[];
+  spam_senders: {
+    sender: string;
+    count: number;
+    ips: string[];
+    last: string;
+  }[];
+  hourly: {
+    at: string;
+    sent_messages: number;
+    sent_recipients: number;
+    spam_received: number;
+    spam_sent: number;
+  }[];
+  alerts: MailAlert[];
+  pending_actions: {
+    id: string;
+    email: string;
+    action: "lock" | "unlock";
+    created_at: string;
+  }[];
+  limits: MailLimits;
+  agents: { agent: string; log?: string | null; reported_at?: string }[];
+}

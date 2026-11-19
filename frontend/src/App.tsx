@@ -8,6 +8,7 @@ import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MailTrafficPage } from "./pages/MailTrafficPage";
 import { MigrationBatchPage } from "./pages/MigrationBatchPage";
 import { MigrationsPage } from "./pages/MigrationsPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
@@ -33,6 +34,7 @@ export function AppRoutes() {
         <Route path="policies" element={<PoliciesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="migrations" element={<MigrationsPage />} />
+        <Route path="mail" element={<MailTrafficPage />} />
         <Route path="migrations/:id" element={<MigrationBatchPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
