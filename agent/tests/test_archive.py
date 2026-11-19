@@ -369,3 +369,26 @@ def test_restore_job_with_archive_items(
     assert path == "/jobs/j-1/restore-complete" and body["restored"] == 2
     assert any(f.name == "Archives restaurées" for f in alice.folders.values())
     assert json.dumps(body)  # serialisable
+
+
+def test_legal_hold_copies_every_folder(
+    client: CarbonioClient, repo: Repository, alice: Mailbox
+) -> None:
+    before = len(alice.items)
+    result = MailboxArchiver(client, repo).run(
+        alice.id,
+        alice.name,
+        "h1",
+        {
+            "mode": "copy",
+            "before": "2100-01-01T00:00:00+00:00",
+            "all_folders": True,
+            "keep_flagged": False,
+            "keep_unread": False,
+            "max_messages": 200_000,
+        },
+    )
+    assert result.archived == before and result.removed == []
+    assert len(alice.items) == before  # nothing leaves the mailbox
+    folders = {e["folder_path"] for e in repo.get_archive(alice.id, "h1")["items"].values()}
+    assert {"/Trash", "/Trash/Old", "/Junk", "/Drafts"} <= folders

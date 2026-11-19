@@ -296,13 +296,16 @@ class MailboxArchiver:
         result: ArchiveResult,
     ) -> list[_Candidate]:
         folders = {f.id: f for f in self._client.get_folders(account_id)}
-        prefixes = [p.lower().rstrip("/") for p in SYSTEM_EXCLUDED.values()]
+        # Legal hold: every folder, Trash, Junk and Drafts included.
+        every_folder = bool(params.get("all_folders"))
+        system = {} if every_folder else SYSTEM_EXCLUDED
+        prefixes = [p.lower().rstrip("/") for p in system.values()]
         prefixes += [
             "/" + str(p).strip().strip("/").lower()
             for p in params.get("exclude_folders", [])
             if str(p).strip().strip("/")
         ]
-        excluded = set(SYSTEM_EXCLUDED)
+        excluded = set(system)
         excluded.update(fid for fid, f in folders.items() if _excluded(f.path, prefixes))
         keep_flagged = bool(params.get("keep_flagged", True))
         keep_unread = bool(params.get("keep_unread", False))
@@ -312,7 +315,8 @@ class MailboxArchiver:
         wanted = limit - len(done)
         selected: list[_Candidate] = []
         offset = 0
-        while result.scanned < SCAN_LIMIT:
+        scan_limit = max(SCAN_LIMIT, 2 * limit)
+        while result.scanned < scan_limit:
             hits, more = self._client.search_messages(account_id, query, offset=offset, limit=PAGE)
             offset += len(hits)
             for hit in hits:
@@ -356,7 +360,7 @@ class MailboxArchiver:
                     result.truncated = True
             if not more or not hits or (mode != "simulate" and result.truncated):
                 break
-        if result.scanned >= SCAN_LIMIT:
+        if result.scanned >= scan_limit:
             result.truncated = True
         return selected
 

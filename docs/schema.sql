@@ -670,4 +670,10 @@ CREATE TABLE fetched_contents (
 
 UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
 
+-- Running upgrade 0013 -> 0014
+
+ALTER TABLE archived_messages ADD COLUMN legal_hold BOOLEAN DEFAULT false NOT NULL;
+
+UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
+
 COMMIT;

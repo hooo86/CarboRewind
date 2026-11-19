@@ -749,6 +749,8 @@ class ArchivedMessage(Base):
     archived_at: Mapped[datetime] = _created_at()
     # Set once the message was deleted from the mailbox (NULL: copy only, still there).
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Legal hold: kept whatever the policies' retention says, until explicitly released.
+    legal_hold: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
     __table_args__ = (
         UniqueConstraint(

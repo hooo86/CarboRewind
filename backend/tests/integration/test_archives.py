@@ -506,3 +506,79 @@ def test_domain_scope_of_the_search(
         )
     assert api.post(f"/api/archives/messages/{mid}/open", headers=h).status_code == 403
     assert api.post("/api/archives/restore", json={"ids": [mid]}, headers=h).status_code == 403
+
+
+def test_legal_hold(api: TestClient, engine: Engine, world: dict[str, Any], migrated: str) -> None:
+    h, agent = world["admin"], world["agent"]
+    ana = str(world["ids"]["ana"])
+    # Messages archived by a policy first, kept 30 days.
+    policy, job = _archive_run(api, world, engine, mode="copy")
+    agent.post(f"/jobs/{job['job_id']}/archive-stored", {"entries": _entries(2, start=1)})
+    agent.post(f"/jobs/{job['job_id']}/archive-complete", {"mode": "copy"})
+    api.patch(f"/api/archives/policies/{policy['id']}", json={"retention_days": 30}, headers=h)
+
+    r = api.post(
+        f"/api/archives/accounts/{ana}/legal-hold", json={"note": "Dossier 2026-17"}, headers=h
+    )
+    assert r.status_code == 202, r.text
+    held = r.json()
+    assert (
+        api.post(f"/api/archives/accounts/{ana}/legal-hold", json={}, headers=h).status_code == 409
+    )
+    claimed = _claim(world, engine, held["id"])
+    p = claimed["params"]
+    assert p["legal_hold"] and p["all_folders"] and p["mode"] == "copy"
+    assert not p["keep_flagged"] and not p["keep_unread"] and p["max_messages"] == 200_000
+    assert sorted(p["skip_ids"]) == [301, 302]  # already archived, still in the mailbox
+    agent.post(f"/jobs/{held['id']}/archive-stored", {"entries": _entries(2, start=3)})
+    assert agent.post(f"/jobs/{held['id']}/archive-complete", {"mode": "copy"}).status_code == 204
+
+    found = api.get(
+        "/api/archives/messages", params={"account_id": ana, "legal_hold": "true"}, headers=h
+    ).json()
+    assert found["total"] == 4 and all(m["legal_hold"] for m in found["items"])
+    holds = api.get("/api/archives/legal-holds", headers=h).json()
+    mine = next(x for x in holds if x["account_id"] == ana)
+    assert mine["messages"] == 4 and mine["pending"] is False
+    summary = api.get("/api/archives/summary", headers=h).json()
+    assert summary["legal_hold_messages"] >= 4 and summary["legal_hold_accounts"] >= 1
+
+    # Retention never deletes held messages.
+    with Session(engine) as s, s.begin():
+        s.execute(
+            update(ArchivedMessage)
+            .where(ArchivedMessage.account_id == uuid.UUID(ana))
+            .values(archived_at=NOW - timedelta(days=60))
+        )
+        s.execute(update(ArchivePolicy).values(enabled=False))
+        s.execute(
+            update(Job)
+            .where(Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+            .values(status=JobStatus.CANCELLED, lease_expires_at=None)
+        )
+    run_tick(migrated, NOW)
+    with Session(engine) as s:
+        assert (
+            len(
+                s.scalars(
+                    select(ArchivedMessage).where(ArchivedMessage.account_id == uuid.UUID(ana))
+                ).all()
+            )
+            == 4
+        )
+
+    # Released: the policy's retention applies again to its own messages.
+    assert api.delete(f"/api/archives/accounts/{ana}/legal-hold", headers=h).status_code == 204
+    run_tick(migrated, NOW)
+    with Session(engine) as s:
+        left = s.scalars(
+            select(ArchivedMessage).where(ArchivedMessage.account_id == uuid.UUID(ana))
+        ).all()
+        assert sorted(m.carbonio_item_id for m in left) == [303, 304]  # no policy: kept
+    domain_admin = login(api, engine, Role.DOMAIN_ADMIN)
+    assert (
+        api.post(
+            f"/api/archives/accounts/{ana}/legal-hold", json={}, headers=domain_admin
+        ).status_code
+        == 403
+    )

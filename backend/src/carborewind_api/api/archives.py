@@ -407,6 +407,8 @@ class SummaryOut(BaseModel):
     removed_bytes: int
     accounts: int
     last_archived_at: datetime | None
+    legal_hold_messages: int = 0
+    legal_hold_accounts: int = 0
 
 
 async def summary_for(db: DbSession, domains: set[uuid.UUID] | None) -> SummaryOut:
@@ -418,12 +420,16 @@ async def summary_for(db: DbSession, domains: set[uuid.UUID] | None) -> SummaryO
         func.coalesce(func.sum(ArchivedMessage.size).filter(removed), 0),
         func.count(func.distinct(ArchivedMessage.account_id)),
         func.max(ArchivedMessage.archived_at),
+        func.count().filter(ArchivedMessage.legal_hold.is_(True)),
+        func.count(func.distinct(ArchivedMessage.account_id)).filter(
+            ArchivedMessage.legal_hold.is_(True)
+        ),
     ).select_from(ArchivedMessage)
     if domains is not None:
         query = query.join(Account, Account.id == ArchivedMessage.account_id).where(
             Account.domain_id.in_(domains)
         )
-    n, size, rn, rsize, accounts, last = (await db.execute(query)).one()
+    n, size, rn, rsize, accounts, last, held, held_accounts = (await db.execute(query)).one()
     return SummaryOut(
         messages=n,
         bytes=int(size),
@@ -431,6 +437,8 @@ async def summary_for(db: DbSession, domains: set[uuid.UUID] | None) -> SummaryO
         removed_bytes=int(rsize),
         accounts=accounts,
         last_archived_at=last,
+        legal_hold_messages=held,
+        legal_hold_accounts=held_accounts,
     )
 
 
@@ -455,6 +463,7 @@ class ArchivedMessageOut(BaseModel):
     has_attachments: bool
     archived_at: datetime
     removed_at: datetime | None
+    legal_hold: bool = False
 
 
 def _like(value: str) -> str:
@@ -475,6 +484,7 @@ async def search_messages(
     date_from: datetime | None = None,
     date_to: datetime | None = None,
     removed: bool | None = None,
+    legal_hold: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[ArchivedMessageOut]:
@@ -513,6 +523,8 @@ async def search_messages(
             if removed
             else ArchivedMessage.removed_at.is_(None)
         )
+    if legal_hold is not None:
+        query = query.where(ArchivedMessage.legal_hold.is_(legal_hold))
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
     rows = await db.execute(
         query.order_by(ArchivedMessage.item_date.desc().nulls_last(), ArchivedMessage.id.desc())
@@ -533,6 +545,7 @@ async def search_messages(
             has_attachments=m.has_attachments,
             archived_at=m.archived_at,
             removed_at=m.removed_at,
+            legal_hold=m.legal_hold,
         )
         for m, email in rows.tuples()
     ]
@@ -761,3 +774,132 @@ async def restore_messages(
         )
         jobs.append(JobOut.of(job, into.email))
     return jobs
+
+
+# ------------------------------------------------------------------ legal hold
+
+
+class LegalHoldIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=500, description="Reason (case, request…)")
+
+
+class LegalHoldOut(BaseModel):
+    account_id: uuid.UUID
+    account_email: str
+    messages: int
+    bytes: int
+    last_archived_at: datetime | None
+    pending: bool = False
+
+
+@router.post("/accounts/{account_id}/legal-hold", response_model=JobOut, status_code=202)
+async def start_legal_hold(
+    account_id: uuid.UUID, body: LegalHoldIn, principal: Manager, db: DbSession, request: Request
+) -> JobOut:
+    """Copy the whole mailbox into the archive under legal hold (it stays in the mailbox)."""
+    account = await db.get(Account, account_id)
+    if account is None or account.status is AccountStatus.DELETED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "account not found")
+    busy = await db.scalar(
+        select(Job.id).where(
+            Job.kind == JobKind.ARCHIVE,
+            Job.account_id == account.id,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+    )
+    if busy is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "this mailbox is already being archived")
+    job = await archiving.enqueue_legal_hold(
+        db, account, datetime.now(UTC), principal.user.id, body.note.strip()
+    )
+    await db.refresh(job)
+    await audit.record(
+        db,
+        action="archive.legal_hold",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="account",
+        target_id=account.email,
+        domain_id=account.domain_id,
+        details={"job": str(job.id), "note": body.note.strip()},
+    )
+    return JobOut.of(job, account.email)
+
+
+@router.delete("/accounts/{account_id}/legal-hold", status_code=status.HTTP_204_NO_CONTENT)
+async def release_legal_hold(
+    account_id: uuid.UUID, principal: Manager, db: DbSession, request: Request
+) -> None:
+    """End the hold: the messages stay archived, under their policy's retention again."""
+    account = await db.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "account not found")
+    released = await archiving.release_legal_hold(db, account)
+    await audit.record(
+        db,
+        action="archive.legal_hold.release",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="account",
+        target_id=account.email,
+        domain_id=account.domain_id,
+        details={"messages": released},
+    )
+
+
+@router.get("/legal-holds", response_model=list[LegalHoldOut])
+async def list_legal_holds(principal: Manager, db: DbSession) -> list[LegalHoldOut]:
+    rows = await db.execute(
+        select(
+            Account.id,
+            Account.email,
+            func.count(ArchivedMessage.id),
+            func.coalesce(func.sum(ArchivedMessage.size), 0),
+            func.max(ArchivedMessage.archived_at),
+        )
+        .join(ArchivedMessage, ArchivedMessage.account_id == Account.id)
+        .where(ArchivedMessage.legal_hold.is_(True))
+        .group_by(Account.id, Account.email)
+        .order_by(Account.email)
+    )
+    pending = set(
+        await db.scalars(
+            select(Job.account_id).where(
+                Job.kind == JobKind.ARCHIVE,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                Job.params["legal_hold"].astext == "true",
+            )
+        )
+    )
+    out = [
+        LegalHoldOut(
+            account_id=aid,
+            account_email=email,
+            messages=n,
+            bytes=int(size),
+            last_archived_at=last,
+            pending=aid in pending,
+        )
+        for aid, email, n, size, last in rows
+    ]
+    listed = {o.account_id for o in out}
+    for aid in pending - listed:  # first run still going: nothing archived yet
+        account = await db.get(Account, aid)
+        if account is not None:
+            out.append(
+                LegalHoldOut(
+                    account_id=aid,
+                    account_email=account.email,
+                    messages=0,
+                    bytes=0,
+                    last_archived_at=None,
+                    pending=True,
+                )
+            )
+    return sorted(out, key=lambda o: o.account_email)

@@ -1231,6 +1231,11 @@
             ],
             "title": "Item Date"
           },
+          "legal_hold": {
+            "default": false,
+            "title": "Legal Hold",
+            "type": "boolean"
+          },
           "recipients": {
             "anyOf": [
               {
@@ -2791,6 +2796,67 @@
         ],
         "title": "JobStatus",
         "type": "string"
+      },
+      "LegalHoldIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "default": "",
+            "description": "Reason (case, request…)",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "LegalHoldIn",
+        "type": "object"
+      },
+      "LegalHoldOut": {
+        "properties": {
+          "account_email": {
+            "title": "Account Email",
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "title": "Account Id",
+            "type": "string"
+          },
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "last_archived_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Archived At"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "pending": {
+            "default": false,
+            "title": "Pending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account_id",
+          "account_email",
+          "messages",
+          "bytes",
+          "last_archived_at"
+        ],
+        "title": "LegalHoldOut",
+        "type": "object"
       },
       "LimitsIn": {
         "additionalProperties": false,
@@ -6050,6 +6116,16 @@
             ],
             "title": "Last Archived At"
           },
+          "legal_hold_accounts": {
+            "default": 0,
+            "title": "Legal Hold Accounts",
+            "type": "integer"
+          },
+          "legal_hold_messages": {
+            "default": 0,
+            "title": "Legal Hold Messages",
+            "type": "integer"
+          },
           "messages": {
             "title": "Messages",
             "type": "integer"
@@ -8624,6 +8700,120 @@
         ]
       }
     },
+    "/api/archives/accounts/{account_id}/legal-hold": {
+      "delete": {
+        "description": "End the hold: the messages stay archived, under their policy's retention again.",
+        "operationId": "release_legal_hold_api_archives_accounts__account_id__legal_hold_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release Legal Hold",
+        "tags": [
+          "archives"
+        ]
+      },
+      "post": {
+        "description": "Copy the whole mailbox into the archive under legal hold (it stays in the mailbox).",
+        "operationId": "start_legal_hold_api_archives_accounts__account_id__legal_hold_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LegalHoldIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Legal Hold",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
+    "/api/archives/legal-holds": {
+      "get": {
+        "operationId": "list_legal_holds_api_archives_legal_holds_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LegalHoldOut"
+                  },
+                  "title": "Response List Legal Holds Api Archives Legal Holds Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Legal Holds",
+        "tags": [
+          "archives"
+        ]
+      }
+    },
     "/api/archives/messages": {
       "get": {
         "description": "Archived messages on the caller's domains, most recent first.",
@@ -8781,6 +8971,22 @@
                 }
               ],
               "title": "Removed"
+            }
+          },
+          {
+            "in": "query",
+            "name": "legal_hold",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Legal Hold"
             }
           },
           {

@@ -206,6 +206,58 @@ async def enqueue_due(db: AsyncSession, now: datetime) -> tuple[int, list[str]]:
     return queued, errors
 
 
+LEGAL_HOLD_NAME = "Conservation légale"
+LEGAL_MAX_MESSAGES = 200_000
+
+
+async def enqueue_legal_hold(
+    db: AsyncSession, account: Account, now: datetime, created_by: uuid.UUID | None, note: str
+) -> Job:
+    """Copy a whole mailbox into the archive under legal hold (nothing leaves the mailbox).
+
+    Every message, in every folder (Trash, Junk and Drafts included), is copied; messages
+    already in the archive are put under hold too. Repeat it to take later messages in.
+    """
+    await db.execute(
+        update(ArchivedMessage)
+        .where(ArchivedMessage.account_id == account.id)
+        .values(legal_hold=True)
+    )
+    job = Job(
+        kind=JobKind.ARCHIVE,
+        status=JobStatus.QUEUED,
+        account_id=account.id,
+        created_by=created_by,
+        priority=60,  # asked by a person: before scheduled archiving
+        max_attempts=3,
+        params={
+            "mode": "copy",
+            "before": (now + timedelta(days=1)).astimezone(UTC).isoformat(),
+            "exclude_folders": [],
+            "all_folders": True,
+            "keep_flagged": False,
+            "keep_unread": False,
+            "max_messages": LEGAL_MAX_MESSAGES,
+            "legal_hold": True,
+            "note": note,
+            "policy": LEGAL_HOLD_NAME,
+            "run": str(uuid.uuid4()),
+        },
+    )
+    db.add(job)
+    await db.flush()
+    return job
+
+
+async def release_legal_hold(db: AsyncSession, account: Account) -> int:
+    result = await db.execute(
+        update(ArchivedMessage)
+        .where(ArchivedMessage.account_id == account.id, ArchivedMessage.legal_hold.is_(True))
+        .values(legal_hold=False)
+    )
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
+
+
 async def skip_ids(db: AsyncSession, account_id: uuid.UUID) -> list[int]:
     """Messages of the account already archived and still in the mailbox (copy mode)."""
     rows = await db.scalars(
@@ -233,6 +285,7 @@ async def record_stored(
     )
     policy_id = job.params.get("policy_id")
     policy = await db.get(ArchivePolicy, uuid.UUID(policy_id)) if policy_id else None
+    legal = bool(job.params.get("legal_hold"))
     rows = [
         {
             "account_id": account.id,
@@ -249,15 +302,18 @@ async def record_stored(
             "flags": e.get("flags") or "",
             "content_blob_id": e["blob"],
             "meta_blob_id": e["meta_blob"],
+            "legal_hold": legal,
         }
         for e in entries
     ]
-    result = await db.execute(
-        insert(ArchivedMessage)
-        .values(rows)
-        .on_conflict_do_nothing(constraint="uq_archived_messages_item")
-        .returning(ArchivedMessage.id)
-    )
+    stmt = insert(ArchivedMessage).values(rows)
+    if legal:  # a message archived earlier by a policy now falls under the hold too
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_archived_messages_item", set_={"legal_hold": True}
+        )
+    else:
+        stmt = stmt.on_conflict_do_nothing(constraint="uq_archived_messages_item")
+    result = await db.execute(stmt.returning(ArchivedMessage.id))
     return len(result.all())
 
 
@@ -332,6 +388,7 @@ async def apply_retention(db: AsyncSession, now: datetime) -> int:
         result = await db.execute(
             delete(ArchivedMessage).where(
                 ArchivedMessage.policy_id == policy.id,
+                ArchivedMessage.legal_hold.is_(False),
                 ArchivedMessage.archived_at < now - timedelta(days=policy.retention_days),
             )
         )
