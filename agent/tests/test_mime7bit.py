@@ -89,3 +89,21 @@ def test_add_message_falls_back_when_the_upload_is_refused(
     fake.upload_reply = None
     item_id = client.add_message(box.id, 2, LATIN)
     assert box.items[item_id].raw == LATIN
+
+
+def test_big_messages_are_uploaded(tmp_path: Path, fake: FakeCarbonio) -> None:
+    from carborewind_agent.carbonio import client as client_module
+    from carborewind_agent.carbonio.factory import build_client
+
+    client: CarbonioClient = build_client(_settings(tmp_path), transport=fake.transport())
+    box = fake.add_mailbox("big@lnhc.dz")
+    raw = b"Subject: big\r\n\r\n" + b"x" * 200
+    fake.calls.clear()
+    old = client_module.INLINE_MAX
+    client_module.INLINE_MAX = 100
+    try:
+        item_id = client.add_message(box.id, 2, raw)
+    finally:
+        client_module.INLINE_MAX = old
+    assert box.items[item_id].raw == raw
+    assert any(c.startswith("upload:") for c in fake.calls)

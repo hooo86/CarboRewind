@@ -22,6 +22,9 @@ from .soap import NS_ADMIN, NS_MAIL, SoapClient, SoapFaultError, content
 
 log = logging.getLogger(__name__)
 
+# Messages larger than this go through the upload servlet (no JSON overhead).
+INLINE_MAX = 4 * 2**20
+
 MUST_RESYNC = "mail.MUST_RESYNC"
 
 # Account attributes read by the inventory (``SearchDirectoryRequest`` ``attrs``).
@@ -469,16 +472,22 @@ class CarbonioClient:
         """
         msg: dict[str, Any] = {"l": str(folder_id), "f": flags, "tn": tags}
         try:
-            msg["content"] = {"_content": raw.decode("utf-8")}
+            text: str | None = raw.decode("utf-8")
         except UnicodeDecodeError:
+            text = None
+        if text is not None and len(raw) <= INLINE_MAX:
+            msg["content"] = {"_content": text}
+        else:
+            # 8-bit content, or a big message: inline JSON would inflate it past Carbonio's
+            # SOAP size limit, while the upload sends it as is.
             try:
                 msg["aid"] = self.upload(account_id, raw)
             except (SoapFaultError, httpx.HTTPError) as exc:
-                ascii_text = to_7bit(raw)
-                if ascii_text is None:
+                inline = text if text is not None else to_7bit(raw)
+                if inline is None:
                     raise
-                log.warning("upload refused (%s), message sent re-encoded in 7 bits", exc)
-                msg["content"] = {"_content": ascii_text}
+                log.warning("upload refused (%s), message sent inline", exc)
+                msg["content"] = {"_content": inline}
         if received_ms is not None:
             msg["d"] = received_ms
         resp = self._mail.invoke("AddMsg", NS_MAIL, {"m": msg}, token=self.delegate(account_id))
