@@ -130,6 +130,7 @@ def test_smb_configuration(env: dict[str, Any]) -> None:
     assert env["calls"] == [
         ("systemctl", "daemon-reload"),
         ("systemctl", "enable", "--now", unit_name),
+        ("systemctl", "daemon-reload"),
     ]
     text = env["env_file"].read_text()
     assert f"CARBOREWIND_AGENT_REPOSITORY_PATH={env['mount']}/repository" in text
@@ -215,6 +216,23 @@ def test_failing_systemctl_is_reported(env: dict[str, Any]) -> None:
     env["run"] = fail
     with pytest.raises(StorageError, match="Permission denied"):
         smb(env, env["tmp"] / "none")
+
+
+def test_failed_mount_leaves_the_agent_startable(env: dict[str, Any]) -> None:
+    """A share that cannot be mounted must not leave RequiresMountsFor behind."""
+    calls: list[tuple[str, ...]] = []
+
+    def mount_fails(*cmd: str) -> None:
+        calls.append(cmd)
+        if cmd[1] == "enable":
+            raise StorageError("mount error(2): No such file or directory")
+
+    env["run"] = mount_fails
+    with pytest.raises(StorageError, match="mount error"):
+        smb(env, env["tmp"] / "none")
+    assert not (env["systemd"] / "carborewind-agent.service.d" / "storage.conf").exists()
+    assert calls[-1][:3] == ("systemctl", "disable", "--now")
+    assert "/nas" not in env["env_file"].read_text()  # repository not switched
 
 
 def test_run_helper() -> None:

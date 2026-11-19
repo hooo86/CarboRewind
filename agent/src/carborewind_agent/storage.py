@@ -19,6 +19,7 @@ asks for SMB 3 transport encryption.
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import os
 import pwd
@@ -297,10 +298,16 @@ def _mount(
     )
     req.mount_point.mkdir(parents=True, exist_ok=True)
     runner("systemctl", "daemon-reload")
-    runner("systemctl", "enable", "--now", unit_name)
-    if remount:  # new credentials or share on an already mounted unit
-        runner("systemctl", "restart", unit_name)
-    check_writable(req.mount_point, user.pw_uid, user.pw_gid)
+    try:
+        runner("systemctl", "enable", "--now", unit_name)
+        if remount:  # new credentials or share on an already mounted unit
+            runner("systemctl", "restart", unit_name)
+        check_writable(req.mount_point, user.pw_uid, user.pw_gid)
+    except StorageError:
+        # Leave nothing half-done behind (a failing unit enabled at boot).
+        with contextlib.suppress(StorageError):
+            runner("systemctl", "disable", "--now", unit_name)
+        raise
     return unit_name
 
 
@@ -328,6 +335,9 @@ def configure_smb(
             "share, or --start-empty to leave it behind (its snapshots would no longer be "
             "restorable)"
         )
+    unit_name = _mount(req, user, etc / "smb.credentials", systemd, runner, remount)
+    # Only once the share is mounted and writable: a requirement on a mount that fails would
+    # stop the agent from starting at all.
     _write(
         systemd / "carborewind-agent.service.d" / "storage.conf",
         "# Written by carborewind-agent storage smb.\n"
@@ -335,7 +345,7 @@ def configure_smb(
         f"RequiresMountsFor={req.mount_point}\n",
         0o600,  # systemd reads units as root
     )
-    unit_name = _mount(req, user, etc / "smb.credentials", systemd, runner, remount)
+    runner("systemctl", "daemon-reload")
 
     copied = 0
     if is_repository(current_repository) and req.migrate and current_repository != target:
