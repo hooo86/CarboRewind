@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+
+import { LimitsForm } from "./MailTrafficPage";
+import { MonitoringSettingsForm } from "./MonitoringPage";
+import { PolicyCard } from "./UsersPage";
 
 import { api } from "../api/endpoints";
 import type { NotificationSettings, OutboxEntry } from "../api/types";
@@ -403,7 +407,31 @@ function Outbox({ refresh }: { refresh: number }) {
   );
 }
 
-const TABS = ["notifications", "storage", "other"] as const;
+function MonitoringSettingsTab() {
+  const [load, reload] = useLoad(() => api.monitoring(), []);
+  return (
+    <LoadView load={load} reload={reload}>
+      {(d) => <MonitoringSettingsForm initial={d.settings} onSaved={reload} />}
+    </LoadView>
+  );
+}
+
+function MailLimitsTab() {
+  const [load, reload] = useLoad(() => api.mailLimits(), []);
+  return (
+    <LoadView load={load} reload={reload}>
+      {(limits) => <LimitsForm initial={limits} onSaved={reload} />}
+    </LoadView>
+  );
+}
+
+const TABS = [
+  "notifications",
+  "storage",
+  "monitoring",
+  "mail",
+  "security",
+] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
@@ -462,25 +490,9 @@ export function SettingsPage() {
         </>
       )}
       {tab === "storage" && <StorageSettingsSection />}
-      {tab === "other" && (
-        <section className="card stack">
-          <p className="muted">{t("settings.otherHelp")}</p>
-          <ul className="links">
-            <li>
-              <Link to="/monitoring">{t("settings.otherMonitoring")}</Link>
-            </li>
-            <li>
-              <Link to="/mail">{t("settings.otherMail")}</Link>
-            </li>
-            <li>
-              <Link to="/archives">{t("settings.otherArchives")}</Link>
-            </li>
-            <li>
-              <Link to="/users">{t("settings.otherUsers")}</Link>
-            </li>
-          </ul>
-        </section>
-      )}
+      {tab === "monitoring" && <MonitoringSettingsTab />}
+      {tab === "mail" && <MailLimitsTab />}
+      {tab === "security" && <PolicyCard />}
     </>
   );
 }

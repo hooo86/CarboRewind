@@ -8,9 +8,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ### Added
 - Conservation légale d'une boîte entière depuis l'écran Archives (tous les dossiers, rien retiré
   de la boîte, jamais supprimée par la durée de conservation jusqu'à sa levée). Migration 0014.
-- Interface : menu regroupé (Sauvegardes, Messagerie, Configuration, compte) en haut à droite,
-  thème clair (Auto / Clair / Sombre, mémorisé dans le navigateur), Paramètres en onglets, police
-  plus grande ; plus de débordement horizontal des formulaires et tableaux.
+- Interface : menu du compte en haut à droite (rôle, langue, thème Clair / Sombre / Auto, mot de
+  passe et double authentification, Paramètres, déconnexion) ; thème clair ; tous les réglages
+  regroupés dans Paramètres en onglets (Notifications, Stockage, Supervision, Limites d'envoi,
+  Sécurité) ; autocomplétion de la boîte pour la conservation légale ; police plus grande ; plus de
+  débordement horizontal des formulaires et tableaux.
 - Archivage des e-mails : politiques (domaines, comptes, âge, dossiers exclus, drapeaux, non lus,
   administrateurs), modes simulation / copie seule / archivage complet avec **simulation
   obligatoire** avant toute suppression ; l'agent relit chaque message archivé, l'indexe avant de

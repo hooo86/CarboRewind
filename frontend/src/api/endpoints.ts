@@ -320,6 +320,7 @@ export const api = {
       "DELETE",
       `/api/archives/accounts/${accountId}/legal-hold`,
     ),
+  mailLimits: () => request<MailLimits>("GET", "/api/mail/limits"),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

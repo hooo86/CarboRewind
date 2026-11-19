@@ -184,12 +184,13 @@ describe("monitoring page", () => {
     expect(await screen.findByText("Check started.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check copy 2 now" }));
     expect(await screen.findByText(/already pending/)).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Monitoring settings" }),
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring settings" }));
+    fireEvent.change(
+      await screen.findByLabelText(/Share of the files checked/),
+      {
+        target: { value: "25" },
+      },
     );
-    fireEvent.change(screen.getByLabelText(/Share of the files checked/), {
-      target: { value: "25" },
-    });
     fireEvent.change(screen.getByLabelText(/Account at risk without backup/), {
       target: { value: "48" },
     });
@@ -288,9 +289,7 @@ describe("monitoring page", () => {
     expect(
       screen.getByText("queue: 342 messages (deferred 340, active 2)"),
     ).toHaveClass("bad-text");
-    fireEvent.click(
-      screen.getByRole("button", { name: "Monitoring settings" }),
-    );
+    fireEvent.click(screen.getByRole("link", { name: "Monitoring settings" }));
     fireEvent.change(
       await screen.findByLabelText("Mail queue alert from (messages, 0 = off)"),
       {

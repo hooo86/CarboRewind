@@ -1339,6 +1339,7 @@ legend {
 /* ---- shell & sidebar */
 .shell {
   background: var(--bg);
+  display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
 }
 .sidebar {
@@ -1726,134 +1727,189 @@ th.num {
   margin-top: 1rem;
 }
 
-/* ================================================================ top bar layout
-   The menu sits at the top right, grouped; the content uses the whole width. */
-.shell {
-  display: block;
-  grid-template-columns: none;
-  min-height: 100vh;
+/* ================================================================ app bar + user menu
+   Sidebar on the left (main menu); a thin bar at the top right holds the account menu. */
+.main-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
-.topbar {
+.appbar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  gap: 1rem;
-  padding: 0.5rem 1.5rem;
   min-height: 56px;
-  background: var(--surface);
+  padding: 0.5rem 1.75rem;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
 }
-.topbar .brand {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0;
-  text-decoration: none;
-  color: var(--text);
-}
-.topnav {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.menu-group {
+.user-menu {
   position: relative;
 }
-.menu-button {
+.user-button {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  min-height: 38px;
+  gap: 0.55rem;
+  min-height: 40px;
+  padding: 0.2rem 0.75rem 0.2rem 0.25rem;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+.user-button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--faint);
+}
+.user-button[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.user-button .chevron {
+  display: inline-flex;
+  color: var(--muted);
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.avatar.large {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+.who-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--overlay);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  z-index: 40;
+}
+.user-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.user-head strong {
+  font-family: var(--font-head);
+  font-size: 1rem;
+}
+.user-head p {
+  margin: 0.1rem 0 0;
+}
+.user-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.user-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0 0.25rem;
+}
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--well);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.segmented button {
+  min-height: 32px;
+  padding: 0 0.5rem;
   background: transparent;
   border: 1px solid transparent;
   color: var(--muted);
   font-weight: 600;
+  border-radius: 6px;
 }
-.menu-button:hover:not(:disabled) {
+.segmented button:hover:not(:disabled) {
   background: var(--border);
   color: var(--text);
 }
-.menu-group.active > .menu-button {
-  color: var(--accent);
-  background: var(--info-bg);
-  border-color: var(--info-border);
+.segmented button[aria-pressed="true"] {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
-.caret {
-  font-size: 0.7rem;
-  opacity: 0.7;
-}
-.menu-panel {
-  display: none;
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  min-width: 230px;
-  padding: 0.35rem;
-  background: var(--overlay);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  z-index: 30;
-}
-/* hover bridge: the panel does not close while the pointer moves down to it */
-.menu-panel::before {
-  content: "";
-  position: absolute;
-  top: -6px;
-  left: 0;
-  right: 0;
-  height: 6px;
-}
-.menu-group:hover > .menu-panel,
-.menu-group:focus-within > .menu-panel {
+.user-links {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
 }
-.menu-panel a {
+.user-links a,
+.user-links .logout-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 6px;
+  gap: 0.65rem;
+  min-height: 40px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
   color: var(--text-2);
   text-decoration: none;
   font-weight: 500;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  width: 100%;
 }
-.menu-panel a:hover {
+.user-links a:hover,
+.user-links .logout-item:hover:not(:disabled) {
   background: var(--border);
   color: var(--text);
 }
-.menu-panel a.active {
-  background: var(--accent-strong);
-  color: #fff;
+.user-links .grow {
+  flex: 1;
 }
-.menu-row {
-  display: flex;
-  gap: 0.4rem;
-  padding: 0.35rem 0.25rem;
+.user-links .logout-item {
+  color: var(--bad);
 }
-.user-menu .menu-panel button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0.25rem;
-}
-.who-name {
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
+.user-links .logout-item:hover:not(:disabled) {
+  background: var(--bad-bg);
+  color: var(--bad);
 }
 .content {
-  max-width: 1600px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   padding: 1.5rem 1.75rem 3rem;
   min-width: 0;
 }
@@ -1899,19 +1955,6 @@ label {
 }
 
 @media (max-width: 900px) {
-  .topbar {
-    flex-wrap: wrap;
-    padding: 0.5rem 1rem;
-  }
-  .topnav {
-    margin-left: 0;
-    width: 100%;
-    justify-content: flex-start;
-  }
-  .menu-panel {
-    left: 0;
-    right: auto;
-  }
   .content {
     padding: 1rem;
   }
@@ -1935,4 +1978,41 @@ label {
 }
 .chart {
   overflow-x: auto;
+}
+
+/* ---- accounts search: one field, aligned with the buttons next to it */
+.searchbar {
+  align-items: stretch;
+}
+.chips-input {
+  min-height: 40px;
+  background: var(--well);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.4rem;
+}
+.chips-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+.chips-input input,
+.chips-input input:focus-visible {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: 32px;
+  padding: 0 0.3rem;
+  width: auto;
+}
+.searchbar > button,
+.searchbar .dropdown > button {
+  min-height: 40px;
+}
+@media (max-width: 760px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .appbar {
+    padding: 0.5rem 1rem;
+  }
 }

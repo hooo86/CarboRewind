@@ -180,11 +180,13 @@ describe("mail traffic page", () => {
   });
 
   it("edits the limits", async () => {
-    const calls = open();
+    const calls = open(user("super_admin"), {
+      "GET /api/mail/limits": overview.limits,
+    });
     fireEvent.click(
-      await screen.findByRole("button", { name: "Sending limits" }),
+      await screen.findByRole("link", { name: "Sending limits" }),
     );
-    fireEvent.change(screen.getByLabelText("Recipients per hour"), {
+    fireEvent.change(await screen.findByLabelText("Recipients per hour"), {
       target: { value: "500" },
     });
     fireEvent.click(screen.getByLabelText(/Alert only/));

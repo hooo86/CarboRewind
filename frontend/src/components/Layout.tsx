@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthContext";
@@ -25,190 +25,207 @@ export function LanguageSelect() {
   );
 }
 
-export function ThemeSelect() {
-  const { t } = useTranslation();
-  const [theme, set] = useState<Theme>(savedTheme);
+const ROLE_ORDER = [
+  "super_admin",
+  "domain_admin",
+  "restore_operator",
+  "viewer",
+] as const;
+
+/** Account menu at the top right: identity, language, theme, account, settings, sign out. */
+function UserMenu() {
+  const { t, i18n } = useTranslation();
+  const { user, logout, canManageSettings } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [theme, setThemeState] = useState<Theme>(savedTheme);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") setOpen(false);
+      } else if (box.current && !box.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const name = user?.display_name ?? user?.username ?? "";
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const roles = new Set((user?.roles ?? []).map((r) => r.role));
+  const role = ROLE_ORDER.find((r) => roles.has(r));
+  const pickTheme = (value: Theme) => {
+    setThemeState(value);
+    setTheme(value);
+  };
+
   return (
-    <label className="lang">
-      <span className="sr-only">{t("theme.label")}</span>
-      <select
-        aria-label={t("theme.label")}
-        value={theme}
-        onChange={(e) => {
-          const value = e.target.value as Theme;
-          set(value);
-          setTheme(value);
-        }}
+    <div className="user-menu" ref={box}>
+      <button
+        type="button"
+        className="user-button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
       >
-        <option value="system">{t("theme.system")}</option>
-        <option value="light">{t("theme.light")}</option>
-        <option value="dark">{t("theme.dark")}</option>
-      </select>
-    </label>
-  );
-}
-
-interface Entry {
-  to: string;
-  icon: IconName;
-  label: string;
-  end?: boolean;
-}
-
-/** A group of the top menu: opens on hover or keyboard focus (CSS :focus-within). */
-function MenuGroup({
-  label,
-  icon,
-  entries,
-}: {
-  label: string;
-  icon: IconName;
-  entries: Entry[];
-}) {
-  const { pathname } = useLocation();
-  if (entries.length === 0) return null;
-  const active = entries.some((e) =>
-    e.end ? pathname === e.to : pathname.startsWith(e.to),
-  );
-  return (
-    <div className={`menu-group${active ? " active" : ""}`}>
-      <button type="button" className="menu-button" aria-haspopup="true">
-        <Icon name={icon} />
-        <span>{label}</span>
-        <span className="caret" aria-hidden="true">
-          ▾
+        <span className="avatar" aria-hidden="true">
+          {initials || "?"}
+        </span>
+        <span className="who-name">{name}</span>
+        <span className="chevron" aria-hidden="true">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </span>
       </button>
-      <div className="menu-panel">
-        {entries.map((e) => (
-          <NavLink key={e.to} to={e.to} end={e.end}>
-            <Icon name={e.icon} />
-            <span>{e.label}</span>
-          </NavLink>
-        ))}
-      </div>
+      {open && (
+        <div
+          className="user-panel"
+          role="dialog"
+          aria-label={t("nav.userMenu")}
+        >
+          <div className="user-head">
+            <span className="avatar large" aria-hidden="true">
+              {initials || "?"}
+            </span>
+            <div>
+              <strong>{name}</strong>
+              {role && <p className="muted small">{t(`users.role.${role}`)}</p>}
+            </div>
+          </div>
+          <div className="user-section">
+            <span className="user-label">{t("language")}</span>
+            <div className="segmented" role="group" aria-label={t("language")}>
+              {(["fr", "en"] as Language[]).map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  aria-pressed={i18n.language === lang}
+                  onClick={() => setLanguage(lang)}
+                >
+                  {lang === "fr" ? "Français" : "English"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="user-section">
+            <span className="user-label">{t("theme.label")}</span>
+            <div
+              className="segmented"
+              role="group"
+              aria-label={t("theme.label")}
+            >
+              {(["light", "dark", "system"] as Theme[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={theme === value}
+                  onClick={() => pickTheme(value)}
+                >
+                  {t(`theme.${value}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="user-links">
+            <Link to="/me" onClick={() => setOpen(false)}>
+              <Icon name="policy" />
+              <span className="grow">{t("nav.security")}</span>
+              <span className={`badge ${user?.totp_enabled ? "ok" : "warn"}`}>
+                {t(user?.totp_enabled ? "nav.twoFactorOn" : "nav.twoFactorOff")}
+              </span>
+            </Link>
+            {canManageSettings && (
+              <Link to="/settings" onClick={() => setOpen(false)}>
+                <Icon name="settings" />
+                <span className="grow">{t("nav.settings")}</span>
+              </Link>
+            )}
+            <button
+              type="button"
+              className="logout-item"
+              onClick={() => void logout()}
+            >
+              <Icon name="logout" />
+              <span>{t("logout")}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export function Layout() {
   const { t } = useTranslation();
-  const {
-    user,
-    logout,
-    canManageSettings,
-    canManageMigrations,
-    canManageUsers,
-  } = useAuth();
+  const { user, canManageSettings, canManageMigrations, canManageUsers } =
+    useAuth();
   // Archived messages are mail content: not for read-only viewers.
   const canReadArchives = (user?.roles ?? []).some((r) => r.role !== "viewer");
-  const initials = (user?.display_name ?? user?.username ?? "?")
-    .split(/\s+/)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-  const when = (ok: boolean, e: Entry): Entry[] => (ok ? [e] : []);
+  const item = (to: string, icon: IconName, label: string, end = false) => (
+    <NavLink to={to} end={end}>
+      <Icon name={icon} />
+      <span>{label}</span>
+    </NavLink>
+  );
   return (
     <div className="shell">
-      <header className="topbar">
-        <Link to="/" className="brand" aria-label="CarboRewind">
-          <Logo size={28} withName />
+      <aside className="sidebar">
+        <span className="brand">
+          <Logo size={30} withName />
           <span className="edition">Carbonio CE</span>
-        </Link>
-        <nav aria-label="main" className="topnav">
-          <MenuGroup
-            label={t("nav.groupBackup")}
-            icon="dashboard"
-            entries={[
-              {
-                to: "/",
-                icon: "dashboard",
-                label: t("nav.dashboard"),
-                end: true,
-              },
-              { to: "/accounts", icon: "mail", label: t("nav.accounts") },
-              { to: "/jobs", icon: "jobs", label: t("nav.jobs") },
-              { to: "/policies", icon: "policy", label: t("nav.policies") },
-            ]}
-          />
-          <MenuGroup
-            label={t("nav.groupMail")}
-            icon="traffic"
-            entries={[
-              ...when(canManageSettings, {
-                to: "/monitoring",
-                icon: "monitoring",
-                label: t("nav.monitoring"),
-              }),
-              ...when(canManageSettings, {
-                to: "/mail",
-                icon: "traffic",
-                label: t("nav.mail"),
-              }),
-              ...when(canReadArchives, {
-                to: "/archives",
-                icon: "archive",
-                label: t("nav.archives"),
-              }),
-              ...when(canManageMigrations, {
-                to: "/migrations",
-                icon: "migration",
-                label: t("nav.migrations"),
-              }),
-            ]}
-          />
-          <MenuGroup
-            label={t("nav.configuration")}
-            icon="settings"
-            entries={[
-              ...when(canManageUsers, {
-                to: "/users",
-                icon: "users",
-                label: t("nav.users"),
-              }),
-              ...when(canManageSettings, {
-                to: "/settings",
-                icon: "settings",
-                label: t("nav.settings"),
-              }),
-            ]}
-          />
-          <div className="menu-group user-menu">
-            <button type="button" className="menu-button" aria-haspopup="true">
-              <span className="avatar" aria-hidden="true">
-                {initials}
-              </span>
-              <span className="who-name">
-                {user?.display_name ?? user?.username}
-              </span>
-              <span className="caret" aria-hidden="true">
-                ▾
-              </span>
-            </button>
-            <div className="menu-panel">
-              <Link to="/me" className="who" title={t("nav.me")}>
-                <Icon name="user" />
-                <span>{t("nav.me")}</span>
-              </Link>
-              <div className="menu-row">
-                <ThemeSelect />
-                <LanguageSelect />
-              </div>
-              <button
-                type="button"
-                className="secondary small"
-                onClick={() => void logout()}
-              >
-                <Icon name="logout" /> {t("logout")}
-              </button>
-            </div>
-          </div>
+        </span>
+        <nav aria-label="main">
+          <p className="nav-section" aria-hidden="true">
+            {t("nav.administration")}
+          </p>
+          {item("/", "dashboard", t("nav.dashboard"), true)}
+          {item("/accounts", "mail", t("nav.accounts"))}
+          {item("/jobs", "jobs", t("nav.jobs"))}
+          {item("/policies", "policy", t("nav.policies"))}
+          {canManageSettings &&
+            item("/monitoring", "monitoring", t("nav.monitoring"))}
+          {canManageSettings && item("/mail", "traffic", t("nav.mail"))}
+          {canReadArchives && item("/archives", "archive", t("nav.archives"))}
+          {canManageMigrations &&
+            item("/migrations", "migration", t("nav.migrations"))}
+          {(canManageUsers || canManageSettings) && (
+            <p className="nav-section" aria-hidden="true">
+              {t("nav.configuration")}
+            </p>
+          )}
+          {canManageUsers && item("/users", "users", t("nav.users"))}
+          {canManageSettings &&
+            item("/settings", "settings", t("nav.settings"))}
         </nav>
-      </header>
-      <main className="content">
-        <Outlet />
-      </main>
+      </aside>
+      <div className="main-col">
+        <header className="appbar">
+          <UserMenu />
+        </header>
+        <main className="content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

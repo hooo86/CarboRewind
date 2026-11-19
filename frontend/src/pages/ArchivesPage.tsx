@@ -18,6 +18,7 @@ import {
   StatusBadge,
   useLoad,
 } from "../components/common";
+import { AccountPicker } from "../components/AccountPicker";
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate } from "../utils/format";
 
@@ -1005,15 +1006,12 @@ function LegalHoldTab() {
         <h2>{t("archives.legalTitle")}</h2>
         <p className="muted">{t("archives.legalHelp")}</p>
         <div className="row">
-          <label className="grow">
-            {t("archives.legalAccount")}
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
+          <AccountPicker
+            label={t("archives.legalAccount")}
+            required
+            value={email}
+            onChange={setEmail}
+          />
           <label className="grow">
             {t("archives.legalNote")}
             <input

@@ -359,7 +359,8 @@ describe("access accounts", () => {
       ).toBe(true),
     );
 
-    fireEvent.click(screen.getByLabelText(/every account/));
+    fireEvent.click(screen.getByRole("link", { name: "Settings → Security" }));
+    fireEvent.click(await screen.findByLabelText(/every account/));
     expect(await screen.findByText("Policy saved.")).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
       require_2fa: "all",

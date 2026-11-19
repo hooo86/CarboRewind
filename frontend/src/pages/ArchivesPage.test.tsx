@@ -332,6 +332,12 @@ describe("archives page", () => {
     fireEvent.change(within(form).getByLabelText("Mailbox address"), {
       target: { value: "ben@lnhc.dz" },
     });
+    // Suggestions come from the account list as one types.
+    await waitFor(() =>
+      expect(
+        form.querySelector('datalist option[value="ben@lnhc.dz"]'),
+      ).not.toBeNull(),
+    );
     fireEvent.change(within(form).getByLabelText(/Reason/), {
       target: { value: "Dossier 2026-17" },
     });

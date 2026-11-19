@@ -232,8 +232,10 @@ export const resources = {
       nav: {
         administration: "Administration",
         configuration: "Configuration",
-        groupBackup: "Sauvegardes",
-        groupMail: "Messagerie",
+        userMenu: "Menu du compte",
+        security: "Mot de passe et double authentification",
+        twoFactorOn: "Active",
+        twoFactorOff: "Inactive",
         dashboard: "Tableau de bord",
         accounts: "Comptes",
         jobs: "Jobs",
@@ -252,7 +254,9 @@ export const resources = {
         tabs: {
           notifications: "Notifications",
           storage: "Stockage",
-          other: "Autres réglages",
+          monitoring: "Supervision",
+          mail: "Limites d'envoi",
+          security: "Sécurité",
         },
         otherHelp:
           "Les autres réglages sont avec la fonction qu'ils concernent :",
@@ -419,6 +423,9 @@ export const resources = {
           restore_operator: "Opérateur de restauration",
           viewer: "Lecture seule",
         },
+        policyMoved:
+          "La politique de double authentification est dans les paramètres :",
+        policyLink: "Paramètres → Sécurité",
         roleHelp: {
           super_admin:
             "Tous les droits, sur tous les domaines : comptes d'accès, paramètres, migrations, trafic mail.",
@@ -1370,8 +1377,10 @@ export const resources = {
           'Archive now with "{{name}}"? Archived and verified messages will be deleted from the mailboxes.',
       },
       nav: {
-        groupBackup: "Backups",
-        groupMail: "Mail",
+        userMenu: "Account menu",
+        security: "Password and two-factor authentication",
+        twoFactorOn: "On",
+        twoFactorOff: "Off",
         administration: "Administration",
         configuration: "Configuration",
         dashboard: "Dashboard",
@@ -1392,7 +1401,9 @@ export const resources = {
         tabs: {
           notifications: "Notifications",
           storage: "Storage",
-          other: "Other settings",
+          monitoring: "Monitoring",
+          mail: "Sending limits",
+          security: "Security",
         },
         otherHelp: "The other settings sit with the feature they belong to:",
         otherMonitoring: "Monitoring: thresholds, integrity, Carbonio services",
@@ -1551,6 +1562,8 @@ export const resources = {
           restore_operator: "Restore operator",
           viewer: "Read only",
         },
+        policyMoved: "The two-factor authentication policy is in the settings:",
+        policyLink: "Settings → Security",
         roleHelp: {
           super_admin:
             "Every right on every domain: access accounts, settings, migrations, mail traffic.",

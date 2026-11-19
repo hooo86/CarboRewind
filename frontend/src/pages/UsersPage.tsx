@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { api } from "../api/endpoints";
 import type { Domain, Page, Role, TwoFactorPolicy, User } from "../api/types";
@@ -381,7 +382,7 @@ function UserEditor({
   );
 }
 
-function PolicyCard() {
+export function PolicyCard() {
   const { t } = useTranslation();
   const [load, reload] = useLoad(() => api.securityPolicy(), []);
   const [notice, setNotice] = useState<Notice>(null);
@@ -575,7 +576,10 @@ export function UsersPage() {
           );
         }}
       </LoadView>
-      <PolicyCard />
+      <p className="muted">
+        {t("users.policyMoved")}{" "}
+        <Link to="/settings?tab=security">{t("users.policyLink")}</Link>
+      </p>
     </>
   );
 }

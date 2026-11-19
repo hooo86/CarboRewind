@@ -151,7 +151,7 @@ function Integrity({
   );
 }
 
-function SettingsForm({
+export function MonitoringSettingsForm({
   initial,
   onSaved,
 }: {
@@ -308,7 +308,6 @@ export function MonitoringPage() {
     60000,
   );
   const [notice, setNotice] = useState<Notice>(null);
-  const [showSettings, setShowSettings] = useState(false);
 
   if (!canManageSettings) {
     return (
@@ -341,13 +340,9 @@ export function MonitoringPage() {
     <>
       <div className="toolbar">
         <h1 className="grow">{t("monitoring.title")}</h1>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setShowSettings((v) => !v)}
-        >
+        <Link className="button secondary" to="/settings?tab=monitoring">
           {t("monitoring.settings")}
-        </button>
+        </Link>
       </div>
       <NoticeBar notice={notice} />
       <LoadView load={load} reload={reload}>
@@ -377,15 +372,6 @@ export function MonitoringPage() {
                 <p role="alert" className="alert error">
                   {t("monitoring.servicesDownAlert", { list: down.join(", ") })}
                 </p>
-              )}
-              {showSettings && (
-                <SettingsForm
-                  initial={d.settings}
-                  onSaved={() => {
-                    setShowSettings(false);
-                    reload();
-                  }}
-                />
               )}
               <section className="tiles" aria-label={t("monitoring.health")}>
                 <div className={`tile ${down.length ? "bad" : "ok"}`}>

@@ -87,7 +87,7 @@ function Chart({ data }: { data: MailOverview }) {
   );
 }
 
-function LimitsForm({
+export function LimitsForm({
   initial,
   onSaved,
 }: {
@@ -195,7 +195,6 @@ export function MailTrafficPage() {
     60000,
   );
   const [notice, setNotice] = useState<Notice>(null);
-  const [showLimits, setShowLimits] = useState(false);
 
   if (!canManageSettings) {
     return (
@@ -249,13 +248,9 @@ export function MailTrafficPage() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => setShowLimits((v) => !v)}
-        >
+        <Link className="button secondary" to="/settings?tab=mail">
           {t("mail.limits")}
-        </button>
+        </Link>
       </div>
       <p className="muted">{t("mail.intro")}</p>
       <NoticeBar notice={notice} />
@@ -280,15 +275,6 @@ export function MailTrafficPage() {
               )}
               {!d.limits.enabled && (
                 <p className="alert info">{t("mail.limitsOff")}</p>
-              )}
-              {showLimits && (
-                <LimitsForm
-                  initial={d.limits}
-                  onSaved={() => {
-                    setShowLimits(false);
-                    reload();
-                  }}
-                />
               )}
               <section className="tiles" aria-label={t("mail.totals")}>
                 <Tile label={t("mail.sent")} value={d.totals.sent_messages} />
