@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
@@ -365,5 +371,102 @@ describe("storage settings", () => {
         copy_02: null,
       }),
     );
+  });
+});
+
+describe("agent settings", () => {
+  it("shows where they come from and saves them", async () => {
+    const { calls } = open(
+      user("super_admin"),
+      {
+        "GET /api/settings/agent": {
+          revision: 2,
+          max_concurrent_accounts: 2,
+          max_bandwidth_mbps: 0,
+          max_load_per_cpu: 1.5,
+          min_free_gb_local: 20,
+          min_free_percent_local: 15,
+          min_free_gb_network: 2,
+          service_monitor: true,
+          service_ports: { mta: 25, amavis: 10024 },
+          mail_monitor: true,
+          agents: [
+            {
+              name: "mx1-mail",
+              applied: { revision: 2, at: "2026-11-19T10:00:00Z" },
+            },
+            {
+              name: "mx2",
+              applied: { revision: 1, at: "2026-11-18T10:00:00Z" },
+            },
+          ],
+        },
+        "PUT /api/settings/agent": (c: { body: unknown }) => ({
+          body: { ...(c.body as object), revision: 3, agents: [] },
+        }),
+      },
+      "/settings?tab=agent",
+    );
+    const form = await screen.findByRole("form", {
+      name: "Carbonio server agent",
+    });
+    expect(
+      within(form).getByText(/mx1-mail: settings applied/),
+    ).toBeInTheDocument();
+    expect(within(form).getByText(/mx2: not applied yet/)).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText(/at the same time/), {
+      target: { value: "3" },
+    });
+    fireEvent.change(within(form).getByLabelText(/Pause when the load/), {
+      target: { value: "4" },
+    });
+    fireEvent.change(within(form).getByLabelText(/Ports to probe/), {
+      target: { value: "mta=25\nAmavis: 10024\n\nlmtp 7025" },
+    });
+    fireEvent.click(within(form).getByLabelText(/Read the MTA log/));
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/Settings saved/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+      max_concurrent_accounts: 3,
+      max_bandwidth_mbps: 0,
+      max_load_per_cpu: 4,
+      min_free_gb_local: 20,
+      min_free_percent_local: 15,
+      min_free_gb_network: 2,
+      service_monitor: true,
+      mail_monitor: false,
+      service_ports: { mta: 25, amavis: 10024, lmtp: 7025 },
+    });
+  });
+
+  it("refuses a malformed port line", async () => {
+    open(
+      user("super_admin"),
+      {
+        "GET /api/settings/agent": {
+          revision: 0,
+          max_concurrent_accounts: 2,
+          max_bandwidth_mbps: 0,
+          max_load_per_cpu: 1.5,
+          min_free_gb_local: 20,
+          min_free_percent_local: 15,
+          min_free_gb_network: 2,
+          service_monitor: true,
+          service_ports: {},
+          mail_monitor: true,
+          agents: [],
+        },
+      },
+      "/settings?tab=agent",
+    );
+    const form = await screen.findByRole("form", {
+      name: "Carbonio server agent",
+    });
+    expect(within(form).getByText(/Never saved here/)).toBeInTheDocument();
+    fireEvent.change(within(form).getByLabelText(/Ports to probe/), {
+      target: { value: "ldap=abc" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/invalid port line/)).toBeInTheDocument();
   });
 });

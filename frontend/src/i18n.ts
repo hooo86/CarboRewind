@@ -92,6 +92,37 @@ export const resources = {
           is: "est",
         },
       },
+      agentSettings: {
+        title: "Agent du serveur Carbonio",
+        intro:
+          "Réglages appliqués par l'agent en moins d'une minute, sans redémarrage ni connexion au serveur Carbonio.",
+        fromEnv:
+          "Jamais enregistrés ici : l'agent utilise les valeurs de son fichier /etc/carborewind/agent.env. Les valeurs affichées sont celles par défaut.",
+        applied: "{{agent}} : réglages appliqués le {{date}}.",
+        pending:
+          "{{agent}} : en attente d'application (l'agent est-il à jour et connecté ?).",
+        performance: "Performances des sauvegardes",
+        concurrency: "Boîtes sauvegardées en même temps (1 à 8)",
+        bandwidth: "Débit maximal (Mbit/s, 0 = illimité)",
+        load: "Pause si la charge par processeur dépasse (0 = jamais)",
+        performanceHelp:
+          "Plus de boîtes en parallèle accélère la première sauvegarde mais charge davantage Carbonio : 2 ou 3 conviennent en journée. La pause attend que la charge moyenne du serveur Carbonio redescende (5 minutes au plus par message).",
+        disk: "Garde-fou d'espace disque",
+        freeLocalGb: "Disque local : garder libre (Go)",
+        freeLocalPct: "Disque local : garder libre (%)",
+        freeNetworkGb: "NAS : garder libre (Go)",
+        diskHelp:
+          "Une sauvegarde s'arrête avant de remplir le disque. Sur un disque local, la plus grande des deux valeurs s'applique.",
+        watchers: "Surveillance",
+        serviceMonitor: "Surveiller les services Carbonio (chaque minute)",
+        ports: "Ports à tester (nom=port, un par ligne)",
+        mailMonitor:
+          "Lire le journal du MTA (trafic mail, spams, limites d'envoi)",
+        envOnly:
+          "L'adresse de l'API, les certificats, le chemin du dépôt, la clé et le compte d'administration Carbonio restent dans agent.env : les modifier à distance pourrait couper l'agent.",
+        badPorts: "ligne de port invalide : « {{line}} » (attendu : nom=port)",
+        saved: "Réglages enregistrés : l'agent les applique dans la minute.",
+      },
       archives: {
         title: "Archives",
         intro:
@@ -257,6 +288,7 @@ export const resources = {
           monitoring: "Supervision",
           mail: "Limites d'envoi",
           security: "Sécurité",
+          agent: "Agent",
         },
         otherHelp:
           "Les autres réglages sont avec la fonction qu'ils concernent :",
@@ -1240,6 +1272,36 @@ export const resources = {
           is: "is",
         },
       },
+      agentSettings: {
+        title: "Carbonio server agent",
+        intro:
+          "Settings the agent applies within a minute, without restart or logging on to the Carbonio server.",
+        fromEnv:
+          "Never saved here: the agent uses the values of its /etc/carborewind/agent.env file. The values shown are the defaults.",
+        applied: "{{agent}}: settings applied on {{date}}.",
+        pending:
+          "{{agent}}: not applied yet (is the agent up to date and connected?).",
+        performance: "Backup performance",
+        concurrency: "Mailboxes backed up at the same time (1 to 8)",
+        bandwidth: "Maximum throughput (Mbit/s, 0 = unlimited)",
+        load: "Pause when the load per CPU exceeds (0 = never)",
+        performanceHelp:
+          "More mailboxes in parallel speeds up the first backup but loads Carbonio more: 2 or 3 suit office hours. The pause waits for the Carbonio server's load average to go down (5 minutes at most per message).",
+        disk: "Disk space guard",
+        freeLocalGb: "Local disk: keep free (GB)",
+        freeLocalPct: "Local disk: keep free (%)",
+        freeNetworkGb: "NAS: keep free (GB)",
+        diskHelp:
+          "A backup stops before filling the disk. On a local disk, the larger of the two values applies.",
+        watchers: "Monitoring",
+        serviceMonitor: "Watch the Carbonio services (every minute)",
+        ports: "Ports to probe (name=port, one per line)",
+        mailMonitor: "Read the MTA log (mail traffic, spam, sending limits)",
+        envOnly:
+          "The API address, certificates, repository path, key and Carbonio admin account stay in agent.env: changing them remotely could cut the agent off.",
+        badPorts: 'invalid port line: "{{line}}" (expected: name=port)',
+        saved: "Settings saved: the agent applies them within a minute.",
+      },
       archives: {
         title: "Archives",
         intro:
@@ -1404,6 +1466,7 @@ export const resources = {
           monitoring: "Monitoring",
           mail: "Sending limits",
           security: "Security",
+          agent: "Agent",
         },
         otherHelp: "The other settings sit with the feature they belong to:",
         otherMonitoring: "Monitoring: thresholds, integrity, Carbonio services",

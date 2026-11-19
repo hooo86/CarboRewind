@@ -770,3 +770,20 @@ export interface OpenedMessage {
     size: number;
   } | null;
 }
+
+export interface AgentTuningInput {
+  max_concurrent_accounts: number;
+  max_bandwidth_mbps: number;
+  max_load_per_cpu: number;
+  min_free_gb_local: number;
+  min_free_percent_local: number;
+  min_free_gb_network: number;
+  service_monitor: boolean;
+  service_ports: Record<string, number>;
+  mail_monitor: boolean;
+}
+
+export interface AgentTuning extends AgentTuningInput {
+  revision: number;
+  agents: { name: string; applied: { revision: number; at: string } | null }[];
+}

@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { AgentSettingsForm } from "../components/AgentSettingsForm";
 import { LimitsForm } from "./MailTrafficPage";
 import { MonitoringSettingsForm } from "./MonitoringPage";
 import { PolicyCard } from "./UsersPage";
@@ -416,6 +417,17 @@ function MonitoringSettingsTab() {
   );
 }
 
+function AgentTab() {
+  const [load, reload] = useLoad(() => api.agentTuning(), []);
+  return (
+    <LoadView load={load} reload={reload}>
+      {(cfg) => (
+        <AgentSettingsForm key={cfg.revision} initial={cfg} onSaved={reload} />
+      )}
+    </LoadView>
+  );
+}
+
 function MailLimitsTab() {
   const [load, reload] = useLoad(() => api.mailLimits(), []);
   return (
@@ -431,6 +443,7 @@ const TABS = [
   "monitoring",
   "mail",
   "security",
+  "agent",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -493,6 +506,7 @@ export function SettingsPage() {
       {tab === "monitoring" && <MonitoringSettingsTab />}
       {tab === "mail" && <MailLimitsTab />}
       {tab === "security" && <PolicyCard />}
+      {tab === "agent" && <AgentTab />}
     </>
   );
 }

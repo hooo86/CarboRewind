@@ -6,6 +6,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Paramètres → Agent : boîtes sauvegardées en parallèle, débit, pause selon la charge, garde-fou
+  disque, surveillance des services et du journal MTA, appliqués par l'agent sans redémarrage.
+  Voir `docs/agent-settings.md`.
+- Sauvegardes plus rapides : jobs en parallèle, métadonnées lues par lots de 200, synchronisation
+  des répertoires du NAS une fois par point de reprise.
 - Conservation légale d'une boîte entière depuis l'écran Archives (tous les dossiers, rien retiré
   de la boîte, jamais supprimée par la durée de conservation jusqu'à sa levée). Migration 0014.
 - Interface : menu du compte en haut à droite (rôle, langue, thème Clair / Sombre / Auto, mot de

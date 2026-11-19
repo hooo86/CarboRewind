@@ -1,5 +1,7 @@
 import { request } from "./client";
 import type {
+  AgentTuning,
+  AgentTuningInput,
   ArchivedMessage,
   ArchiveMode,
   ArchivePolicy,
@@ -321,6 +323,9 @@ export const api = {
       `/api/archives/accounts/${accountId}/legal-hold`,
     ),
   mailLimits: () => request<MailLimits>("GET", "/api/mail/limits"),
+  agentTuning: () => request<AgentTuning>("GET", "/api/settings/agent"),
+  saveAgentTuning: (body: AgentTuningInput) =>
+    request<AgentTuning>("PUT", "/api/settings/agent", body),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>
