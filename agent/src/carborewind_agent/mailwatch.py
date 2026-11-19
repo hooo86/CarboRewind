@@ -32,6 +32,7 @@ class MailMonitor:
         *,
         interval: float = 60.0,
         refresh_every: int = 10,
+        protected: set[str] | None = None,
     ) -> None:
         self._api = api
         self._carbonio = carbonio
@@ -39,6 +40,9 @@ class MailMonitor:
         self._state_file = state_file
         self._interval = interval
         self._refresh_every = refresh_every
+        # Never locked from here: the agent's own Carbonio admin account (locking it would
+        # cut CarboRewind off from Carbonio).
+        self._protected = {p.lower() for p in protected or set()}
         self._ticks = 0
         self.agg = Aggregator()
         path = first_existing(log_paths) or log_paths[0]
@@ -82,6 +86,8 @@ class MailMonitor:
         error = None
         if status is None:
             error = f"unknown action {action.get('action')!r}"
+        elif status == "locked" and str(action.get("email", "")).lower() in self._protected:
+            error = "protected account (used by CarboRewind itself): not locked"
         else:
             try:
                 self._carbonio.set_account_status(str(action["carbonio_id"]), status)

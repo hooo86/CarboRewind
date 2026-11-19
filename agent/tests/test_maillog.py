@@ -228,6 +228,7 @@ def setup(tmp_path: Path) -> tuple[MailMonitor, FakeServer, FakeCarbonio, Path]:
         [tmp_path / "missing.log", log],
         tmp_path / "state" / "mail.json",
         interval=0.01,
+        protected={"Ana@lnhc.dz"},
     )
     return monitor, server, fake, log
 
@@ -258,6 +259,11 @@ def test_monitor_sends_counters_and_locks(setup: tuple[Any, ...]) -> None:
     server.actions = [{"id": "a4", "action": "unlock", "carbonio_id": ben.id}]
     monitor.tick(NOW)
     assert ben.status == "active"
+    ana = next(m for m in fake.mailboxes.values() if m.name == "ana@lnhc.dz")
+    server.actions = [{"id": "a5", "action": "lock", "carbonio_id": ana.id, "email": ana.name}]
+    monitor.tick(NOW)
+    assert ana.status == "active"  # the agent's own account is never locked
+    assert "protected" in server.calls[-1][1]["error"]
 
 
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:

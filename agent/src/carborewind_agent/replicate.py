@@ -78,7 +78,9 @@ def _copy(source: Path, target: Path) -> None:
         tmp.unlink(missing_ok=True)
 
 
-def replicate(source: Path, target: Path, *, require_mount: bool = True) -> ReplicaResult:
+def replicate(
+    source: Path, target: Path, *, require_mount: bool = True, min_free_bytes: int = 0
+) -> ReplicaResult:
     """Make ``target`` a copy of the repository ``source``."""
     if not (source / "config.json").exists():
         raise ReplicaError(f"{source} is not a repository")
@@ -97,6 +99,11 @@ def replicate(source: Path, target: Path, *, require_mount: bool = True) -> Repl
         size = wanted[rel]
         if present.get(rel) == size:
             continue
+        if min_free_bytes:
+            st = os.statvfs(target)
+            if st.f_bavail * st.f_frsize - size < min_free_bytes:
+                result.errors.append(f"copy 02 is full: stopped before {rel}")
+                break
         try:
             _copy(source / rel, target / rel)
         except OSError as exc:

@@ -18,7 +18,7 @@ from .imap import ImapError, ImapSettings, ImapSource
 from .migrate import MailboxMigration, MigrationError
 from .purge import run_purge
 from .replicate import ReplicaError, replicate
-from .repository import Repository
+from .repository import Repository, RepositoryError
 from .restore import AccountRestore, RestoreError
 from .storage import describe
 
@@ -58,8 +58,10 @@ PROFILE_ATTRS = {
     "zimbraNotes": "notes",
     "employeeNumber": "employee_number",
 }
-# Mailboxes GetQuotaUsage did not list are measured one by one, up to this many.
-MAX_SIZE_LOOKUPS = 5000
+# Mailboxes GetQuotaUsage did not list are measured one by one, this many per inventory
+# (in turn: the next inventory continues where this one stopped), to spare Carbonio.
+MAX_SIZE_LOOKUPS = 200
+GIB = 1024**3
 
 
 def account_payload(
@@ -121,6 +123,8 @@ class Worker:
         storage_dir: Path | None = None,
         replica: Path | None = None,
         storage_every: int = 3,
+        kek: bytes | None = None,
+        space: tuple[float, float, float] = (20.0, 15.0, 2.0),
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
         sleep: Callable[[float], bool] | None = None,
@@ -134,6 +138,9 @@ class Worker:
         self._storage_dir = storage_dir
         self._replica = replica
         self._storage_every = storage_every
+        self._kek = kek
+        self._space = space  # GiB local, % local, GiB network
+        self._size_cursor = 0
         self._requested_revision: int | None = None
         self._reported_status: float | None = None
         # Set when the API answers 409 to a heartbeat: the job was cancelled meanwhile.
@@ -162,17 +169,26 @@ class Worker:
             log.warning("cannot read quota usage: %s", exc)
         infos = list(self._carbonio.iter_accounts())
         # GetQuotaUsage may leave accounts out (other server, cache): measure those directly.
-        lookups = 0
-        for info in infos:
-            if info.id in used or lookups >= MAX_SIZE_LOOKUPS:
-                continue
-            lookups += 1
-            try:
-                used[info.id] = self._carbonio.mailbox_size(info.id)
-            except SoapFaultError as exc:
-                log.debug("no mailbox size for %s: %s", info.name, exc)
+        missing = [i for i in infos if i.id not in used]
+        if missing:
+            start = self._size_cursor % len(missing)
+            for info in (missing[start:] + missing[:start])[:MAX_SIZE_LOOKUPS]:
+                try:
+                    used[info.id] = self._carbonio.mailbox_size(info.id)
+                except SoapFaultError as exc:
+                    log.debug("no mailbox size for %s: %s", info.name, exc)
+            self._size_cursor = start + MAX_SIZE_LOOKUPS
         accounts = [account_payload(a, cos, used, limits) for a in infos]
         return self._api.inventory(accounts, complete=True, storage=self.storage_report())
+
+    def space_floor(self, path: Path) -> int:
+        """Bytes that must stay free on the file system holding ``path``."""
+        info = describe(path)
+        gib_local, pct_local, gib_net = self._space
+        if info.get("kind") == "network":
+            return int(gib_net * GIB)
+        total = int(info.get("total_bytes") or 0)  # type: ignore[call-overload]
+        return int(max(gib_local * GIB, total * pct_local / 100))
 
     # ------------------------------------------------------------------ storage settings
 
@@ -274,6 +290,8 @@ class Worker:
             runner = self._run_migrate
         elif job["kind"] == "replicate" and self._repo is not None and self._replica:
             runner = self._run_replicate
+        elif job["kind"] == "verify" and self._repo is not None:
+            runner = self._run_verify
         else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
@@ -300,7 +318,14 @@ class Worker:
         beater.start()
         try:
             runner(job, lambda state: latest.__setitem__("checkpoint", state))
-        except (SoapFaultError, RestoreError, MigrationError, ImapError, ReplicaError) as exc:
+        except (
+            SoapFaultError,
+            RestoreError,
+            MigrationError,
+            ImapError,
+            ReplicaError,
+            RepositoryError,
+        ) as exc:
             stop_beat.set()
             log.error("job %s failed: %s", job_id, exc)
             self._api.heartbeat(job_id, latest["checkpoint"])  # keep progress for the retry
@@ -322,6 +347,9 @@ class Worker:
     def _run_backup(
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
     ) -> None:
+        if self._repo is not None:
+            self._repo.min_free_bytes = self.space_floor(self._repo.root)
+            self._repo.check_space()
         previous = job.get("previous")
         result = self._engine.run(
             job["carbonio_id"],
@@ -389,8 +417,9 @@ class Worker:
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
     ) -> None:
         assert self._repo is not None and self._replica is not None  # noqa: S101
+        floor = int(self._space[2] * GIB)
         with self._repo.lock():
-            result = replicate(self._repo.root, self._replica)
+            result = replicate(self._repo.root, self._replica, min_free_bytes=floor)
         self._api.replicate_complete(job["job_id"], result.to_payload())
         log.info(
             "job %s done: copy 02, %s file(s) copied (%s bytes), %s deleted, %s error(s)",
@@ -399,6 +428,45 @@ class Worker:
             result.copied_bytes,
             result.deleted,
             len(result.errors),
+        )
+
+    def _run_verify(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """Decrypt and authenticate the repository (or copy 02), fully or a sample."""
+        assert self._repo is not None  # noqa: S101 - checked by the caller
+        params = job.get("params") or {}
+        target = params.get("target", "primary")
+        sample = float(params.get("sample", 1.0))
+        if target == "replica":
+            if not self._replica or self._kek is None:
+                raise ReplicaError("copy 02 is not configured on this agent")
+            if not (self._replica / "config.json").exists():
+                raise ReplicaError("copy 02 holds no repository yet")
+            repo = Repository.open(self._replica, self._kek)
+        else:
+            repo = self._repo
+        with repo.lock():
+            report = repo.verify(sample=sample)
+        self._api.verify_complete(
+            job["job_id"],
+            {
+                "target": target,
+                "sample": sample,
+                "checked": report.checked,
+                "corrupted": report.corrupted[:100],
+                "corrupted_count": len(report.corrupted),
+                "manifests_checked": report.manifests_checked,
+                "manifests_corrupted": report.manifests_corrupted[:100],
+            },
+        )
+        log.info(
+            "job %s done: verify %s (%s of the blobs), %s checked, %s corrupted",
+            job["job_id"],
+            target,
+            sample,
+            report.checked,
+            len(report.corrupted) + len(report.manifests_corrupted),
         )
 
     def _run_migrate(

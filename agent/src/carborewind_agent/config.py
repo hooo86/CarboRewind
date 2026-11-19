@@ -38,6 +38,12 @@ class AgentSettings(BaseSettings):
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")
+    # Disk guard: backups stop before the repository's file system gets too full. On a
+    # local disk (shared with Carbonio), max(min_free_gb_local, min_free_percent_local % of
+    # the disk) must stay free; on a network share, min_free_gb_network.
+    min_free_gb_local: float = Field(default=20.0, ge=0)
+    min_free_percent_local: float = Field(default=15.0, ge=0, le=90)
+    min_free_gb_network: float = Field(default=2.0, ge=0)
     # Mail traffic statistics (sending limits, spam) read from the MTA log.
     mail_monitor: bool = True
     mail_logs: list[Path] = Field(

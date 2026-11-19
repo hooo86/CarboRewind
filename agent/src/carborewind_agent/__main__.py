@@ -149,6 +149,12 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         migration=MailboxMigration(carbonio, throttle),
         storage_dir=settings.storage_dir,
         replica=settings.replica_path,
+        kek=read_kek(settings.repository_key_file),
+        space=(
+            settings.min_free_gb_local,
+            settings.min_free_percent_local,
+            settings.min_free_gb_network,
+        ),
     )
     stop_mail = threading.Event()
     if settings.mail_monitor:
@@ -159,6 +165,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
             carbonio,
             settings.mail_logs,
             settings.mail_state_file,
+            protected={settings.carbonio_admin_name},
         )
         threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
 

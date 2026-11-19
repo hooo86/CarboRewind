@@ -43,6 +43,10 @@ class RepositoryError(Exception):
     """Invalid repository layout, version or arguments."""
 
 
+class SpaceError(RepositoryError):
+    """Not enough free space left: writing more could fill the disk Carbonio runs on."""
+
+
 @dataclass(frozen=True)
 class PutResult:
     blob_id: str
@@ -55,10 +59,12 @@ class PutResult:
 class VerifyReport:
     checked: int = 0
     corrupted: list[str] = field(default_factory=list)
+    manifests_checked: int = 0
+    manifests_corrupted: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.corrupted
+        return not self.corrupted and not self.manifests_corrupted
 
 
 def _fsync_dir(path: Path) -> None:
@@ -164,11 +170,31 @@ class Repository:
             raise RepositoryError(f"invalid blob id {blob_id!r}")
         return self.root / "blobs" / blob_id[:2] / blob_id
 
+    # Free space that must remain on the repository's file system (0 = no check). Checked
+    # every SPACE_CHECK_EVERY new blobs and by ``check_space``.
+    min_free_bytes = 0
+    SPACE_CHECK_EVERY = 64
+    _writes = 0
+
+    def check_space(self, needed: int = 0) -> None:
+        if not self.min_free_bytes:
+            return
+        st = os.statvfs(self.root)
+        free = st.f_bavail * st.f_frsize
+        if free - needed < self.min_free_bytes:
+            raise SpaceError(
+                f"not enough free space on {self.root}: {free // 2**20} MiB free, "
+                f"{self.min_free_bytes // 2**20} MiB must stay free"
+            )
+
     def put(self, data: bytes) -> PutResult:
         blob_id = self._keys.blob_id(data)
         path = self._blob_path(blob_id)
         if path.exists():
             return PutResult(blob_id, len(data), path.stat().st_size, created=False)
+        if self._writes % self.SPACE_CHECK_EVERY == 0:
+            self.check_space(len(data))
+        self._writes += 1
         sealed = self._keys.seal(data, aad=blob_id.encode())
         _atomic_write(path, sealed)
         return PutResult(blob_id, len(data), len(sealed), created=True)
@@ -244,4 +270,13 @@ class Repository:
                 self.get(blob_id)
             except (IntegrityError, RepositoryError):
                 report.corrupted.append(blob_id)
+        manifests = self.root / "manifests"
+        for path in sorted(manifests.glob("*/*.json")) if manifests.exists() else []:
+            if sample < 1 and rng.random() >= sample:
+                continue
+            report.manifests_checked += 1
+            try:
+                self.get_manifest(path.parent.name, path.stem)
+            except (IntegrityError, RepositoryError, ValueError):
+                report.manifests_corrupted.append(f"{path.parent.name}/{path.stem}")
         return report

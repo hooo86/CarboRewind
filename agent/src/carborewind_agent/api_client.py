@@ -164,6 +164,9 @@ class AgentApi:
     def mail_action_done(self, action_id: str, error: str | None) -> None:
         self._post(f"/account-actions/{action_id}/done", {"error": error})
 
+    def verify_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/verify-complete", payload)
+
     def replicate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/replicate-complete", payload)
 
