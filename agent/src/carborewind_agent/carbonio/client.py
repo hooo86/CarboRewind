@@ -245,6 +245,17 @@ class CarbonioClient:
             if not resp.get("more") or not accounts:
                 return used
 
+    def set_account_status(self, account_id: str, status: str) -> None:
+        """Lock (``locked``) or reactivate (``active``) an account (``ModifyAccountRequest``)."""
+        if status not in {"locked", "active"}:
+            raise ValueError(f"unsupported status {status!r}")
+        self._admin.invoke(
+            "ModifyAccount",
+            NS_ADMIN,
+            {"id": account_id, "a": [{"n": "zimbraAccountStatus", "_content": status}]},
+            token=self._admin_auth(),
+        )
+
     def get_account(self, account_id: str) -> AccountInfo:
         """All attributes of one account (``GetAccountRequest``), for recreating it later."""
         resp = self._admin.invoke(

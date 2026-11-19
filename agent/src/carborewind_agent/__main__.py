@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -149,7 +150,23 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         storage_dir=settings.storage_dir,
         replica=settings.replica_path,
     )
-    signal.signal(signal.SIGTERM, lambda *_: worker.stop())
+    stop_mail = threading.Event()
+    if settings.mail_monitor:
+        from .mailwatch import MailMonitor
+
+        monitor = MailMonitor(
+            AgentApi(settings, server_ca=server_ca),
+            carbonio,
+            settings.mail_logs,
+            settings.mail_state_file,
+        )
+        threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
+
+    def stop(*_: object) -> None:
+        stop_mail.set()
+        worker.stop()
+
+    signal.signal(signal.SIGTERM, stop)
     worker.run_forever()
     return 0
 

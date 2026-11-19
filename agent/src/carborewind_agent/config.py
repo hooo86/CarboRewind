@@ -38,6 +38,16 @@ class AgentSettings(BaseSettings):
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")
+    # Mail traffic statistics (sending limits, spam) read from the MTA log.
+    mail_monitor: bool = True
+    mail_logs: list[Path] = Field(
+        default_factory=lambda: [
+            Path("/var/log/carbonio.log"),
+            Path("/var/log/zimbra.log"),
+            Path("/var/log/mail.log"),
+        ]
+    )
+    mail_state_file: Path = Path("/var/lib/carborewind/mail-stats.json")
     # Copy 02: mirror of the repository on a second share (set by `storage apply`).
     replica_path: Path | None = None
     # Hand-off with the root helper applying the storage settings of the interface.

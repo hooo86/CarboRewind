@@ -156,6 +156,14 @@ class AgentApi:
     def storage_status(self, storage: dict[str, Any]) -> None:
         self._post("/storage-status", storage)
 
+    def mail_stats(self, hours: list[dict[str, Any]], log_path: str | None) -> dict[str, Any]:
+        """Hourly mail counters (absolute values); the answer lists account actions."""
+        result: dict[str, Any] = self._post("/mail-stats", {"hours": hours, "log": log_path}).json()
+        return result
+
+    def mail_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/account-actions/{action_id}/done", {"error": error})
+
     def replicate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/replicate-complete", payload)
 

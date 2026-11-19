@@ -264,6 +264,18 @@ class FakeCarbonio:
             "more": offset + limit < len(boxes),
         }
 
+    def _ModifyAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        for attr in body.get("a", []):
+            if attr["n"] == "zimbraAccountStatus":
+                mbox.status = attr["_content"]
+            else:
+                mbox.attrs[attr["n"]] = attr["_content"]
+        return {"account": [self._account_entry(mbox)]}
+
     def _GetAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
         mbox = self.mailboxes.get(body["account"]["_content"])
