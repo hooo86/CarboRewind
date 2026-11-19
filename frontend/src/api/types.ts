@@ -101,6 +101,8 @@ export interface AccountDetail {
 }
 
 export interface Job {
+  bytes_done?: number | null;
+  throughput_bps?: number | null;
   id: string;
   kind: string;
   status: JobStatus;
@@ -805,6 +807,19 @@ export interface ArchivedMessage {
   archived_at: string;
   removed_at: string | null;
   legal_hold?: boolean;
+}
+
+export interface ArchivedMailbox {
+  account_id: string;
+  account_email: string;
+  messages: number;
+  bytes: number;
+  removed_messages: number;
+  removed_bytes: number;
+  legal_hold: boolean;
+  oldest: string | null;
+  newest: string | null;
+  last_archived_at: string | null;
 }
 
 export interface LegalHold {

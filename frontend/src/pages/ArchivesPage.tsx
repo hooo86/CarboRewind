@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { api } from "../api/endpoints";
 import type {
+  ArchivedMailbox,
   ArchivedMessage,
   ArchiveMode,
   ArchivePolicy,
@@ -195,10 +196,12 @@ function MessageViewer({
 
 // ------------------------------------------------------------------ search
 
-function SearchTab() {
+function SearchTab({ account }: { account?: string }) {
   const { t } = useTranslation();
-  const [form, setForm] = useState<ArchiveSearch>({});
-  const [search, setSearch] = useState<ArchiveSearch>({});
+  const [form, setForm] = useState<ArchiveSearch>(account ? { account } : {});
+  const [search, setSearch] = useState<ArchiveSearch>(
+    account ? { account } : {},
+  );
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [viewing, setViewing] = useState<ArchivedMessage | null>(null);
@@ -1079,12 +1082,242 @@ function LegalHoldTab() {
   );
 }
 
+// ------------------------------------------------------------------ by mailbox
+
+function MailboxRestore({
+  mailbox,
+  onClose,
+}: {
+  mailbox: ArchivedMailbox;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [mode, setMode] = useState<"original" | "new_folder">("original");
+  const [onlyRemoved, setOnlyRemoved] = useState(true);
+  const [target, setTarget] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function restore(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setNotice(null);
+    try {
+      const [targetId] = target.trim() ? await resolveEmails(target) : [];
+      const jobs = await api.restoreArchivedMailbox(mailbox.account_id, {
+        mode: targetId ? "new_folder" : mode,
+        only_removed: onlyRemoved,
+        target_account_id: targetId,
+      });
+      setNotice({
+        kind: "ok",
+        text: t("archives.mailboxRestoreQueued", { count: jobs.length }),
+      });
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        text: t("error", { message: errorMessage(err) }),
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const count = onlyRemoved ? mailbox.removed_messages : mailbox.messages;
+  return (
+    <form
+      className="card stack"
+      onSubmit={(e) => void restore(e)}
+      aria-label={t("archives.mailboxRestoreTitle", {
+        email: mailbox.account_email,
+      })}
+    >
+      <h3>
+        {t("archives.mailboxRestoreTitle", { email: mailbox.account_email })}
+      </h3>
+      <label className="inline">
+        <input
+          type="checkbox"
+          checked={onlyRemoved}
+          onChange={(e) => setOnlyRemoved(e.target.checked)}
+        />
+        {t("archives.onlyRemoved")}
+      </label>
+      <div className="row">
+        <label>
+          {t("archives.restoreMode")}
+          <select
+            value={mode}
+            disabled={!!target.trim()}
+            onChange={(e) =>
+              setMode(e.target.value as "original" | "new_folder")
+            }
+          >
+            <option value="original">{t("archives.modeOriginal")}</option>
+            <option value="new_folder">{t("archives.modeNewFolder")}</option>
+          </select>
+        </label>
+        <AccountPicker
+          label={t("archives.restoreTarget")}
+          value={target}
+          onChange={setTarget}
+        />
+      </div>
+      <p className="muted small">
+        {t("archives.mailboxRestoreHelp", { count })}
+      </p>
+      <NoticeBar notice={notice} />
+      <div className="actions">
+        <button type="submit" disabled={busy || count === 0}>
+          {t("archives.mailboxRestoreButton", { count })}
+        </button>
+        <button type="button" className="secondary" onClick={onClose}>
+          {t("archives.close")}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function MailboxesTab({ onOpen }: { onOpen: (email: string) => void }) {
+  const { t } = useTranslation();
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [restoring, setRestoring] = useState<ArchivedMailbox | null>(null);
+  const [load, reload] = useLoad(
+    () => api.archivedMailboxes(query, offset),
+    [query, offset],
+  );
+  return (
+    <div className="stack">
+      <form
+        className="toolbar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setOffset(0);
+          setQuery(q.trim());
+        }}
+      >
+        <label className="grow">
+          {t("archives.account")}
+          <input
+            type="search"
+            value={q}
+            placeholder={t("jobs.accountPlaceholder")}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </label>
+        <button type="submit" className="secondary">
+          {t("archives.searchButton")}
+        </button>
+      </form>
+      {restoring && (
+        <MailboxRestore
+          key={restoring.account_id}
+          mailbox={restoring}
+          onClose={() => setRestoring(null)}
+        />
+      )}
+      <LoadView load={load} reload={reload}>
+        {(page) =>
+          page.items.length === 0 ? (
+            <p className="muted">{t("archives.noMailbox")}</p>
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table aria-label={t("archives.byMailbox")}>
+                  <thead>
+                    <tr>
+                      <th>{t("archives.account")}</th>
+                      <th className="num">{t("archives.messages")}</th>
+                      <th className="num">{t("archives.volume")}</th>
+                      <th className="num">{t("archives.removedCol")}</th>
+                      <th>{t("archives.period")}</th>
+                      <th>{t("archives.actions")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {page.items.map((m) => (
+                      <tr key={m.account_id}>
+                        <td>
+                          {m.account_email}{" "}
+                          {m.legal_hold && (
+                            <span className="badge warn">
+                              {t("archives.legalBadge")}
+                            </span>
+                          )}
+                        </td>
+                        <td className="num">{m.messages}</td>
+                        <td className="num">{formatBytes(m.bytes)}</td>
+                        <td className="num">
+                          {m.removed_messages}
+                          <span className="muted small">
+                            {" "}
+                            ({formatBytes(m.removed_bytes)})
+                          </span>
+                        </td>
+                        <td className="small">
+                          {m.oldest
+                            ? `${new Date(m.oldest).toLocaleDateString()} – ${new Date(m.newest ?? m.oldest).toLocaleDateString()}`
+                            : "—"}
+                        </td>
+                        <td className="actions">
+                          <button
+                            type="button"
+                            className="secondary small"
+                            onClick={() => onOpen(m.account_email)}
+                          >
+                            {t("archives.seeMessages")}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary small"
+                            onClick={() => setRestoring(m)}
+                          >
+                            {t("archives.restoreMailbox")}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={offset === 0}
+                  onClick={() => setOffset((o) => Math.max(0, o - PAGE))}
+                >
+                  {t("archives.previous")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={offset + PAGE >= page.total}
+                  onClick={() => setOffset((o) => o + PAGE)}
+                >
+                  {t("archives.next")}
+                </button>
+              </div>
+            </>
+          )
+        }
+      </LoadView>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ page
 
 export function ArchivesPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
-  const [tab, setTab] = useState<"search" | "policies" | "legal">("search");
+  const [tab, setTab] = useState<"mailboxes" | "search" | "policies" | "legal">(
+    "mailboxes",
+  );
+  const [searchAccount, setSearchAccount] = useState<string | undefined>();
   const [summary] = useLoad(() => api.archiveSummary(), []);
 
   return (
@@ -1117,43 +1350,61 @@ export function ArchivesPage() {
           </section>
         )}
       </LoadView>
-      {canManageSettings && (
-        <div className="tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "search"}
-            className={tab === "search" ? "" : "secondary"}
-            onClick={() => setTab("search")}
-          >
-            {t("archives.search")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "policies"}
-            className={tab === "policies" ? "" : "secondary"}
-            onClick={() => setTab("policies")}
-          >
-            {t("archives.policies")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "legal"}
-            className={tab === "legal" ? "" : "secondary"}
-            onClick={() => setTab("legal")}
-          >
-            {t("archives.legalTitle")}
-          </button>
-        </div>
-      )}
+      <div className="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "mailboxes"}
+          className={tab === "mailboxes" ? "" : "secondary"}
+          onClick={() => setTab("mailboxes")}
+        >
+          {t("archives.byMailbox")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "search"}
+          className={tab === "search" ? "" : "secondary"}
+          onClick={() => setTab("search")}
+        >
+          {t("archives.search")}
+        </button>
+        {canManageSettings && (
+          <>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "policies"}
+              className={tab === "policies" ? "" : "secondary"}
+              onClick={() => setTab("policies")}
+            >
+              {t("archives.policies")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "legal"}
+              className={tab === "legal" ? "" : "secondary"}
+              onClick={() => setTab("legal")}
+            >
+              {t("archives.legalTitle")}
+            </button>
+          </>
+        )}
+      </div>
       {tab === "policies" && canManageSettings ? (
         <PoliciesTab />
       ) : tab === "legal" && canManageSettings ? (
         <LegalHoldTab />
+      ) : tab === "search" ? (
+        <SearchTab key={searchAccount ?? ""} account={searchAccount} />
       ) : (
-        <SearchTab />
+        <MailboxesTab
+          onOpen={(email) => {
+            setSearchAccount(email);
+            setTab("search");
+          }}
+        />
       )}
     </>
   );

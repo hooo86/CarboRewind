@@ -6,6 +6,19 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Journaux dans l'interface (menu Configuration → Journaux, super-administrateurs) : API et
+  planificateur CarboRewind, agent, MTA Carbonio et mailbox.log lus par l'agent ; nombre de lignes,
+  niveau, filtre texte, actualisation automatique, téléchargement ; chaque lecture est auditée.
+  Voir `docs/logs.md`.
+- Débit des sauvegardes (Mo/s et volume lu) dans les listes de jobs.
+- Jobs : filtres par type et par compte, tri par colonne, pagination (25 à 200 par page).
+- Archives : vue « Par boîte » (messages, volume, période, conservation légale) et restauration
+  complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
+
+### Changed
+- Le menu « Politiques » s'appelle désormais « Sauvegardes ».
+
+### Added (suite)
 - Alertes Telegram (bot gratuit, groupes détectés automatiquement, choix des alertes, test),
   indépendantes de la messagerie. Migration 0015.
 - Test de restauration automatique : messages tirés au hasard réellement restaurés dans une boîte

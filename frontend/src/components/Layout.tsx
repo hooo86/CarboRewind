@@ -214,6 +214,7 @@ export function Layout() {
             </p>
           )}
           {canManageUsers && item("/users", "users", t("nav.users"))}
+          {canManageSettings && item("/logs", "logs", t("nav.logs"))}
           {canManageSettings &&
             item("/settings", "settings", t("nav.settings"))}
         </nav>

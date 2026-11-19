@@ -1,5 +1,6 @@
 import { request } from "./client";
 import type {
+  ArchivedMailbox,
   RestoreTests,
   RestoreTestSettings,
   TelegramSettings,
@@ -165,7 +166,16 @@ export const api = {
       limit: 100,
     }),
   jobs: (
-    filters: { status?: JobStatus; account_id?: string; offset?: number } = {},
+    filters: {
+      status?: JobStatus;
+      account_id?: string;
+      kind?: string;
+      q?: string;
+      sort?: string;
+      order?: "asc" | "desc";
+      limit?: number;
+      offset?: number;
+    } = {},
   ) =>
     request<Page<Job>>("GET", "/api/jobs", undefined, {
       limit: 50,
@@ -318,6 +328,26 @@ export const api = {
       mode,
       target_account_id: targetAccountId,
     }),
+  archivedMailboxes: (q: string, offset = 0) =>
+    request<Page<ArchivedMailbox>>(
+      "GET",
+      "/api/archives/mailboxes",
+      undefined,
+      {
+        q: q || undefined,
+        offset,
+        limit: 50,
+      },
+    ),
+  restoreArchivedMailbox: (
+    accountId: string,
+    body: {
+      mode: "original" | "new_folder";
+      only_removed: boolean;
+      target_account_id?: string;
+    },
+  ) =>
+    request<Job[]>("POST", `/api/archives/accounts/${accountId}/restore`, body),
   legalHolds: () => request<LegalHold[]>("GET", "/api/archives/legal-holds"),
   startLegalHold: (accountId: string, note: string) =>
     request<Job>("POST", `/api/archives/accounts/${accountId}/legal-hold`, {
@@ -356,6 +386,19 @@ export const api = {
     request<RestoreTests>("PUT", "/api/monitoring/restore-tests", body),
   runRestoreTest: () =>
     request<RestoreTests>("POST", "/api/monitoring/restore-tests/run"),
+  serverLog: (process: "api" | "scheduler", lines: number) =>
+    request<{
+      process: string;
+      available: boolean;
+      lines: Record<string, unknown>[];
+    }>("GET", "/api/logs/server", undefined, { process, lines }),
+  askAgentLog: (source: "agent" | "mail" | "mailbox", lines: number) =>
+    request<{ job_id: string }>("POST", "/api/logs/agent", { source, lines }),
+  agentLog: (jobId: string) =>
+    request<{ status: JobStatus; error: string | null; text: string | null }>(
+      "GET",
+      `/api/logs/agent/${jobId}`,
+    ),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

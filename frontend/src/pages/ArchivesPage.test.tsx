@@ -129,6 +129,29 @@ function open(role = user("super_admin"), extra = {}) {
       },
     ]),
     "GET /api/archives/policies": [policy()],
+    "GET /api/archives/mailboxes": {
+      items: [
+        {
+          account_id: "a1",
+          account_email: "ana@lnhc.dz",
+          messages: 1200,
+          bytes: 3 * 1024 ** 3,
+          removed_messages: 1000,
+          removed_bytes: 2 * 1024 ** 3,
+          legal_hold: true,
+          oldest: "2019-01-01T00:00:00Z",
+          newest: "2024-12-31T00:00:00Z",
+          last_archived_at: "2026-11-19T01:30:00Z",
+        },
+      ],
+      total: 1,
+      limit: 50,
+      offset: 0,
+    },
+    "POST /api/archives/accounts/a1/restore": {
+      status: 202,
+      body: [{ id: "r1", kind: "restore", status: "queued" }],
+    },
     "GET /api/archives/runs": page([run]),
     "POST /api/archives/policies/p1/run": {
       status: 202,
@@ -160,6 +183,7 @@ afterEach(() => {
 describe("archives page", () => {
   it("searches, reads a message and restores a selection", async () => {
     const calls = open();
+    fireEvent.click(await screen.findByRole("tab", { name: "Search" }));
     const tiles = await screen.findByRole("region", {
       name: "Archive summary",
     });
@@ -289,6 +313,7 @@ describe("archives page", () => {
 
   it("shows only the search to a domain administrator", async () => {
     open(user("domain_admin", DOMAIN_ID));
+    fireEvent.click(await screen.findByRole("tab", { name: "Search" }));
     expect(
       await screen.findByRole("link", { name: "Archives" }),
     ).toBeInTheDocument();
@@ -360,6 +385,7 @@ describe("archives page", () => {
 
   it("filters the messages under legal hold", async () => {
     const calls = open();
+    fireEvent.click(await screen.findByRole("tab", { name: "Search" }));
     await screen.findByText("2 messages");
     fireEvent.change(screen.getByLabelText("Where"), {
       target: { value: "legal" },
@@ -371,6 +397,48 @@ describe("archives page", () => {
           (c) =>
             c.url.includes("legal_hold=true") &&
             !c.url.includes("removed=legal"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("lists the mailboxes and restores a whole archived mailbox", async () => {
+    const calls = open();
+    const table = await screen.findByRole("table", { name: "By mailbox" });
+    expect(within(table).getByText("ana@lnhc.dz")).toBeInTheDocument();
+    expect(within(table).getByText("Legal hold")).toBeInTheDocument();
+    fireEvent.click(
+      within(table).getByRole("button", { name: "Restore the mailbox" }),
+    );
+    const form = screen.getByRole("form", {
+      name: "Restore the archive of ana@lnhc.dz",
+    });
+    expect(
+      within(form).getByRole("button", { name: "Restore 1000 messages" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(form).getByLabelText(/Only the messages removed/));
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Restore 1200 messages" }),
+    );
+    expect(
+      await within(form).findByText(/Restore started \(1 job\)/),
+    ).toBeInTheDocument();
+    expect(
+      calls.find((c) => c.url.endsWith("/api/archives/accounts/a1/restore"))
+        ?.body,
+    ).toEqual({
+      mode: "original",
+      only_removed: false,
+    });
+    fireEvent.click(
+      within(table).getByRole("button", { name: "See the messages" }),
+    );
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.url.includes("/api/archives/messages") &&
+            c.url.includes("account=ana%40lnhc.dz"),
         ),
       ).toBe(true),
     );
