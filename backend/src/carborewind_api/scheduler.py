@@ -28,7 +28,7 @@ from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import audit, mail_traffic, storage_settings
+from . import audit, mail_traffic, monitoring, storage_settings
 from .config import Settings
 from .db.models import (
     Account,
@@ -66,6 +66,7 @@ class TickReport:
     versions_pruned: int = 0
     purge_job: uuid.UUID | None = None
     replicate_job: uuid.UUID | None = None
+    verify_jobs: list[uuid.UUID] = field(default_factory=list)
     notifications_queued: int = 0
     notifications_sent: int = 0
     errors: list[str] = field(default_factory=list)
@@ -326,7 +327,10 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
     await enqueue_due_backups(db, now, report)
     report.notifications_queued = await periodic_alerts(db, now)
     await enqueue_replicate(db, now, report)
+    report.verify_jobs = await monitoring.enqueue_verify(db, now)
     if retention:
+        report.notifications_queued += await monitoring.periodic_alerts(db, now)
+        await monitoring.prune(db, now)
         await mail_traffic.prune(db, now)
         await apply_retention(db, report)
         await enqueue_purge(db, report)

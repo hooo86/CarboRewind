@@ -664,6 +664,25 @@ class MigrationMailbox(Base):
     )
 
 
+# --------------------------------------------------------------------------- monitoring
+
+
+class StorageSample(Base):
+    """Space of copy 1 / copy 2 as reported by an agent, one sample per hour (trend)."""
+
+    __tablename__ = "storage_samples"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    target: Mapped[str] = mapped_column(String(16), primary_key=True)  # primary | replica
+    total_bytes: Mapped[int] = mapped_column(BigInteger)
+    free_bytes: Mapped[int] = mapped_column(BigInteger)
+
+    __table_args__ = (Index("ix_storage_samples_hour", "hour"),)
+
+
 # --------------------------------------------------------------------------- mail traffic
 
 

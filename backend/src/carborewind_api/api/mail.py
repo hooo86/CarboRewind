@@ -47,6 +47,7 @@ class LimitsIn(BaseModel):
     spam_sent_day: int = Field(default=0, ge=0, le=1_000_000)
     action: Literal["alert", "lock"] = "alert"
     exempt: list[EmailStr] = Field(default_factory=list, max_length=1000)
+    max_auto_locks_per_hour: int = Field(default=3, ge=0, le=1000)
 
 
 @router.get("/limits", response_model=LimitsIn)

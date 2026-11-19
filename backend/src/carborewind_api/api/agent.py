@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import audit, mail_traffic, storage_settings
+from .. import audit, mail_traffic, monitoring, storage_settings
 from ..db.models import (
     Account,
     AccountAction,
@@ -279,7 +279,12 @@ _STATUS_MAP = {
 async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> InventoryOut:
     now = datetime.now(UTC)
     if body.storage is not None:
-        agent.storage = {**body.storage.model_dump(), "reported_at": now.isoformat()}
+        agent.storage = {
+            **(agent.storage or {}),
+            **body.storage.model_dump(),
+            "reported_at": now.isoformat(),
+        }
+        await monitoring.record_storage(db, agent, body.storage.model_dump())
     domain_names = {a.email.split("@")[1].lower() for a in body.accounts}
     existing = {
         d.name: d for d in await db.scalars(select(Domain).where(Domain.name.in_(domain_names)))
@@ -374,7 +379,12 @@ async def storage_config(
 async def storage_status(body: StorageIn, agent: CurrentAgent, db: DbSession) -> None:
     """Where the repository and copy 02 are now, and how the last settings were applied."""
     previous = (agent.storage or {}).get("apply") or {}
-    agent.storage = {**body.model_dump(), "reported_at": datetime.now(UTC).isoformat()}
+    agent.storage = {
+        **(agent.storage or {}),
+        **body.model_dump(),
+        "reported_at": datetime.now(UTC).isoformat(),
+    }
+    await monitoring.record_storage(db, agent, body.model_dump())
     if body.apply and body.apply.revision != previous.get("revision"):
         await _audit(
             db,
@@ -1050,6 +1060,53 @@ async def replicate_complete(
         target_type="job",
         target_id=str(job.id),
         details={k: v for k, v in body.model_dump().items() if k != "errors"},
+    )
+
+
+class VerifyResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target: Literal["primary", "replica"]
+    sample: float = Field(gt=0, le=1)
+    checked: int = Field(ge=0)
+    corrupted: list[str] = Field(default_factory=list, max_length=100)
+    corrupted_count: int = Field(default=0, ge=0)
+    manifests_checked: int = Field(default=0, ge=0)
+    manifests_corrupted: list[str] = Field(default_factory=list, max_length=100)
+
+
+@router.post("/jobs/{job_id}/verify-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def verify_complete(
+    job_id: uuid.UUID, body: VerifyResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """Record an integrity check; corruption is notified."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.VERIFY:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a verify job")
+    bad = body.corrupted_count + len(body.manifests_corrupted)
+    job.progress = body.model_dump()
+    job.error = f"{bad} corrupted file(s)" if bad else None
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
+    if bad:
+        await notify(
+            db,
+            "integrity_failed",
+            target=body.target,
+            count=bad,
+            checked=body.checked + body.manifests_checked,
+            job=str(job.id),
+        )
+    await _audit(
+        db,
+        agent,
+        "integrity.verify",
+        Outcome.FAILURE if bad else Outcome.SUCCESS,
+        target_type="job",
+        target_id=str(job.id),
+        details={k: v for k, v in body.model_dump().items() if k not in ("corrupted",)},
     )
 
 

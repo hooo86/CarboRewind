@@ -64,6 +64,9 @@ class MailLimits:
     spam_sent_day: int = 0
     action: Literal["alert", "lock"] = "alert"
     exempt: list[str] = field(default_factory=list)
+    # Safety: never more automatic locks than this per hour (beyond: alert only), and
+    # administrator accounts are never locked automatically.
+    max_auto_locks_per_hour: int = 3
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> MailLimits:
@@ -247,12 +250,26 @@ async def _raise(
     assert alert is not None  # noqa: S101
     locked = False
     if action == "lock" and account_id is not None:
-        locked = (
-            await queue_action(
+        limits = await load_limits(db)
+        account = await db.get(Account, account_id)
+        recent = await db.scalar(
+            select(func.count())
+            .select_from(AccountAction)
+            .where(
+                AccountAction.action == "lock",
+                AccountAction.alert_id.is_not(None),
+                AccountAction.created_at > func.now() - timedelta(hours=1),
+            )
+        )
+        if account is not None and account.is_admin:
+            alert.action = "alert_admin"  # an administrator is never locked automatically
+        elif (recent or 0) >= limits.max_auto_locks_per_hour:
+            alert.action = "alert_cap"  # too many automatic locks: a human decides
+        else:
+            queued = await queue_action(
                 db, account_id, "lock", f"{metric}: {value} >= {threshold}", alert_id=alert_id
             )
-            is not None
-        )
+            locked = queued is not None
     await notify(
         db,
         "mail_limit",
@@ -260,7 +277,7 @@ async def _raise(
         metric=metric,
         value=value,
         threshold=threshold,
-        action="lock" if locked else "alert",
+        action="lock" if locked else alert.action,
     )
     await audit.record(
         db,

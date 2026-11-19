@@ -57,6 +57,9 @@ EVENTS = (
     "daily_digest",
     "migration_done",
     "mail_limit",
+    "integrity_failed",
+    "replica_lag",
+    "storage_full",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -174,6 +177,23 @@ TEXTS: dict[str, dict[str, str]] = {
             "Si le compte est verrouillé, réactivez-le depuis CarboRewind (Trafic mail) après "
             "avoir changé son mot de passe.\n"
         ),
+        "integrity_failed": "[CarboRewind] Corruption détectée dans {target}",
+        "integrity_failed_body": (
+            "La vérification d'intégrité de {target} a trouvé {count} fichier(s) corrompu(s) "
+            "sur {checked} vérifié(s).\nJob : {job}\n\nLes sauvegardes concernées ne sont "
+            "plus restaurables depuis cette copie : utilisez l'autre copie et vérifiez le "
+            "stockage (disque, NAS).\n"
+        ),
+        "replica_lag": "[CarboRewind] La copie 2 a {hours} h de retard",
+        "replica_lag_body": (
+            "La copie 2 (deuxième NAS) n'a pas été mise à jour depuis {hours} heures (seuil : "
+            "{limit} h). Vérifiez que le partage est accessible.\n"
+        ),
+        "storage_full": "[CarboRewind] Stockage plein dans {days} jours ({target})",
+        "storage_full_body": (
+            "Au rythme actuel, le stockage {target} de l'agent {agent} sera plein dans environ "
+            "{days} jours. Agrandissez-le ou réduisez la rétention.\n"
+        ),
         "metric.sent_messages_hour": "messages envoyés dans l'heure",
         "metric.sent_recipients_hour": "destinataires dans l'heure",
         "metric.sent_messages_day": "messages envoyés sur 24 h",
@@ -181,6 +201,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "metric.spam_sent_day": "spams envoyés sur 24 h",
         "action.alert": "alerte seulement",
         "action.lock": "compte verrouillé",
+        "action.alert_admin": (
+            "alerte seulement (compte administrateur, jamais verrouillé automatiquement)"
+        ),
+        "action.alert_cap": "alerte seulement (trop de verrouillages automatiques dans l'heure)",
+        "target.primary": "la copie 1 (dépôt)",
+        "target.replica": "la copie 2 (deuxième NAS)",
         "test": "[CarboRewind] E-mail de test",
         "test_body": "Les notifications de CarboRewind fonctionnent.\n",
         "never": "jamais",
@@ -222,6 +248,22 @@ TEXTS: dict[str, dict[str, str]] = {
             "If the account is locked, unlock it from CarboRewind (Mail traffic) after "
             "changing its password.\n"
         ),
+        "integrity_failed": "[CarboRewind] Corruption found in {target}",
+        "integrity_failed_body": (
+            "The integrity check of {target} found {count} corrupted file(s) out of {checked} "
+            "checked.\nJob: {job}\n\nThe affected backups can no longer be restored from this "
+            "copy: use the other copy and check the storage (disk, NAS).\n"
+        ),
+        "replica_lag": "[CarboRewind] Copy 2 is {hours} h behind",
+        "replica_lag_body": (
+            "Copy 2 (second NAS) has not been refreshed for {hours} hours (limit: {limit} h). "
+            "Check that the share is reachable.\n"
+        ),
+        "storage_full": "[CarboRewind] Storage full in {days} days ({target})",
+        "storage_full_body": (
+            "At the current rate, the {target} storage of agent {agent} will be full in about "
+            "{days} days. Enlarge it or reduce the retention.\n"
+        ),
         "metric.sent_messages_hour": "messages sent in the hour",
         "metric.sent_recipients_hour": "recipients in the hour",
         "metric.sent_messages_day": "messages sent in 24 h",
@@ -229,6 +271,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "metric.spam_sent_day": "spam sent in 24 h",
         "action.alert": "alert only",
         "action.lock": "account locked",
+        "action.alert_admin": "alert only (administrator account, never locked automatically)",
+        "action.alert_cap": "alert only (too many automatic locks in the hour)",
+        "target.primary": "copy 1 (repository)",
+        "target.replica": "copy 2 (second NAS)",
         "test": "[CarboRewind] Test e-mail",
         "test_body": "CarboRewind notifications work.\n",
         "never": "never",
@@ -250,7 +296,7 @@ async def notify(db: AsyncSession, event: str, dedup_key: str | None = None, **v
         return False
     texts = TEXTS.get(cfg.language, TEXTS["fr"])
     safe = {k: _one_line(v) if k != "list" else str(v) for k, v in values.items()}
-    for key in ("metric", "action"):  # codes with a translated label
+    for key in ("metric", "action", "target"):  # codes with a translated label
         if f"{key}.{safe.get(key)}" in texts:
             safe[key] = texts[f"{key}.{safe[key]}"]
     stmt = insert(Notification).values(

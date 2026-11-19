@@ -82,6 +82,11 @@ if ! grep -q '^CARBOREWIND_SECRET_KEY=' .env; then
     say "generating CARBOREWIND_SECRET_KEY"
     echo "CARBOREWIND_SECRET_KEY=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 48)" >> .env
 fi
+# Bearer token for Prometheus to scrape https://<server>/metrics.
+if ! grep -q '^CARBOREWIND_METRICS_TOKEN=' .env; then
+    say "generating CARBOREWIND_METRICS_TOKEN (Prometheus)"
+    echo "CARBOREWIND_METRICS_TOKEN=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c 40)" >> .env
+fi
 chmod 600 .env
 
 mkdir -p tls

@@ -1,0 +1,14 @@
+# Add to the scrape_configs of your Prometheus. The token is CARBOREWIND_METRICS_TOKEN in
+# /opt/carborewind/deploy/.env on the CarboRewind server; store it in a file readable by
+# Prometheus only.
+scrape_configs:
+  - job_name: carborewind
+    scheme: https
+    metrics_path: /metrics
+    scrape_interval: 60s
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/carborewind.token
+    # tls_config: { ca_file: /etc/prometheus/carborewind-ca.crt }  # self-signed install
+    static_configs:
+      - targets: ["carborewind.example.org"]

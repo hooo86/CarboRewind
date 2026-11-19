@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -23,6 +24,7 @@ from .api import backups as backups_api
 from .api import inventory as inventory_api
 from .api import mail as mail_api
 from .api import migrations as migrations_api
+from .api import monitoring as monitoring_api
 from .api import policies as policies_api
 from .api import restores as restores_api
 from .api import settings_api
@@ -32,6 +34,7 @@ from .config import Settings, get_settings
 from .db.session import make_engine
 from .health import Check, database_check, redis_check, run_checks
 from .logging import configure_logging
+from .metrics import collect as business_metrics
 from .security.ratelimit import MemoryRateLimiter, RedisRateLimiter
 
 
@@ -155,11 +158,31 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(settings_api.router)
     app.include_router(migrations_api.router)
     app.include_router(mail_api.router)
+    app.include_router(monitoring_api.router)
 
     @app.get("/metrics", include_in_schema=False)
-    async def metrics() -> Response:
-        """Prometheus metrics."""
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    async def metrics(request: Request) -> Response:
+        """Prometheus metrics: process metrics plus business gauges from the database.
+
+        Through the reverse proxy (X-Forwarded-For set) the bearer token
+        ``CARBOREWIND_METRICS_TOKEN`` is required; inside the Docker network it is not.
+        """
+        if request.headers.get("x-forwarded-for") is not None:
+            token = settings.metrics_token
+            sent = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+            if token is None or not secrets.compare_digest(
+                sent.encode(), token.get_secret_value().encode()
+            ):
+                return Response(status_code=status.HTTP_404_NOT_FOUND)
+        body = generate_latest().decode()
+        factory = getattr(app.state, "sessionmaker", None)
+        if factory is not None:
+            try:
+                async with factory() as db:
+                    body += await business_metrics(db)
+            except Exception:  # a database outage must not break the process metrics
+                body += "# carborewind business metrics unavailable\n"
+        return Response(body, media_type=CONTENT_TYPE_LATEST)
 
     return app
 

@@ -552,4 +552,20 @@ CREATE INDEX ix_account_actions_pending ON account_actions (created_at) WHERE st
 
 UPDATE alembic_version SET version_num='0010' WHERE alembic_version.version_num = '0009';
 
+-- Running upgrade 0010 -> 0011
+
+CREATE TABLE storage_samples (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    agent_id UUID NOT NULL,
+    target VARCHAR(16) NOT NULL,
+    total_bytes BIGINT NOT NULL,
+    free_bytes BIGINT NOT NULL,
+    CONSTRAINT pk_storage_samples PRIMARY KEY (hour, agent_id, target),
+    CONSTRAINT fk_storage_samples_agent_id_agents FOREIGN KEY(agent_id) REFERENCES agents (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_storage_samples_hour ON storage_samples (hour);
+
+UPDATE alembic_version SET version_num='0011' WHERE alembic_version.version_num = '0010';
+
 COMMIT;

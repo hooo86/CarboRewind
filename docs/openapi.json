@@ -2378,6 +2378,13 @@
             "title": "Exempt",
             "type": "array"
           },
+          "max_auto_locks_per_hour": {
+            "default": 3,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Max Auto Locks Per Hour",
+            "type": "integer"
+          },
           "sent_messages_day": {
             "default": 0,
             "maximum": 10000000.0,
@@ -3242,99 +3249,6 @@
         ],
         "title": "Outcome",
         "type": "string"
-      },
-      "Overview": {
-        "properties": {
-          "agents": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Agents",
-            "type": "array"
-          },
-          "alerts": {
-            "items": {
-              "$ref": "#/components/schemas/AlertOut"
-            },
-            "title": "Alerts",
-            "type": "array"
-          },
-          "hourly": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Hourly",
-            "type": "array"
-          },
-          "limits": {
-            "$ref": "#/components/schemas/LimitsIn"
-          },
-          "pending_actions": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Pending Actions",
-            "type": "array"
-          },
-          "period": {
-            "title": "Period",
-            "type": "string"
-          },
-          "since": {
-            "format": "date-time",
-            "title": "Since",
-            "type": "string"
-          },
-          "spam_recipients": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Spam Recipients",
-            "type": "array"
-          },
-          "spam_senders": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Spam Senders",
-            "type": "array"
-          },
-          "top_senders": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Top Senders",
-            "type": "array"
-          },
-          "totals": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Totals",
-            "type": "object"
-          }
-        },
-        "required": [
-          "period",
-          "since",
-          "totals",
-          "top_senders",
-          "spam_recipients",
-          "spam_senders",
-          "hourly",
-          "alerts",
-          "pending_actions",
-          "limits",
-          "agents"
-        ],
-        "title": "Overview",
-        "type": "object"
       },
       "Page_AccountListItem_": {
         "properties": {
@@ -4547,6 +4461,51 @@
         "title": "SessionOut",
         "type": "object"
       },
+      "SettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "integrity_cron": {
+            "default": "30 3 * * 0",
+            "maxLength": 128,
+            "title": "Integrity Cron",
+            "type": "string"
+          },
+          "integrity_enabled": {
+            "default": true,
+            "title": "Integrity Enabled",
+            "type": "boolean"
+          },
+          "integrity_sample": {
+            "default": 0.1,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Integrity Sample",
+            "type": "number"
+          },
+          "integrity_timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Integrity Timezone",
+            "type": "string"
+          },
+          "replica_max_lag_hours": {
+            "default": 24,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Replica Max Lag Hours",
+            "type": "integer"
+          },
+          "stale_hours": {
+            "default": 24,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Stale Hours",
+            "type": "integer"
+          }
+        },
+        "title": "SettingsIn",
+        "type": "object"
+      },
       "ShareIn": {
         "additionalProperties": false,
         "properties": {
@@ -5374,7 +5333,89 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "VerifyOut": {
+      "VerifyIn": {
+        "additionalProperties": false,
+        "properties": {
+          "sample": {
+            "default": 1.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Sample",
+            "type": "number"
+          },
+          "target": {
+            "default": "primary",
+            "enum": [
+              "primary",
+              "replica"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "title": "VerifyIn",
+        "type": "object"
+      },
+      "VerifyResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "checked": {
+            "minimum": 0.0,
+            "title": "Checked",
+            "type": "integer"
+          },
+          "corrupted": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Corrupted",
+            "type": "array"
+          },
+          "corrupted_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Corrupted Count",
+            "type": "integer"
+          },
+          "manifests_checked": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Manifests Checked",
+            "type": "integer"
+          },
+          "manifests_corrupted": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Manifests Corrupted",
+            "type": "array"
+          },
+          "sample": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Sample",
+            "type": "number"
+          },
+          "target": {
+            "enum": [
+              "primary",
+              "replica"
+            ],
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "sample",
+          "checked"
+        ],
+        "title": "VerifyResultIn",
+        "type": "object"
+      },
+      "carborewind_api__api__audit__VerifyOut": {
         "properties": {
           "broken_id": {
             "anyOf": [
@@ -5436,6 +5477,208 @@
           "head_hash",
           "broken_id",
           "reason"
+        ],
+        "title": "VerifyOut",
+        "type": "object"
+      },
+      "carborewind_api__api__mail__Overview": {
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "hourly": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitsIn"
+          },
+          "pending_actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Actions",
+            "type": "array"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "spam_recipients": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Spam Recipients",
+            "type": "array"
+          },
+          "spam_senders": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Spam Senders",
+            "type": "array"
+          },
+          "top_senders": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Top Senders",
+            "type": "array"
+          },
+          "totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Totals",
+            "type": "object"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "totals",
+          "top_senders",
+          "spam_recipients",
+          "spam_senders",
+          "hourly",
+          "alerts",
+          "pending_actions",
+          "limits",
+          "agents"
+        ],
+        "title": "Overview",
+        "type": "object"
+      },
+      "carborewind_api__api__monitoring__Overview": {
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "at_risk": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "At Risk",
+            "type": "object"
+          },
+          "integrity": {
+            "additionalProperties": true,
+            "title": "Integrity",
+            "type": "object"
+          },
+          "jobs_failed_24h": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Jobs Failed 24H",
+            "type": "object"
+          },
+          "metrics_token_configured": {
+            "title": "Metrics Token Configured",
+            "type": "boolean"
+          },
+          "next_integrity_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Integrity At"
+          },
+          "replica": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replica"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/SettingsIn"
+          },
+          "storage": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Storage",
+            "type": "array"
+          }
+        },
+        "required": [
+          "settings",
+          "storage",
+          "at_risk",
+          "replica",
+          "integrity",
+          "next_integrity_at",
+          "jobs_failed_24h",
+          "agents",
+          "metrics_token_configured"
+        ],
+        "title": "Overview",
+        "type": "object"
+      },
+      "carborewind_api__api__monitoring__VerifyOut": {
+        "properties": {
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "queued",
+          "job_id"
         ],
         "title": "VerifyOut",
         "type": "object"
@@ -6353,6 +6596,53 @@
         ]
       }
     },
+    "/api/agent/jobs/{job_id}/verify-complete": {
+      "post": {
+        "description": "Record an integrity check; corruption is notified.",
+        "operationId": "verify_complete_api_agent_jobs__job_id__verify_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/mail-stats": {
       "post": {
         "description": "Hourly mail counters from the MTA log; answers with the account actions to apply.",
@@ -6870,7 +7160,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VerifyOut"
+                  "$ref": "#/components/schemas/carborewind_api__api__audit__VerifyOut"
                 }
               }
             },
@@ -6892,7 +7182,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VerifyOut"
+                  "$ref": "#/components/schemas/carborewind_api__api__audit__VerifyOut"
                 }
               }
             },
@@ -7615,7 +7905,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Overview"
+                  "$ref": "#/components/schemas/carborewind_api__api__mail__Overview"
                 }
               }
             },
@@ -8424,6 +8714,109 @@
         "summary": "Template",
         "tags": [
           "migrations"
+        ]
+      }
+    },
+    "/api/monitoring/overview": {
+      "get": {
+        "operationId": "overview_api_monitoring_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/carborewind_api__api__monitoring__Overview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/settings": {
+      "put": {
+        "operationId": "put_settings_api_monitoring_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsIn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Settings",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/verify": {
+      "post": {
+        "operationId": "verify_now_api_monitoring_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/carborewind_api__api__monitoring__VerifyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Now",
+        "tags": [
+          "monitoring"
         ]
       }
     },
