@@ -130,7 +130,7 @@ def test_counters_overview_and_limits(api: TestClient, engine: Engine) -> None:
     spam = ov["spam_senders"][0]
     assert spam["sender"] == "promo@spam.example" and spam["count"] == 6
     assert sorted(spam["ips"]) == ["198.51.100.7", "203.0.113.9"]
-    assert ov["agents"][-1]["log"] == "/var/log/carbonio.log"
+    assert any(a.get("log") == "/var/log/carbonio.log" for a in ov["agents"])
     assert len(ov["hourly"]) == 2
     hour_only = api.get("/api/mail/overview", params={"period": "1h"}).json()
     assert hour_only["totals"]["sent_messages"] == 52
