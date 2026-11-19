@@ -676,4 +676,10 @@ ALTER TABLE archived_messages ADD COLUMN legal_hold BOOLEAN DEFAULT false NOT NU
 
 UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
 
+-- Running upgrade 0014 -> 0015
+
+ALTER TABLE notifications ADD COLUMN channel VARCHAR(16) DEFAULT 'email' NOT NULL;
+
+UPDATE alembic_version SET version_num='0015' WHERE alembic_version.version_num = '0014';
+
 COMMIT;

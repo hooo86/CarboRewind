@@ -465,6 +465,15 @@ class CarbonioClient:
         )
         return int(resp["folder"][0]["id"])
 
+    def delete_folder(self, account_id: str, folder_id: int) -> None:
+        """Delete a folder and everything in it, for good (``FolderActionRequest op=delete``)."""
+        self._mail.invoke(
+            "FolderAction",
+            NS_MAIL,
+            {"action": {"op": "delete", "id": str(folder_id)}},
+            token=self.delegate(account_id),
+        )
+
     def add_message(
         self,
         account_id: str,

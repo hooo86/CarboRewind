@@ -959,6 +959,8 @@ class Notification(Base):
     subject: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     recipients: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # "email" or "telegram" (recipients are then chat ids).
+    channel: Mapped[str] = mapped_column(String(16), server_default=text("'email'"))
     status: Mapped[NotificationStatus] = mapped_column(
         _enum(NotificationStatus, "notification_status"),
         server_default=NotificationStatus.PENDING.value,

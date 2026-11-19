@@ -27,6 +27,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from typing import Any, Literal
 
+import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -67,7 +68,24 @@ EVENTS = (
     "mail_queue",
     "blacklisted",
     "blacklist_cleared",
+    "restore_test_failed",
 )
+# Events sent to Telegram by default: the ones someone must act on now.
+URGENT_EVENTS = {
+    "job_failed",
+    "agent_offline",
+    "integrity_failed",
+    "storage_full",
+    "mail_limit",
+    "service_down",
+    "service_up",
+    "mail_queue",
+    "blacklisted",
+    "restore_test_failed",
+}
+TELEGRAM_KEY = "telegram"
+TELEGRAM_API = "https://api.telegram.org"
+TELEGRAM_MAX = 4000  # Telegram refuses texts over 4096 characters
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
 Security = Literal["starttls", "ssl", "none"]
@@ -152,6 +170,47 @@ class SmtpConfig:
         return self.enabled and bool(self.recipients) and self.events.get(event, False)
 
 
+@dataclass
+class TelegramConfig:
+    enabled: bool = False
+    token_enc: str | None = None
+    chat_ids: list[str] = field(default_factory=list)
+    events: dict[str, bool] = field(default_factory=lambda: {e: e in URGENT_EVENTS for e in EVENTS})
+
+    @classmethod
+    def from_json(cls, data: dict[str, Any] | None) -> TelegramConfig:
+        cfg = cls()
+        for key, value in (data or {}).items():
+            if hasattr(cfg, key):
+                setattr(cfg, key, value)
+        cfg.events = {**{e: e in URGENT_EVENTS for e in EVENTS}, **(cfg.events or {})}
+        return cfg
+
+    def wants(self, event: str) -> bool:
+        return (
+            self.enabled
+            and bool(self.token_enc)
+            and bool(self.chat_ids)
+            and self.events.get(event, False)
+        )
+
+
+async def load_telegram(db: AsyncSession) -> TelegramConfig:
+    row = await db.get(AppSetting, TELEGRAM_KEY)
+    return TelegramConfig.from_json(row.value if row else None)
+
+
+async def save_telegram(db: AsyncSession, cfg: TelegramConfig) -> None:
+    value = dict(cfg.__dict__)
+    await db.execute(
+        insert(AppSetting)
+        .values(key=TELEGRAM_KEY, value=value, updated_at=func.now())
+        .on_conflict_do_update(
+            index_elements=["key"], set_={"value": value, "updated_at": func.now()}
+        )
+    )
+
+
 async def load_config(db: AsyncSession) -> SmtpConfig:
     row = await db.get(AppSetting, SMTP_KEY)
     return SmtpConfig.from_json(row.value if row else None)
@@ -228,6 +287,13 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota": "[CarboRewind] {count} boîte(s) proche(s) de la saturation",
         "mailbox_quota_body": (
             "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
+        ),
+        "restore_test_failed": "[CarboRewind] Test de restauration en échec ({source})",
+        "restore_test_failed_body": (
+            "Le test de restauration automatique de {source} (sauvegarde n° {seq}) vers {target} "
+            "a échoué : {restored} message(s) restauré(s) sur {selected}, {failed} en erreur.\n"
+            "{error}\nVérifiez le job dans CarboRewind (Jobs) : une restauration réelle pourrait "
+            "échouer de la même façon.\n"
         ),
         "blacklisted": "[CarboRewind] Adresse {ip} en liste noire : {zone}",
         "blacklisted_body": (
@@ -338,6 +404,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
         ),
+        "restore_test_failed": "[CarboRewind] Restore test failed ({source})",
+        "restore_test_failed_body": (
+            "The automatic restore test of {source} (backup #{seq}) into {target} failed: "
+            "{restored} message(s) restored out of {selected}, {failed} in error.\n{error}\n"
+            "Look at the job in CarboRewind (Jobs): a real restore could fail the same way.\n"
+        ),
         "blacklisted": "[CarboRewind] Address {ip} blacklisted: {zone}",
         "blacklisted_body": (
             "The mail server address {ip} is listed in the blacklist {zone} (code {codes}).\n"
@@ -401,24 +473,40 @@ async def notify(db: AsyncSession, event: str, dedup_key: str | None = None, **v
     Runs in the caller's transaction: the message exists only if the change is committed.
     """
     cfg = await load_config(db)
-    if not cfg.wants(event):
+    telegram = await load_telegram(db)
+    channels = [
+        (channel, recipients)
+        for channel, wanted, recipients in (
+            ("email", cfg.wants(event), list(cfg.recipients)),
+            ("telegram", telegram.wants(event), list(telegram.chat_ids)),
+        )
+        if wanted
+    ]
+    if not channels:
         return False
     texts = TEXTS.get(cfg.language, TEXTS["fr"])
     safe = {k: _one_line(v) if k != "list" else str(v) for k, v in values.items()}
     for key in ("metric", "action", "target", "mode"):  # codes with a translated label
         if f"{key}.{safe.get(key)}" in texts:
             safe[key] = texts[f"{key}.{safe[key]}"]
-    stmt = insert(Notification).values(
-        event=event,
-        subject=texts[event].format(**safe),
-        body=texts[f"{event}_body"].format(**safe),
-        recipients=list(cfg.recipients),
-        dedup_key=dedup_key,
-    )
-    if dedup_key:
-        stmt = stmt.on_conflict_do_nothing(index_elements=["dedup_key"])
-    result = await db.execute(stmt.returning(Notification.id))
-    return result.first() is not None
+    queued = False
+    for channel, recipients in channels:
+        dedup: str | None = (
+            dedup_key if channel == "email" or not dedup_key else f"{dedup_key}:{channel}"
+        )
+        stmt = insert(Notification).values(
+            event=event,
+            subject=texts[event].format(**safe),
+            body=texts[f"{event}_body"].format(**safe),
+            recipients=recipients,
+            channel=channel,
+            dedup_key=dedup,
+        )
+        if dedup:
+            stmt = stmt.on_conflict_do_nothing(index_elements=["dedup_key"])
+        result = await db.execute(stmt.returning(Notification.id))
+        queued = result.first() is not None or queued
+    return queued
 
 
 # ------------------------------------------------------------------ sending
@@ -484,9 +572,57 @@ def send_any(
     return primary
 
 
+class TelegramError(SmtpError):
+    pass
+
+
+def _telegram_client() -> httpx.Client:
+    return httpx.Client(base_url=TELEGRAM_API, timeout=20)
+
+
+def telegram_call(settings: Settings, token_enc: str, method: str, body: dict[str, Any]) -> Any:
+    """Call the Bot API. Errors never carry the token (it is part of the URL)."""
+    token = decrypt(settings, token_enc)
+    try:
+        with _telegram_client() as client:
+            response = client.post(f"/bot{token}/{method}", json=body)
+    except httpx.HTTPError as exc:
+        raise TelegramError(f"Telegram unreachable ({type(exc).__name__})") from None
+    try:
+        data = response.json()
+    except ValueError:
+        raise TelegramError(f"Telegram answered HTTP {response.status_code}") from None
+    if not data.get("ok"):
+        description = str(data.get("description") or f"HTTP {response.status_code}")
+        raise TelegramError(f"Telegram: {description.replace(token, '***')[:300]}")
+    return data.get("result")
+
+
+def send_telegram(settings: Settings, cfg: TelegramConfig, chat_ids: list[str], text: str) -> None:
+    """Send one plain-text message to every chat (call from a thread)."""
+    if not cfg.token_enc or not chat_ids:
+        raise TelegramError("Telegram bot token and chat are required")
+    if len(text) > TELEGRAM_MAX:
+        text = text[: TELEGRAM_MAX - 1] + "…"
+    errors = []
+    for chat_id in chat_ids:
+        try:
+            telegram_call(
+                settings,
+                cfg.token_enc,
+                "sendMessage",
+                {"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            )
+        except TelegramError as exc:
+            errors.append(f"{chat_id}: {exc}")
+    if errors:
+        raise TelegramError("; ".join(errors))
+
+
 async def deliver_pending(db: AsyncSession, settings: Settings, now: datetime) -> int:
     """Send due messages of the outbox; retries with backoff. Returns how many were sent."""
     cfg = await load_config(db)
+    telegram = await load_telegram(db)
     pending = list(
         await db.scalars(
             select(Notification)
@@ -503,11 +639,23 @@ async def deliver_pending(db: AsyncSession, settings: Settings, now: datetime) -
     for note in pending:
         note.attempts += 1
         try:
-            if not cfg.enabled:
-                raise SmtpError("notifications are disabled")
-            primary_error = await asyncio.to_thread(
-                send_any, settings, cfg, list(note.recipients), note.subject, note.body
-            )
+            if note.channel == "telegram":
+                if not telegram.enabled:
+                    raise TelegramError("Telegram notifications are disabled")
+                await asyncio.to_thread(
+                    send_telegram,
+                    settings,
+                    telegram,
+                    list(note.recipients),
+                    f"{note.subject}\n\n{note.body}",
+                )
+                primary_error = None
+            else:
+                if not cfg.enabled:
+                    raise SmtpError("notifications are disabled")
+                primary_error = await asyncio.to_thread(
+                    send_any, settings, cfg, list(note.recipients), note.subject, note.body
+                )
         except (SmtpError, SecretKeyError) as exc:
             note.error = str(exc)[:1000]
             if note.attempts >= MAX_ATTEMPTS:

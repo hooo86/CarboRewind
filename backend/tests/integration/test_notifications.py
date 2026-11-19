@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import smtplib
 import uuid
 from collections.abc import Iterator
@@ -439,3 +440,102 @@ def test_fallback_smtp_server(
         r = api.post("/api/settings/notifications/test", json={"server": "fallback"}, headers=h)
         assert r.json() == {"ok": True, "error": None}
         assert fake_smtp.sent[-1]["From"] == "noreply@backup.example.com"
+
+
+TOKEN = "123456789:" + "A" * 35
+
+
+class FakeTelegram:
+    calls: ClassVar[list[tuple[str, dict[str, Any]]]] = []
+    answer: ClassVar[dict[str, Any]] = {"ok": True, "result": {}}
+
+    @classmethod
+    def handler(cls, request: Any) -> Any:
+        import httpx
+
+        cls.calls.append((request.url.path, json.loads(request.content or b"{}")))
+        if request.url.path.endswith("/getUpdates"):
+            return httpx.Response(
+                200,
+                json={
+                    "ok": True,
+                    "result": [
+                        {"message": {"chat": {"id": -1001, "title": "Alertes", "type": "group"}}},
+                        {
+                            "message": {
+                                "chat": {"id": 42, "first_name": "Hocine", "type": "private"}
+                            }
+                        },
+                    ],
+                },
+            )
+        return httpx.Response(200, json=cls.answer)
+
+
+@pytest.fixture
+def fake_telegram(monkeypatch: pytest.MonkeyPatch) -> Iterator[type[FakeTelegram]]:
+    import httpx
+
+    from carborewind_api import notifications as notifications_module
+
+    FakeTelegram.calls, FakeTelegram.answer = [], {"ok": True, "result": {}}
+    monkeypatch.setattr(
+        notifications_module,
+        "_telegram_client",
+        lambda: httpx.Client(
+            base_url="https://api.telegram.org",
+            transport=httpx.MockTransport(FakeTelegram.handler),
+        ),
+    )
+    yield FakeTelegram
+
+
+def test_telegram_alerts(
+    migrated: str, engine: Engine, clean: None, fake_telegram: type[FakeTelegram]
+) -> None:
+    settings = Settings(secret_key=KEY)  # type: ignore[call-arg]
+    now = datetime.now(UTC) + timedelta(minutes=1)
+    with make_api(migrated, KEY) as api:
+        h = login(api, engine, Role.SUPER_ADMIN)
+        assert api.get("/api/settings/telegram", headers=h).json()["token_set"] is False
+        for bad in (
+            {"token": "not-a-token"},
+            {"token": TOKEN, "chat_ids": ["group name"]},
+            {"enabled": True, "chat_ids": ["-1001"]},  # no token
+            {"events": {"nope": True}},
+        ):
+            assert api.put("/api/settings/telegram", json=bad, headers=h).status_code == 422, bad
+        r = api.put("/api/settings/telegram", json={"token": TOKEN}, headers=h)
+        assert r.json()["token_set"] is True and TOKEN not in r.text
+        chats = api.get("/api/settings/telegram/chats", headers=h).json()
+        assert {c["id"] for c in chats} == {"-1001", "42"}
+        r = api.put(
+            "/api/settings/telegram",
+            json={"enabled": True, "chat_ids": ["-1001"], "events": {"daily_digest": False}},
+            headers=h,
+        )
+        out = r.json()
+        assert out["token_set"] is True  # kept
+        assert out["events"]["job_failed"] is True and out["events"]["migration_done"] is False
+        assert api.post("/api/settings/telegram/test", headers=h).json()["ok"] is True
+        assert fake_telegram.calls[-1][1]["chat_id"] == "-1001"
+    # Urgent events go to Telegram (even with e-mail off), others do not.
+    assert _run(
+        migrated,
+        lambda db: notify(db, "job_failed", kind="backup", account="a", error="e", job="j"),
+    )
+    assert not _run(
+        migrated,
+        lambda db: notify(db, "migration_done", batch="b", done=1, failed=0, copied=1, errors=0),
+    )
+    assert _run(migrated, lambda db: deliver_pending(db, settings, now)) == 1
+    path, body = fake_telegram.calls[-1]
+    assert path.endswith("/sendMessage") and body["text"].startswith("[CarboRewind] Échec")
+    # A refusal is retried later and never shows the token.
+    fake_telegram.answer = {"ok": False, "description": f"Unauthorized bot{TOKEN}"}
+    _run(migrated, lambda db: notify(db, "service_down", service="amavis", agent="mx1", since="x"))
+    _run(migrated, lambda db: deliver_pending(db, settings, now))
+    with Session(engine) as s:
+        note = s.scalar(select(Notification).where(Notification.event == "service_down"))
+        assert note is not None and note.channel == "telegram" and note.status == "pending"
+        assert "Unauthorized" in (note.error or "") and TOKEN not in (note.error or "")

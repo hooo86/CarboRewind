@@ -40,10 +40,16 @@ from ..notifications import (
     SecretKeyError,
     SmtpConfig,
     SmtpError,
+    TelegramConfig,
+    TelegramError,
     encrypt,
     load_config,
+    load_telegram,
     save_config,
+    save_telegram,
     send_mail,
+    send_telegram,
+    telegram_call,
 )
 from ..scheduling import CronError, zone
 from ..security import policy as security_policy
@@ -294,6 +300,7 @@ class NotificationOut(BaseModel):
     error: str | None
     created_at: datetime
     sent_at: datetime | None
+    channel: str = "email"
 
 
 @router.get("/notifications/outbox", response_model=list[NotificationOut])
@@ -309,6 +316,7 @@ async def outbox(principal: Admin, db: DbSession) -> list[NotificationOut]:
             error=n.error,
             created_at=n.created_at,
             sent_at=n.sent_at,
+            channel=n.channel,
         )
         for n in rows
     ]
@@ -671,3 +679,172 @@ async def put_agent_tuning(
         details=body.model_dump(),
     )
     return AgentTuningOut(**asdict(new), agents=[])
+
+
+# ------------------------------------------------------------------ Telegram
+
+CHAT_ID = re.compile(r"^(-?\d{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
+BOT_TOKEN = re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{30,60}$")
+
+
+class TelegramIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    token: str | None = Field(
+        default=None, max_length=100, repr=False, description="None = keep, '' = clear"
+    )
+    chat_ids: list[str] = Field(default_factory=list, max_length=10)
+    events: dict[str, bool] = Field(default_factory=dict)
+
+    @field_validator("token")
+    @classmethod
+    def _token(cls, value: str | None) -> str | None:
+        if value and not BOT_TOKEN.fullmatch(value.strip()):
+            raise ValueError("this is not a bot token (as given by @BotFather)")
+        return value.strip() if value else value
+
+    @field_validator("chat_ids")
+    @classmethod
+    def _chats(cls, value: list[str]) -> list[str]:
+        out = []
+        for chat in value:
+            clean = chat.strip()
+            if not CHAT_ID.fullmatch(clean):
+                raise ValueError(f"invalid chat {chat!r} (a number such as -1001234567890)")
+            out.append(clean)
+        return list(dict.fromkeys(out))
+
+    @field_validator("events")
+    @classmethod
+    def _events(cls, value: dict[str, bool]) -> dict[str, bool]:
+        unknown = set(value) - set(EVENTS)
+        if unknown:
+            raise ValueError(f"unknown events: {', '.join(sorted(unknown))}")
+        return value
+
+
+class TelegramOut(BaseModel):
+    enabled: bool
+    token_set: bool
+    chat_ids: list[str]
+    events: dict[str, bool]
+
+
+def _telegram_out(cfg: TelegramConfig) -> TelegramOut:
+    return TelegramOut(
+        enabled=cfg.enabled,
+        token_set=bool(cfg.token_enc),
+        chat_ids=cfg.chat_ids,
+        events=cfg.events,
+    )
+
+
+@router.get("/telegram", response_model=TelegramOut)
+async def get_telegram(principal: Admin, db: DbSession) -> TelegramOut:
+    return _telegram_out(await load_telegram(db))
+
+
+@router.put("/telegram", response_model=TelegramOut)
+async def put_telegram(
+    body: TelegramIn, principal: Admin, db: DbSession, settings: AppSettings, request: Request
+) -> TelegramOut:
+    current = await load_telegram(db)
+    token_enc = current.token_enc
+    if body.token == "":
+        token_enc = None
+    elif body.token is not None:
+        try:
+            token_enc = encrypt(settings, body.token)
+        except SecretKeyError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if body.enabled and (not token_enc or not body.chat_ids):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "a bot token and at least one chat are required to enable Telegram",
+        )
+    cfg = TelegramConfig(
+        enabled=body.enabled,
+        token_enc=token_enc,
+        chat_ids=body.chat_ids,
+        events={**TelegramConfig().events, **body.events},
+    )
+    await save_telegram(db, cfg)
+    await audit.record(
+        db,
+        action="settings.telegram",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details={
+            "enabled": cfg.enabled,
+            "chats": len(cfg.chat_ids),
+            "token_changed": body.token is not None,
+        },
+    )
+    return _telegram_out(cfg)
+
+
+@router.post("/telegram/test", response_model=TestResult)
+async def test_telegram(
+    principal: Admin, db: DbSession, settings: AppSettings, request: Request
+) -> TestResult:
+    cfg = await load_telegram(db)
+    smtp = await load_config(db)
+    texts = TEXTS.get(smtp.language, TEXTS["fr"])
+    try:
+        await asyncio.to_thread(
+            send_telegram,
+            settings,
+            cfg,
+            cfg.chat_ids,
+            f"{texts['test']}\n\n{texts['test_body']}",
+        )
+        result = TestResult(ok=True)
+    except (TelegramError, SecretKeyError) as exc:
+        result = TestResult(ok=False, error=str(exc)[:500])
+    await audit.record(
+        db,
+        action="settings.telegram_test",
+        outcome=Outcome.SUCCESS if result.ok else Outcome.FAILURE,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details={"chats": len(cfg.chat_ids), "error": result.error},
+    )
+    return result
+
+
+class TelegramChat(BaseModel):
+    id: str
+    title: str
+    type: str
+
+
+@router.get("/telegram/chats", response_model=list[TelegramChat])
+async def telegram_chats(
+    principal: Admin, db: DbSession, settings: AppSettings
+) -> list[TelegramChat]:
+    """Groups and people who wrote to the bot lately: to fill the chat ids in."""
+    cfg = await load_telegram(db)
+    if not cfg.token_enc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "save the bot token first")
+    try:
+        updates = await asyncio.to_thread(
+            telegram_call, settings, cfg.token_enc, "getUpdates", {"limit": 100}
+        )
+    except (TelegramError, SecretKeyError) as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    chats: dict[str, TelegramChat] = {}
+    for update in updates or []:
+        for key in ("message", "channel_post", "my_chat_member", "edited_message"):
+            chat = (update.get(key) or {}).get("chat")
+            if chat and "id" in chat:
+                title = chat.get("title") or " ".join(
+                    x for x in (chat.get("first_name"), chat.get("last_name")) if x
+                )
+                chats[str(chat["id"])] = TelegramChat(
+                    id=str(chat["id"]), title=title or str(chat["id"]), type=chat.get("type", "")
+                )
+    return list(chats.values())

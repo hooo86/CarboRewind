@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -17,9 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 
-from .. import audit, blacklist, monitoring
+from .. import audit, blacklist, monitoring, restore_test
 from ..authz import Permission
-from ..db.models import Agent, AgentStatus, Job, JobStatus, Outcome
+from ..db.models import Account, AccountStatus, Agent, AgentStatus, Job, JobStatus, Outcome
 from ..scheduling import Cron, CronError, zone
 from .deps import AppSettings, DbSession, Principal, client_ip, require
 
@@ -269,3 +270,97 @@ async def check_blacklist(principal: Admin, db: DbSession) -> BlacklistOut:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "no address to check")
     await blacklist.run_check(db, datetime.now(UTC))
     return await _blacklist_out(db)
+
+
+# ------------------------------------------------------------------ restore tests
+
+
+class RestoreTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    schedule: str = Field(default="45 3 * * 6", max_length=128)
+    timezone: str = Field(default="UTC", max_length=64)
+    target_account_id: uuid.UUID | None = None
+    messages: int = Field(default=20, ge=1, le=500)
+    cleanup: bool = True
+
+    @field_validator("schedule")
+    @classmethod
+    def _cron(cls, value: str) -> str:
+        try:
+            Cron.parse(value)
+        except CronError as exc:
+            raise ValueError(str(exc)) from exc
+        return " ".join(value.split())
+
+    @field_validator("timezone")
+    @classmethod
+    def _zone(cls, value: str) -> str:
+        try:
+            zone(value)
+        except CronError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
+
+class RestoreTestOut(BaseModel):
+    settings: RestoreTestIn
+    target_email: str | None
+    history: list[dict[str, Any]]
+
+
+async def _restore_test_out(db: DbSession) -> RestoreTestOut:
+    cfg = await restore_test.load(db)
+    target = (
+        await db.get(Account, uuid.UUID(cfg.target_account_id)) if cfg.target_account_id else None
+    )
+    fields = {k: v for k, v in asdict(cfg).items() if k in RestoreTestIn.model_fields}
+    return RestoreTestOut(
+        settings=RestoreTestIn(**fields),
+        target_email=target.email if target else None,
+        history=await restore_test.history(db),
+    )
+
+
+@router.get("/restore-tests", response_model=RestoreTestOut)
+async def get_restore_tests(principal: Admin, db: DbSession) -> RestoreTestOut:
+    return await _restore_test_out(db)
+
+
+@router.put("/restore-tests", response_model=RestoreTestOut)
+async def put_restore_tests(
+    body: RestoreTestIn, principal: Admin, db: DbSession, request: Request
+) -> RestoreTestOut:
+    if body.target_account_id is not None:
+        target = await db.get(Account, body.target_account_id)
+        if target is None or target.status is AccountStatus.DELETED:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unknown test mailbox")
+    elif body.enabled:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "choose the test mailbox")
+    current = await restore_test.load(db)
+    cfg = restore_test.RestoreTestSettings(
+        **{**body.model_dump(mode="json")},
+        last_slot=current.last_slot if current.enabled and body.enabled else None,
+    )
+    await restore_test.save(db, cfg)
+    await audit.record(
+        db,
+        action="settings.restore_test",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details=body.model_dump(mode="json"),
+    )
+    return await _restore_test_out(db)
+
+
+@router.post("/restore-tests/run", response_model=RestoreTestOut, status_code=202)
+async def run_restore_test(principal: Admin, db: DbSession) -> RestoreTestOut:
+    cfg = await restore_test.load(db)
+    try:
+        await restore_test.enqueue(db, cfg, datetime.now(UTC), principal.user.id)
+    except restore_test.RestoreTestError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return await _restore_test_out(db)

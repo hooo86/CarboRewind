@@ -3800,6 +3800,11 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "channel": {
+            "default": "email",
+            "title": "Channel",
+            "type": "string"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -5213,6 +5218,11 @@
             "title": "By Kind",
             "type": "object"
           },
+          "cleaned": {
+            "default": false,
+            "title": "Cleaned",
+            "type": "boolean"
+          },
           "dry_run": {
             "title": "Dry Run",
             "type": "boolean"
@@ -5278,6 +5288,87 @@
           "unsupported"
         ],
         "title": "RestoreResultIn",
+        "type": "object"
+      },
+      "RestoreTestIn": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup": {
+            "default": true,
+            "title": "Cleanup",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "messages": {
+            "default": 20,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Messages",
+            "type": "integer"
+          },
+          "schedule": {
+            "default": "45 3 * * 6",
+            "maxLength": 128,
+            "title": "Schedule",
+            "type": "string"
+          },
+          "target_account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Account Id"
+          },
+          "timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "title": "RestoreTestIn",
+        "type": "object"
+      },
+      "RestoreTestOut": {
+        "properties": {
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RestoreTestIn"
+          },
+          "target_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Email"
+          }
+        },
+        "required": [
+          "settings",
+          "target_email",
+          "history"
+        ],
+        "title": "RestoreTestOut",
         "type": "object"
       },
       "RetentionIn": {
@@ -6478,6 +6569,103 @@
         ],
         "title": "TargetType",
         "type": "string"
+      },
+      "TelegramChat": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type"
+        ],
+        "title": "TelegramChat",
+        "type": "object"
+      },
+      "TelegramIn": {
+        "additionalProperties": false,
+        "properties": {
+          "chat_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Events",
+            "type": "object"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None = keep, '' = clear",
+            "title": "Token"
+          }
+        },
+        "title": "TelegramIn",
+        "type": "object"
+      },
+      "TelegramOut": {
+        "properties": {
+          "chat_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chat Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "events": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Events",
+            "type": "object"
+          },
+          "token_set": {
+            "title": "Token Set",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "token_set",
+          "chat_ids",
+          "events"
+        ],
+        "title": "TelegramOut",
+        "type": "object"
       },
       "TestRequest": {
         "additionalProperties": false,
@@ -12007,6 +12195,87 @@
         ]
       }
     },
+    "/api/monitoring/restore-tests": {
+      "get": {
+        "operationId": "get_restore_tests_api_monitoring_restore_tests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Restore Tests",
+        "tags": [
+          "monitoring"
+        ]
+      },
+      "put": {
+        "operationId": "put_restore_tests_api_monitoring_restore_tests_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Restore Tests",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/restore-tests/run": {
+      "post": {
+        "operationId": "run_restore_test_api_monitoring_restore_tests_run_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Restore Test",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
     "/api/monitoring/settings": {
       "put": {
         "operationId": "put_settings_api_monitoring_settings_put",
@@ -12661,6 +12930,113 @@
           }
         },
         "summary": "Replicate Now",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/telegram": {
+      "get": {
+        "operationId": "get_telegram_api_settings_telegram_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Telegram",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_telegram_api_settings_telegram_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Telegram",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/telegram/chats": {
+      "get": {
+        "description": "Groups and people who wrote to the bot lately: to fill the chat ids in.",
+        "operationId": "telegram_chats_api_settings_telegram_chats_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TelegramChat"
+                  },
+                  "title": "Response Telegram Chats Api Settings Telegram Chats Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Telegram Chats",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/telegram/test": {
+      "post": {
+        "operationId": "test_telegram_api_settings_telegram_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Telegram",
         "tags": [
           "settings"
         ]

@@ -521,7 +521,10 @@ class Worker:
             checkpoint=checkpoint,
             manifest=manifest,
         )
-        self._api.restore_complete(job["job_id"], result.to_payload())
+        payload = result.to_payload()
+        if p.get("test") and p.get("cleanup") and not result.dry_run and result.root:
+            payload["cleaned"] = self._remove_test_folder(job["carbonio_id"], result.root)
+        self._api.restore_complete(job["job_id"], payload)
         log.info(
             "job %s done: %srestore into %s, %s restored, %s present, %s failed",
             job["job_id"],
@@ -531,6 +534,17 @@ class Worker:
             result.present,
             len(result.failed),
         )
+
+    def _remove_test_folder(self, account_id: str, root: str) -> bool:
+        """Restore test: delete the dated folder the test restored into."""
+        try:
+            for folder in self._carbonio.get_folders(account_id):
+                if folder.path.lower() == root.lower():
+                    self._carbonio.delete_folder(account_id, folder.id)
+                    return True
+        except SoapFaultError as exc:
+            log.warning("restore test folder not deleted: %s", exc)
+        return False
 
     def _run_replicate(
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]

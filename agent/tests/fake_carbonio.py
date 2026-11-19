@@ -461,6 +461,28 @@ class FakeCarbonio:
             mbox.delete(item_id)
         return {"action": {"op": "delete", "id": action["id"]}}
 
+    def _FolderActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        if action["op"] != "delete":
+            raise _Fault("service.INVALID_REQUEST", action["op"])
+        root = int(action["id"])
+        if root not in mbox.folders or root < 256:
+            raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+        doomed = {root}
+        changed = True
+        while changed:
+            changed = False
+            for f in mbox.folders.values():
+                if f.parent in doomed and f.id not in doomed:
+                    doomed.add(f.id)
+                    changed = True
+        for item_id in [i for i, item in mbox.items.items() if item.folder in doomed]:
+            mbox.delete(item_id)
+        for fid in doomed:
+            del mbox.folders[fid]
+        return {"action": {"op": "delete", "id": action["id"]}}
+
     def _GetFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
 

@@ -21,7 +21,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import agent_tuning, archiving, audit, mail_traffic, monitoring, storage_settings
+from .. import (
+    agent_tuning,
+    archiving,
+    audit,
+    mail_traffic,
+    monitoring,
+    restore_test,
+    storage_settings,
+)
 from ..db.models import (
     Account,
     AccountAction,
@@ -889,6 +897,7 @@ class RestoreResultIn(BaseModel):
     failed: dict[int, str] = Field(default_factory=dict)
     by_kind: dict[str, int] = Field(default_factory=dict)
     folders_created: list[str] = Field(default_factory=list)
+    cleaned: bool = False  # restore test: the test folder was deleted afterwards
 
 
 @router.post("/jobs/{job_id}/restore-complete", status_code=status.HTTP_204_NO_CONTENT)
@@ -911,7 +920,9 @@ async def restore_complete(
     job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
     job.error = f"{len(body.failed)} item(s) could not be restored" if body.failed else None
     account = await db.get(Account, job.account_id) if job.account_id else None
-    if body.failed and not body.dry_run:
+    if job.params.get("test"):
+        await restore_test.record_result(db, job, summary)
+    elif body.failed and not body.dry_run:
         await notify(
             db,
             "restore_failed",
@@ -1315,6 +1326,13 @@ async def fetch_complete(
 async def _notify_failure(db: DbSession, job: Job) -> None:
     if job.kind is JobKind.FETCH:
         return  # the user waiting in the interface sees the error
+    if job.kind is JobKind.RESTORE and job.params.get("test"):
+        await restore_test.record_result(
+            db,
+            job,
+            {"selected": len(job.params.get("item_ids", [])), "error": job.error or "failed"},
+        )
+        return
     if job.kind is JobKind.ARCHIVE:
         await archiving.finish_run(db, job, datetime.now(UTC))
     account = await db.get(Account, job.account_id) if job.account_id else None
