@@ -60,6 +60,7 @@ EVENTS = (
     "integrity_failed",
     "replica_lag",
     "storage_full",
+    "mailbox_quota",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -194,6 +195,10 @@ TEXTS: dict[str, dict[str, str]] = {
             "Au rythme actuel, le stockage {target} de l'agent {agent} sera plein dans environ "
             "{days} jours. Agrandissez-le ou réduisez la rétention.\n"
         ),
+        "mailbox_quota": "[CarboRewind] {count} boîte(s) proche(s) de la saturation",
+        "mailbox_quota_body": (
+            "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
+        ),
         "metric.sent_messages_hour": "messages envoyés dans l'heure",
         "metric.sent_recipients_hour": "destinataires dans l'heure",
         "metric.sent_messages_day": "messages envoyés sur 24 h",
@@ -263,6 +268,10 @@ TEXTS: dict[str, dict[str, str]] = {
         "storage_full_body": (
             "At the current rate, the {target} storage of agent {agent} will be full in about "
             "{days} days. Enlarge it or reduce the retention.\n"
+        ),
+        "mailbox_quota": "[CarboRewind] {count} mailbox(es) nearly full",
+        "mailbox_quota_body": (
+            "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
         ),
         "metric.sent_messages_hour": "messages sent in the hour",
         "metric.sent_recipients_hour": "recipients in the hour",

@@ -63,10 +63,22 @@ async def collect(db: AsyncSession) -> str:
         select(Account.status, func.count()).group_by(Account.status)
     ):
         out.gauge("accounts", "Accounts known from Carbonio, by status", count, status=st.value)
-    risk = await monitoring.accounts_at_risk(db, cfg.stale_hours, limit=0)
+    risk = await monitoring.accounts_at_risk(
+        db,
+        cfg.stale_hours,
+        limit=0,
+        quota_percent=cfg.mailbox_alert_percent,
+        quota_gb=cfg.mailbox_alert_gb,
+    )
     for key, data in risk.items():
         out.gauge("accounts_at_risk", "Accounts at risk, by reason", data["count"], reason=key)
 
+    mail_used = await db.scalar(
+        select(func.coalesce(func.sum(Account.used_bytes), 0)).where(
+            Account.status != AccountStatus.DELETED
+        )
+    )
+    out.gauge("mailboxes_used_bytes", "Total size of the live mailboxes", int(mail_used or 0))
     oldest = await db.scalar(
         select(func.min(_last_ok()))
         .select_from(Account)

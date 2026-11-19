@@ -150,6 +150,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         storage_dir=settings.storage_dir,
         replica=settings.replica_path,
         kek=read_kek(settings.repository_key_file),
+        mail_store=settings.mail_store_path,
         space=(
             settings.min_free_gb_local,
             settings.min_free_percent_local,

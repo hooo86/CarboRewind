@@ -326,3 +326,78 @@ def test_automatic_locks_are_bounded(api: TestClient, engine: Engine) -> None:
         assert sorted(kinds.values()).count("alert_cap") == 2
         notes = " ".join(n.body for n in s.scalars(select(Notification)))
         assert "compte administrateur" in notes and "trop de verrouillages" in notes
+
+
+def test_mail_storage_and_nearly_full_mailboxes(
+    api: TestClient, engine: Engine, migrated: str
+) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    tag = uuid.uuid4().hex[:6]
+    accounts = [
+        {
+            "carbonio_id": f"f{tag}",
+            "email": f"full@q{tag}.test",
+            "status": "active",
+            "quota_bytes": 10 * GIB,
+            "used_bytes": 95 * GIB // 10,
+        },
+        {
+            "carbonio_id": f"b{tag}",
+            "email": f"big@q{tag}.test",
+            "status": "active",
+            "quota_bytes": 0,
+            "used_bytes": 60 * GIB,
+        },
+        {
+            "carbonio_id": f"s{tag}",
+            "email": f"small@q{tag}.test",
+            "status": "active",
+            "quota_bytes": 10 * GIB,
+            "used_bytes": GIB,
+        },
+    ]
+    storage = {
+        "path": "/var/lib/carborewind/nas/repository",
+        "kind": "network",
+        "total_bytes": 200 * GIB,
+        "free_bytes": 100 * GIB,
+        "mail_store": {
+            "path": "/opt/zextras",
+            "kind": "local",
+            "total_bytes": 1000 * GIB,
+            "free_bytes": 900 * GIB,
+        },
+    }
+    agent.post("/inventory", {"accounts": accounts, "storage": storage})
+    dash = api.get("/api/dashboard").json()
+    assert dash["mail_used_bytes"] >= int(70.5 * GIB)
+    assert dash["mailboxes_nearly_full"] >= 1 and dash["mailbox_alert_percent"] == 90
+    st = next(s for s in dash["storage"] if s.get("mail_store"))
+    assert st["mail_store"]["total_bytes"] == 1000 * GIB
+    ov = api.get("/api/monitoring/overview").json()
+    assert any(s["target"] == "server" for s in ov["storage"])
+    quota = ov["at_risk"]["quota"]
+    names = {a["email"] for a in quota["accounts"]}
+    assert f"full@q{tag}.test" in names or quota["count"] > 20
+    assert f"small@q{tag}.test" not in names
+    assert quota["filters"] == ["usage_pct:ge:90"]
+    # An absolute size also counts (mailboxes without quota).
+    body = {**ov["settings"], "mailbox_alert_gb": 50}
+    assert api.put("/api/monitoring/settings", json=body, headers=h).status_code == 200
+    ov = api.get("/api/monitoring/overview").json()
+    assert f"big@q{tag}.test" in {a["email"] for a in ov["at_risk"]["quota"]["accounts"]} or (
+        ov["at_risk"]["quota"]["count"] > 20
+    )
+    assert ov["at_risk"]["quota"]["filters"] == []
+    run_tick(migrated, datetime.now(UTC), retention=True)
+    with Session(engine) as s:
+        note = s.scalar(select(Notification).where(Notification.event == "mailbox_quota"))
+        assert note is not None and f"full@q{tag}.test" in note.body and "GB" in note.body
+    assert "carborewind_mailboxes_used_bytes" in api.get("/metrics").text
+    assert (
+        api.put(
+            "/api/monitoring/settings", json={**body, "mailbox_alert_percent": 150}, headers=h
+        ).status_code
+        == 422
+    )

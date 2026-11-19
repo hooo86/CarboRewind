@@ -1584,6 +1584,26 @@
             ],
             "title": "Last Agent Heartbeat"
           },
+          "mail_quota_bytes": {
+            "default": 0,
+            "title": "Mail Quota Bytes",
+            "type": "integer"
+          },
+          "mail_used_bytes": {
+            "default": 0,
+            "title": "Mail Used Bytes",
+            "type": "integer"
+          },
+          "mailbox_alert_percent": {
+            "default": 0,
+            "title": "Mailbox Alert Percent",
+            "type": "integer"
+          },
+          "mailboxes_nearly_full": {
+            "default": 0,
+            "title": "Mailboxes Nearly Full",
+            "type": "integer"
+          },
           "never_backed_up": {
             "title": "Never Backed Up",
             "type": "integer"
@@ -4695,6 +4715,20 @@
             "title": "Integrity Timezone",
             "type": "string"
           },
+          "mailbox_alert_gb": {
+            "default": 0.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Mailbox Alert Gb",
+            "type": "number"
+          },
+          "mailbox_alert_percent": {
+            "default": 90,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Mailbox Alert Percent",
+            "type": "integer"
+          },
           "replica_max_lag_hours": {
             "default": 24,
             "maximum": 1440.0,
@@ -5099,6 +5133,16 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "mail_store": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlaceIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "path": {
             "maxLength": 4096,

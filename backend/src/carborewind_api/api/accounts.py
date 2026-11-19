@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, select
 
+from .. import monitoring
 from ..authz import Permission
 from ..db.models import (
     Account,
@@ -69,6 +70,12 @@ class Dashboard(BaseModel):
     last_agent_heartbeat: datetime | None
     # Repository location and free space per active agent (global readers only).
     storage: list[dict[str, Any]] = Field(default_factory=list)
+    # Total size of the live mailboxes (from Carbonio) and their quotas (0/None = unlimited).
+    mail_used_bytes: int = 0
+    mail_quota_bytes: int = 0
+    # Mailboxes over the alert threshold (Monitoring settings).
+    mailboxes_nearly_full: int = 0
+    mailbox_alert_percent: int = 0
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -233,7 +240,31 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
                 )
             )
         ]
+    mail_used, mail_quota = (
+        await db.execute(
+            scoped(
+                select(
+                    func.coalesce(func.sum(Account.used_bytes), 0),
+                    func.coalesce(func.sum(Account.quota_bytes), 0),
+                ).where(live),
+                Account.domain_id,
+            )
+        )
+    ).one()
+    cfg = await monitoring.load_settings(db)
+    nearly_full = await db.scalar(
+        scoped(
+            select(func.count())
+            .select_from(Account)
+            .where(live, monitoring.nearly_full(cfg.mailbox_alert_percent, cfg.mailbox_alert_gb)),
+            Account.domain_id,
+        )
+    )
     return Dashboard(
+        mail_used_bytes=int(mail_used or 0),
+        mail_quota_bytes=int(mail_quota or 0),
+        mailboxes_nearly_full=int(nearly_full or 0),
+        mailbox_alert_percent=cfg.mailbox_alert_percent,
         accounts=accounts or 0,
         protected_24h=protected or 0,
         never_backed_up=never or 0,

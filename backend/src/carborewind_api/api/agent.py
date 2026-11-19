@@ -249,6 +249,7 @@ class ApplyIn(BaseModel):
 class StorageIn(PlaceIn):
     replica: PlaceIn | None = None  # copy 02
     apply: ApplyIn | None = None
+    mail_store: PlaceIn | None = None  # Carbonio's data disk (/opt/zextras)
 
 
 class InventoryIn(BaseModel):

@@ -255,6 +255,7 @@ def test_worker_hands_settings_over_and_replicates(tmp_path: Path) -> None:
         repo=repo,
         storage_dir=sdir,
         replica=replica,
+        mail_store=tmp_path,
     )
     worker.sync_storage()
     request = json.loads((sdir / "request.json").read_text())
@@ -266,6 +267,8 @@ def test_worker_hands_settings_over_and_replicates(tmp_path: Path) -> None:
     worker.sync_storage()
     reported = [b for m, p, b in calls if p == "/storage-status"]
     assert reported and reported[0]["apply"]["ok"] is True and "replica" in reported[0]
+    assert reported[0]["mail_store"]["path"] == str(tmp_path)
+    assert reported[0]["mail_store"]["total_bytes"] > 0
     worker.sync_storage()  # unchanged status: not reported again
     assert len([p for _, p, _ in calls if p == "/storage-status"]) == 1
     (sdir / "status.json").write_text("garbage")

@@ -38,6 +38,9 @@ class AgentSettings(BaseSettings):
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")
+    # Carbonio's data (mail store, database, indexes): its file system is reported so that
+    # the interface compares the mail volume with the server's disk.
+    mail_store_path: Path = Path("/opt/zextras")
     # Disk guard: backups stop before the repository's file system gets too full. On a
     # local disk (shared with Carbonio), max(min_free_gb_local, min_free_percent_local % of
     # the disk) must stay free; on a network share, min_free_gb_network.

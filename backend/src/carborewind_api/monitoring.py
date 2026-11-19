@@ -61,6 +61,10 @@ class MonitoringSettings:
     integrity_sample: float = 0.1
     integrity_timezone: str = "UTC"
     integrity_last_slot: str | None = None
+    # A mailbox is "nearly full" from this share of its quota (0 = off), or, whatever its
+    # quota, from this size in GB (0 = off).
+    mailbox_alert_percent: int = 90
+    mailbox_alert_gb: float = 0.0
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> MonitoringSettings:
@@ -93,7 +97,11 @@ async def save_settings(db: AsyncSession, cfg: MonitoringSettings) -> None:
 async def record_storage(db: AsyncSession, agent: Agent, report: dict[str, Any]) -> None:
     hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
     rows = []
-    for target, place in (("primary", report), ("replica", report.get("replica"))):
+    for target, place in (
+        ("primary", report),
+        ("replica", report.get("replica")),
+        ("server", report.get("mail_store")),
+    ):
         if place and place.get("total_bytes") and place.get("free_bytes") is not None:
             rows.append(
                 {
@@ -214,8 +222,31 @@ def _covered() -> Any:
     )
 
 
+def nearly_full(percent: int, gb: float) -> Any:
+    """Condition on Account: over ``percent`` of its quota, or over ``gb`` GB."""
+    from sqlalchemy import Float, cast, false
+
+    conditions = []
+    if percent > 0:
+        conditions.append(
+            and_(
+                Account.quota_bytes > 0,
+                Account.used_bytes.is_not(None),
+                cast(Account.used_bytes, Float) * 100.0 / cast(Account.quota_bytes, Float)
+                >= percent,
+            )
+        )
+    if gb > 0:
+        conditions.append(Account.used_bytes >= int(gb * 1024**3))
+    return or_(*conditions) if conditions else false()
+
+
 async def accounts_at_risk(
-    db: AsyncSession, stale_hours: int, limit: int = 20
+    db: AsyncSession,
+    stale_hours: int,
+    limit: int = 20,
+    quota_percent: int = 0,
+    quota_gb: float = 0.0,
 ) -> dict[str, dict[str, Any]]:
     snap = aliased(Snapshot)
     last_ok = (
@@ -246,6 +277,10 @@ async def accounts_at_risk(
         "partial": (last_status == SnapshotStatus.PARTIAL, ["last_backup_status:in:partial"]),
         "failed": (_latest_backup_job() == JobStatus.FAILED, []),
         "no_policy": (~_covered(), ["has_policy:is:false"]),
+        "quota": (
+            nearly_full(quota_percent, quota_gb),
+            [f"usage_pct:ge:{quota_percent}"] if quota_percent and not quota_gb else [],
+        ),
     }
     out: dict[str, dict[str, Any]] = {}
     for key, (condition, filters) in categories.items():
@@ -391,10 +426,36 @@ async def enqueue_verify(db: AsyncSession, now: datetime) -> list[uuid.UUID]:
 
 
 async def periodic_alerts(db: AsyncSession, now: datetime) -> int:
-    """Copy 2 late, storage full soon (once a day each)."""
+    """Copy 2 late, storage full soon, mailboxes nearly full (once a day each)."""
     cfg = await load_settings(db)
     queued = 0
     day = f"{now:%Y-%m-%d}"
+    if cfg.mailbox_alert_percent or cfg.mailbox_alert_gb:
+        rows = (
+            await db.execute(
+                select(Account.email, Account.used_bytes, Account.quota_bytes)
+                .where(
+                    Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED]),
+                    nearly_full(cfg.mailbox_alert_percent, cfg.mailbox_alert_gb),
+                )
+                .order_by(Account.used_bytes.desc())
+            )
+        ).all()
+        if rows:
+            lines = [
+                f"- {email} : {(used or 0) / 1024**3:.1f} GB"
+                + (f" / {quota / 1024**3:.1f} GB ({(used or 0) * 100 // quota} %)" if quota else "")
+                for email, used, quota in rows[:200]
+            ]
+            if len(rows) > 200:
+                lines.append(f"… (+{len(rows) - 200})")
+            queued += await notify(
+                db,
+                "mailbox_quota",
+                dedup_key=f"mailbox_quota:{day}",
+                count=len(rows),
+                list="\n".join(lines),
+            )
     replica = await replica_status(db, cfg.replica_max_lag_hours)
     if replica and replica["late"]:
         queued += await notify(

@@ -124,6 +124,7 @@ class Worker:
         replica: Path | None = None,
         storage_every: int = 3,
         kek: bytes | None = None,
+        mail_store: Path | None = None,
         space: tuple[float, float, float] | None = None,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
@@ -139,6 +140,7 @@ class Worker:
         self._replica = replica
         self._storage_every = storage_every
         self._kek = kek
+        self._mail_store = mail_store
         # (GiB local, % local, GiB network); None = no disk guard (the service passes the
         # configured values, see AgentSettings.min_free_*).
         self._space = space
@@ -205,6 +207,8 @@ class Worker:
             return None
         report: dict[str, Any] = describe(self._repo.root)
         report["replica"] = describe(self._replica) if self._replica else None
+        if self._mail_store is not None and self._mail_store.exists():
+            report["mail_store"] = describe(self._mail_store)
         status_file = self._status_file()
         if status_file is not None and status_file.exists():
             try:

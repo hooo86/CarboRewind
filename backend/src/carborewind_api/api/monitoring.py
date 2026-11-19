@@ -34,6 +34,8 @@ class SettingsIn(BaseModel):
     integrity_cron: str = Field(default="30 3 * * 0", max_length=128)
     integrity_sample: float = Field(default=0.1, gt=0, le=1)
     integrity_timezone: str = Field(default="UTC", max_length=64)
+    mailbox_alert_percent: int = Field(default=90, ge=0, le=100)
+    mailbox_alert_gb: float = Field(default=0.0, ge=0, le=100_000)
 
     @field_validator("integrity_cron")
     @classmethod
@@ -105,7 +107,12 @@ async def overview(principal: Admin, db: DbSession, settings: AppSettings) -> Ov
     return Overview(
         settings=_settings_out(cfg),
         storage=await monitoring.storage_trend(db),
-        at_risk=await monitoring.accounts_at_risk(db, cfg.stale_hours),
+        at_risk=await monitoring.accounts_at_risk(
+            db,
+            cfg.stale_hours,
+            quota_percent=cfg.mailbox_alert_percent,
+            quota_gb=cfg.mailbox_alert_gb,
+        ),
         replica=await monitoring.replica_status(db, cfg.replica_max_lag_hours),
         integrity=await monitoring.integrity_status(db),
         next_integrity_at=nxt.astimezone(UTC) if nxt else None,
