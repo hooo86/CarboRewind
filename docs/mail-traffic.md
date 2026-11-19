@@ -25,7 +25,10 @@ destinataires par jour, spams émis par jour (0 = pas de limite). « Par heure �
 - **alerter et verrouiller** : en plus, l'agent verrouille la boîte dans Carbonio dans la minute
   (`zimbraAccountStatus = locked` : plus de webmail, d'IMAP ni d'envoi authentifié).
 
-Une alerte est créée une seule fois par boîte, mesure et période. Les **boîtes exemptées** (listes
+Une alerte est créée une seule fois par boîte, mesure et période. Garde-fous : un compte
+**administrateur** n'est jamais verrouillé automatiquement (alerte seulement), le compte technique
+utilisé par l'agent jamais, et au plus 3 verrouillages automatiques par heure (réglable) ; au-delà,
+alerte seulement, pour éviter une cascade en cas d'erreur. Les **boîtes exemptées** (listes
 de diffusion, comptes applicatifs) ne sont jamais limitées. Une boîte peut aussi être verrouillée ou
 déverrouillée à la main ; le déverrouillage n'est jamais automatique : changez d'abord le mot de
 passe si la boîte a été piratée. Les messages déjà en file d'attente avant le verrouillage peuvent

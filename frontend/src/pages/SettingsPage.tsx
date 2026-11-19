@@ -22,6 +22,9 @@ const EVENTS = [
   "daily_digest",
   "migration_done",
   "mail_limit",
+  "integrity_failed",
+  "replica_lag",
+  "storage_full",
 ];
 
 type Form = Omit<

@@ -13,6 +13,8 @@ import type {
   Job,
   JobStatus,
   MailLimits,
+  MonitoringOverview,
+  MonitoringSettings,
   MailOverview,
   MailPeriod,
   MigrationBatch,
@@ -200,6 +202,16 @@ export const api = {
     request<undefined>(
       "POST",
       `/api/migrations/batches/${id}/forget-passwords`,
+    ),
+  monitoring: () =>
+    request<MonitoringOverview>("GET", "/api/monitoring/overview"),
+  saveMonitoringSettings: (body: MonitoringSettings) =>
+    request<MonitoringSettings>("PUT", "/api/monitoring/settings", body),
+  verifyNow: (target: "primary" | "replica", sample: number) =>
+    request<{ queued: boolean; job_id: string | null }>(
+      "POST",
+      "/api/monitoring/verify",
+      { target, sample },
     ),
   mailOverview: (period: MailPeriod) =>
     request<MailOverview>("GET", "/api/mail/overview", undefined, { period }),

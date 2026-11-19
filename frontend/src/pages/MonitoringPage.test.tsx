@@ -1,0 +1,240 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { App } from "../App";
+import type { MonitoringOverview } from "../api/types";
+import i18n from "../i18n";
+import { fakeApi, user } from "../test/fakeApi";
+
+const GIB = 1024 ** 3;
+const now = Date.now();
+const iso = (ms: number) => new Date(ms).toISOString();
+
+const overview: MonitoringOverview = {
+  settings: {
+    stale_hours: 24,
+    replica_max_lag_hours: 24,
+    integrity_enabled: true,
+    integrity_cron: "30 3 * * 0",
+    integrity_sample: 0.1,
+    integrity_timezone: "UTC",
+  },
+  storage: [
+    {
+      agent: "mail",
+      target: "primary",
+      total_bytes: 100 * GIB,
+      free_bytes: 20 * GIB,
+      used_bytes: 80 * GIB,
+      days_until_full: 8.4,
+      growth_per_day: 2 * GIB,
+      points: [
+        { at: iso(now - 86400000), used_bytes: 78 * GIB },
+        { at: iso(now), used_bytes: 80 * GIB },
+      ],
+    },
+    {
+      agent: "mail",
+      target: "replica",
+      total_bytes: 200 * GIB,
+      free_bytes: 150 * GIB,
+      used_bytes: 50 * GIB,
+      days_until_full: null,
+      growth_per_day: null,
+      points: [{ at: iso(now), used_bytes: 50 * GIB }],
+    },
+  ],
+  at_risk: {
+    never: {
+      count: 2,
+      filters: ["last_backup_at:not_set"],
+      accounts: [
+        { id: "a1", email: "new1@lnhc.dz", last_backup_at: null },
+        { id: "a2", email: "new2@lnhc.dz", last_backup_at: null },
+      ],
+    },
+    stale: { count: 0, filters: ["last_backup_at:older_days:1"], accounts: [] },
+    failed: {
+      count: 1,
+      filters: [],
+      accounts: [{ id: "a3", email: "x@lnhc.dz", last_backup_at: null }],
+    },
+    partial: {
+      count: 0,
+      filters: ["last_backup_status:in:partial"],
+      accounts: [],
+    },
+    no_policy: { count: 0, filters: ["has_policy:is:false"], accounts: [] },
+  },
+  replica: {
+    last_success_at: iso(now - 3 * 86400000),
+    behind: true,
+    lag_seconds: 3 * 86400,
+    max_lag_hours: 24,
+    late: true,
+    last_status: "failed",
+    last_error: "copy 02 is not mounted",
+  },
+  integrity: {
+    primary: {
+      job_id: "j1",
+      status: "succeeded",
+      created_at: iso(now),
+      finished_at: iso(now),
+      sample: 0.1,
+      progress: {
+        checked: 90,
+        corrupted_count: 1,
+        manifests_checked: 10,
+        manifests_corrupted: [],
+      },
+      error: null,
+    },
+    replica: null,
+  },
+  next_integrity_at: iso(now + 86400000),
+  jobs_failed_24h: { backup: 2, replicate: 1 },
+  agents: [
+    {
+      name: "mail",
+      version: "0.1.0",
+      last_heartbeat_at: iso(now),
+      cert_not_after: iso(now + 10 * 86400000),
+      mail_reported_at: iso(now),
+    },
+  ],
+  metrics_token_configured: true,
+};
+
+function open(role = user("super_admin"), extra = {}) {
+  const calls = fakeApi({
+    "GET /api/auth/me": role,
+    "GET /api/monitoring/overview": overview,
+    "PUT /api/monitoring/settings": (c: { body: unknown }) => ({
+      body: c.body,
+    }),
+    "POST /api/monitoring/verify": (c: { body: unknown }) => ({
+      status: 202,
+      body:
+        (c.body as { target: string }).target === "replica"
+          ? { queued: false, job_id: null }
+          : { queued: true, job_id: "v1" },
+    }),
+    ...extra,
+  });
+  window.history.pushState({}, "", "/monitoring");
+  render(<App />);
+  return calls;
+}
+
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe("monitoring page", () => {
+  it("summarises health, storage forecast, risks, copy 2 and integrity", async () => {
+    open();
+    const tiles = await screen.findByRole("region", { name: "Overall health" });
+    expect(screen.getByRole("link", { name: "Monitoring" })).toHaveAttribute(
+      "href",
+      "/monitoring",
+    );
+    expect(within(tiles).getByText("Days before full")).toBeInTheDocument();
+    expect(within(tiles).getByText("3")).toBeInTheDocument(); // failed jobs
+    expect(within(tiles).getByText("3 d")).toBeInTheDocument(); // copy 2 lag
+    expect(screen.getByText(/full in about 8 days/)).toBeInTheDocument();
+    expect(screen.getByText(/no growth measured/)).toBeInTheDocument();
+    expect(screen.getByText(/Not enough measurements/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Copy 1/ })).toBeInTheDocument();
+    const never = screen.getByRole("link", { name: "2" });
+    expect(never).toHaveAttribute(
+      "href",
+      "/accounts?f=last_backup_at%3Anot_set",
+    );
+    expect(
+      screen.getByRole("link", { name: "new1@lnhc.dz" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("late (> 24 h)")).toBeInTheDocument();
+    expect(screen.getByText("copy 02 is not mounted")).toBeInTheDocument();
+    expect(screen.getByText("1 corrupted")).toBeInTheDocument();
+    expect(screen.getByText(/never checked/)).toBeInTheDocument();
+    expect(screen.getByText(/Prometheus metrics: https/)).toBeInTheDocument();
+  });
+
+  it("runs checks and edits the settings", async () => {
+    const calls = open();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Check copy 1 now (full)" }),
+    );
+    expect(await screen.findByText("Check started.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check copy 2 now" }));
+    expect(await screen.findByText(/already pending/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Monitoring settings" }),
+    );
+    fireEvent.change(screen.getByLabelText(/Share of the files checked/), {
+      target: { value: "25" },
+    });
+    fireEvent.change(screen.getByLabelText(/Account at risk without backup/), {
+      target: { value: "48" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
+        ...overview.settings,
+        integrity_sample: 0.25,
+        stale_hours: 48,
+      }),
+    );
+  });
+
+  it("handles an empty install and errors", async () => {
+    open(user("super_admin"), {
+      "GET /api/monitoring/overview": {
+        ...overview,
+        storage: [],
+        replica: null,
+        integrity: { primary: null, replica: null },
+        jobs_failed_24h: {},
+        next_integrity_at: null,
+        metrics_token_configured: false,
+        agents: [
+          {
+            name: "mail",
+            version: null,
+            last_heartbeat_at: null,
+            cert_not_after: null,
+            mail_reported_at: null,
+          },
+        ],
+      },
+      "POST /api/monitoring/verify": { status: 500, body: { detail: "boom" } },
+    });
+    expect(await screen.findByText(/No space measurement/)).toBeInTheDocument();
+    expect(screen.getByText(/No copy 2 configured/)).toBeInTheDocument();
+    expect(screen.getByText("No scheduled check.")).toBeInTheDocument();
+    expect(screen.getByText(/metrics not exposed/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check copy 1 now (full)" }),
+    );
+    expect(await screen.findByText("Error: boom")).toBeInTheDocument();
+  });
+
+  it("is reserved to super administrators", async () => {
+    open(user("viewer"));
+    expect(
+      await screen.findByText("Super-administrators only."),
+    ).toBeInTheDocument();
+  });
+});

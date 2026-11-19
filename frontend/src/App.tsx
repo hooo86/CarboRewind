@@ -9,6 +9,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MailTrafficPage } from "./pages/MailTrafficPage";
+import { MonitoringPage } from "./pages/MonitoringPage";
 import { MigrationBatchPage } from "./pages/MigrationBatchPage";
 import { MigrationsPage } from "./pages/MigrationsPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
@@ -35,6 +36,7 @@ export function AppRoutes() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="migrations" element={<MigrationsPage />} />
         <Route path="mail" element={<MailTrafficPage />} />
+        <Route path="monitoring" element={<MonitoringPage />} />
         <Route path="migrations/:id" element={<MigrationBatchPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

@@ -523,3 +523,72 @@ export interface MailOverview {
   limits: MailLimits;
   agents: { agent: string; log?: string | null; reported_at?: string }[];
 }
+
+// ------------------------------------------------------------------ monitoring
+
+export interface MonitoringSettings {
+  stale_hours: number;
+  replica_max_lag_hours: number;
+  integrity_enabled: boolean;
+  integrity_cron: string;
+  integrity_sample: number;
+  integrity_timezone: string;
+}
+
+export interface StorageSeries {
+  agent: string;
+  target: "primary" | "replica";
+  total_bytes: number;
+  free_bytes: number;
+  used_bytes: number;
+  days_until_full: number | null;
+  growth_per_day: number | null;
+  points: { at: string; used_bytes: number }[];
+}
+
+export interface RiskCategory {
+  count: number;
+  filters: string[];
+  accounts: { id: string; email: string; last_backup_at: string | null }[];
+}
+
+export interface IntegrityCheck {
+  job_id: string;
+  status: JobStatus;
+  created_at: string;
+  finished_at: string | null;
+  sample: number | null;
+  progress: {
+    checked?: number;
+    corrupted_count?: number;
+    manifests_checked?: number;
+    manifests_corrupted?: string[];
+  } | null;
+  error: string | null;
+}
+
+export interface MonitoringOverview {
+  settings: MonitoringSettings;
+  storage: StorageSeries[];
+  at_risk: Record<string, RiskCategory>;
+  replica: {
+    last_success_at: string | null;
+    behind: boolean;
+    lag_seconds: number;
+    max_lag_hours: number;
+    late: boolean;
+    last_status: string | null;
+    last_error: string | null;
+  } | null;
+  integrity: { primary: IntegrityCheck | null; replica: IntegrityCheck | null };
+  next_integrity_at: string | null;
+  jobs_failed_24h: Record<string, number>;
+  agents: {
+    name: string;
+    version: string | null;
+    last_heartbeat_at: string | null;
+    cert_not_after: string | null;
+    mail_reported_at: string | null;
+  }[];
+  metrics_token_configured: boolean;
+}

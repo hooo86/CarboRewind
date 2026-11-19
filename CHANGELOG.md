@@ -6,6 +6,15 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Supervision : évolution du stockage (copie 1 et 2) et prévision de saturation, comptes à risque,
+  retard de la copie 2, vérification d'intégrité planifiée (job `verify`, échantillon ou complète,
+  copie 1 et 2), agents ; alertes e-mail associées ; métriques Prometheus métier sur `/metrics`
+  (jeton `CARBOREWIND_METRICS_TOKEN`), règles d'alerte et tableau de bord Grafana dans
+  `deploy/monitoring/`. Migration 0011. Voir `docs/monitoring.md`.
+- Garde-fous : arrêt des sauvegardes avant de remplir le disque (local : max(20 Gio, 15 %) ; partage :
+  2 Gio), copie 2 qui ne remplit pas son partage ; verrouillages automatiques jamais sur un compte
+  administrateur ni sur le compte technique de CarboRewind, plafonnés par heure ; mesure de la taille
+  des boîtes limitée à 200 appels par inventaire.
 - Trafic mail : messages et destinataires envoyés par boîte (par heure et par jour), spams reçus,
   expéditeurs de spams (avec IP), spams émis par une boîte locale, lus dans le journal du MTA par
   l'agent ; limites d'envoi avec alerte e-mail ou verrouillage automatique de la boîte, exemptions,
