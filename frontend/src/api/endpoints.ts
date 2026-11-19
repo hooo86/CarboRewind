@@ -7,6 +7,7 @@ import type {
   ArchiveRun,
   ArchiveSearch,
   ArchiveSummary,
+  LegalHold,
   OpenedMessage,
   AccountDetail,
   AccountFacets,
@@ -309,6 +310,16 @@ export const api = {
       mode,
       target_account_id: targetAccountId,
     }),
+  legalHolds: () => request<LegalHold[]>("GET", "/api/archives/legal-holds"),
+  startLegalHold: (accountId: string, note: string) =>
+    request<Job>("POST", `/api/archives/accounts/${accountId}/legal-hold`, {
+      note,
+    }),
+  releaseLegalHold: (accountId: string) =>
+    request<undefined>(
+      "DELETE",
+      `/api/archives/accounts/${accountId}/legal-hold`,
+    ),
   monitoring: () =>
     request<MonitoringOverview>("GET", "/api/monitoring/overview"),
   saveMonitoringSettings: (body: MonitoringSettings) =>

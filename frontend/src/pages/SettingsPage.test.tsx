@@ -62,7 +62,11 @@ const storage: StorageSettings = {
   secret_key_configured: true,
 };
 
-function open(role = user("super_admin"), extra: Record<string, unknown> = {}) {
+function open(
+  role = user("super_admin"),
+  extra: Record<string, unknown> = {},
+  path = "/settings",
+) {
   let saved: Record<string, unknown> | undefined;
   const calls = fakeApi({
     "GET /api/auth/me": role,
@@ -119,7 +123,7 @@ function open(role = user("super_admin"), extra: Record<string, unknown> = {}) {
     },
     ...extra,
   });
-  window.history.pushState({}, "", "/settings");
+  window.history.pushState({}, "", path);
   render(<App />);
   return { calls, saved: () => saved };
 }
@@ -283,6 +287,7 @@ function last(list: HTMLElement[]): HTMLElement {
 describe("storage settings", () => {
   it("shows the NAS, its status, and saves a copy 02", async () => {
     const { calls } = open();
+    fireEvent.click(await screen.findByRole("tab", { name: "Storage" }));
     const section = await screen
       .findByRole("region", { name: "Backup storage" })
       .catch(() => screen.findByText("Backup storage"));
@@ -343,7 +348,7 @@ describe("storage settings", () => {
   });
 
   it("warns before starting an empty repository on the local disk", async () => {
-    const { calls } = open();
+    const { calls } = open(user("super_admin"), {}, "/settings?tab=storage");
     await screen.findByDisplayValue("//nas1.lnhc.dz/backups");
     fireEvent.click(screen.getByLabelText("Local disk of the Carbonio server"));
     fireEvent.click(screen.getByLabelText(/Copy the current repository/));

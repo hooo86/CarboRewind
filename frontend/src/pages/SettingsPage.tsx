@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/endpoints";
 import type { NotificationSettings, OutboxEntry } from "../api/types";
@@ -402,6 +403,9 @@ function Outbox({ refresh }: { refresh: number }) {
   );
 }
 
+const TABS = ["notifications", "storage", "other"] as const;
+type Tab = (typeof TABS)[number];
+
 export function SettingsPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
@@ -411,6 +415,7 @@ export function SettingsPage() {
   );
   const [current, setCurrent] = useState<NotificationSettings | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [params, setParams] = useSearchParams();
   if (!canManageSettings) {
     return (
       <p role="alert" className="alert error">
@@ -418,22 +423,64 @@ export function SettingsPage() {
       </p>
     );
   }
+  const tab: Tab = TABS.includes(params.get("tab") as Tab)
+    ? (params.get("tab") as Tab)
+    : "notifications";
   return (
     <>
       <h1>{t("settings.title")}</h1>
-      <LoadView load={settings} reload={reload}>
-        {(s) => (
-          <NotificationsForm
-            initial={current ?? s}
-            onSaved={(saved) => {
-              setCurrent(saved);
-              setRefresh((n) => n + 1);
-            }}
-          />
-        )}
-      </LoadView>
-      <Outbox refresh={refresh} />
-      <StorageSettingsSection />
+      <div className="tabs" role="tablist" aria-label={t("settings.title")}>
+        {TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            className={tab === name ? "" : "secondary"}
+            onClick={() =>
+              setParams(name === "notifications" ? {} : { tab: name })
+            }
+          >
+            {t(`settings.tabs.${name}`)}
+          </button>
+        ))}
+      </div>
+      {tab === "notifications" && (
+        <>
+          <LoadView load={settings} reload={reload}>
+            {(s) => (
+              <NotificationsForm
+                initial={current ?? s}
+                onSaved={(saved) => {
+                  setCurrent(saved);
+                  setRefresh((n) => n + 1);
+                }}
+              />
+            )}
+          </LoadView>
+          <Outbox refresh={refresh} />
+        </>
+      )}
+      {tab === "storage" && <StorageSettingsSection />}
+      {tab === "other" && (
+        <section className="card stack">
+          <p className="muted">{t("settings.otherHelp")}</p>
+          <ul className="links">
+            <li>
+              <Link to="/monitoring">{t("settings.otherMonitoring")}</Link>
+            </li>
+            <li>
+              <Link to="/mail">{t("settings.otherMail")}</Link>
+            </li>
+            <li>
+              <Link to="/archives">{t("settings.otherArchives")}</Link>
+            </li>
+            <li>
+              <Link to="/users">{t("settings.otherUsers")}</Link>
+            </li>
+          </ul>
+        </section>
+      )}
     </>
   );
 }

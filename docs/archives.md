@@ -73,6 +73,23 @@ compte est traité.
 
 Chaque lecture et chaque téléchargement sont audités (`archive.read`, `archive.download`).
 
+## Conservation légale
+
+**Archives → Conservation légale** (super-administrateurs) archive **toute une boîte** pour la
+conserver, par exemple pour un dossier juridique ou une réquisition :
+
+* tous les messages de tous les dossiers sont copiés, **y compris** Corbeille, Spam et Brouillons ;
+  rien n'est retiré de la boîte ;
+* tous les messages déjà archivés de ce compte passent aussi sous conservation ;
+* la durée de conservation des politiques ne les supprime **jamais** tant que la conservation
+  n'est pas levée (bouton « Lever la conservation ») ;
+* le motif saisi est enregistré dans le journal d'audit (`archive.legal_hold`), comme la levée
+  (`archive.legal_hold.release`) ;
+* relancez l'archivage de la boîte pour prendre en compte les messages arrivés depuis (les
+  messages déjà copiés ne sont pas relus). Une passe traite au plus 200 000 messages.
+
+La recherche peut filtrer les messages « sous conservation légale ».
+
 ## Conservation et purge
 
 Avec une conservation de N jours, les entrées d'index plus anciennes sont supprimées (jamais

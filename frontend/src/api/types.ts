@@ -711,6 +711,8 @@ export interface ArchiveSummary {
   removed_bytes: number;
   accounts: number;
   last_archived_at: string | null;
+  legal_hold_messages?: number;
+  legal_hold_accounts?: number;
 }
 
 export interface ArchivedMessage {
@@ -726,6 +728,16 @@ export interface ArchivedMessage {
   has_attachments: boolean;
   archived_at: string;
   removed_at: string | null;
+  legal_hold?: boolean;
+}
+
+export interface LegalHold {
+  account_id: string;
+  account_email: string;
+  messages: number;
+  bytes: number;
+  last_archived_at: string | null;
+  pending: boolean;
 }
 
 export interface ArchiveSearch {
@@ -737,6 +749,7 @@ export interface ArchiveSearch {
   date_from?: string;
   date_to?: string;
   removed?: string;
+  legal_hold?: string;
   limit?: number;
   offset?: number;
 }

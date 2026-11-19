@@ -215,8 +215,11 @@ function SearchTab() {
     event.preventDefault();
     setOffset(0);
     setSelected(new Set());
+    const legal = form.removed === "legal";
     setSearch({
       ...form,
+      removed: legal ? undefined : form.removed,
+      legal_hold: legal ? "true" : undefined,
       date_from: form.date_from ? `${form.date_from}T00:00:00Z` : undefined,
       date_to: form.date_to ? `${form.date_to}T23:59:59Z` : undefined,
     });
@@ -323,6 +326,7 @@ function SearchTab() {
               <option value="">{t("archives.whereAll")}</option>
               <option value="true">{t("archives.whereRemoved")}</option>
               <option value="false">{t("archives.whereKept")}</option>
+              <option value="legal">{t("archives.whereLegal")}</option>
             </select>
           </label>
         </div>
@@ -404,6 +408,11 @@ function SearchTab() {
                                 : "archives.inMailbox",
                             )}
                           </span>
+                          {m.legal_hold && (
+                            <span className="badge warn">
+                              {t("archives.legalBadge")}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -939,12 +948,145 @@ function PoliciesTab() {
   );
 }
 
+// ------------------------------------------------------------------ legal hold
+
+function LegalHoldTab() {
+  const { t } = useTranslation();
+  const [load, reload] = useLoad(() => api.legalHolds(), [], 15000);
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
+
+  async function start(event: FormEvent) {
+    event.preventDefault();
+    setNotice(null);
+    try {
+      const [id] = await resolveEmails(email);
+      if (!id) throw new Error(email);
+      await api.startLegalHold(id, note);
+      setNotice({
+        kind: "ok",
+        text: t("archives.legalQueued", { email: email.trim() }),
+      });
+      setEmail("");
+      setNote("");
+      reload();
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        text: t("error", { message: errorMessage(err) }),
+      });
+    }
+  }
+
+  async function release(accountId: string, address: string) {
+    if (!window.confirm(t("archives.legalConfirmRelease", { email: address })))
+      return;
+    setNotice(null);
+    try {
+      await api.releaseLegalHold(accountId);
+      setNotice({ kind: "ok", text: t("archives.legalReleased") });
+      reload();
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        text: t("error", { message: errorMessage(err) }),
+      });
+    }
+  }
+
+  return (
+    <div className="stack">
+      <form
+        className="card stack"
+        onSubmit={(e) => void start(e)}
+        aria-label={t("archives.legalTitle")}
+      >
+        <h2>{t("archives.legalTitle")}</h2>
+        <p className="muted">{t("archives.legalHelp")}</p>
+        <div className="row">
+          <label className="grow">
+            {t("archives.legalAccount")}
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
+          <label className="grow">
+            {t("archives.legalNote")}
+            <input
+              maxLength={500}
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="actions">
+          <button type="submit">{t("archives.legalStart")}</button>
+        </div>
+      </form>
+      <NoticeBar notice={notice} />
+      <LoadView load={load} reload={reload}>
+        {(holds) =>
+          holds.length === 0 ? (
+            <p className="muted">{t("archives.legalNone")}</p>
+          ) : (
+            <div className="table-wrap">
+              <table aria-label={t("archives.legalList")}>
+                <thead>
+                  <tr>
+                    <th>{t("archives.account")}</th>
+                    <th>{t("archives.messages")}</th>
+                    <th>{t("archives.volume")}</th>
+                    <th>{t("archives.legalLast")}</th>
+                    <th>{t("archives.actions")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holds.map((h) => (
+                    <tr key={h.account_id}>
+                      <td>
+                        {h.account_email}{" "}
+                        {h.pending && (
+                          <span className="badge info">
+                            {t("archives.legalPending")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="num">{h.messages}</td>
+                      <td className="num">{formatBytes(h.bytes)}</td>
+                      <td>{formatDate(h.last_archived_at)}</td>
+                      <td className="actions">
+                        <button
+                          type="button"
+                          className="secondary small danger"
+                          onClick={() =>
+                            void release(h.account_id, h.account_email)
+                          }
+                        >
+                          {t("archives.legalRelease")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+      </LoadView>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ page
 
 export function ArchivesPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
-  const [tab, setTab] = useState<"search" | "policies">("search");
+  const [tab, setTab] = useState<"search" | "policies" | "legal">("search");
   const [summary] = useLoad(() => api.archiveSummary(), []);
 
   return (
@@ -970,6 +1112,10 @@ export function ArchivesPage() {
               <span className="tile-value">{s.accounts}</span>
               <span className="tile-label">{t("archives.accounts")}</span>
             </div>
+            <div className={`tile ${s.legal_hold_accounts ? "warn" : ""}`}>
+              <span className="tile-value">{s.legal_hold_accounts ?? 0}</span>
+              <span className="tile-label">{t("archives.legalTile")}</span>
+            </div>
           </section>
         )}
       </LoadView>
@@ -993,10 +1139,21 @@ export function ArchivesPage() {
           >
             {t("archives.policies")}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "legal"}
+            className={tab === "legal" ? "" : "secondary"}
+            onClick={() => setTab("legal")}
+          >
+            {t("archives.legalTitle")}
+          </button>
         </div>
       )}
       {tab === "policies" && canManageSettings ? (
         <PoliciesTab />
+      ) : tab === "legal" && canManageSettings ? (
+        <LegalHoldTab />
       ) : (
         <SearchTab />
       )}

@@ -260,4 +260,28 @@ describe("jobs page", () => {
       await screen.findByRole("heading", { name: "Dashboard" }),
     ).toBeInTheDocument();
   });
+
+  it("switches to the light theme and remembers it", async () => {
+    fakeApi({
+      "GET /api/auth/me": user("viewer"),
+      "GET /api/dashboard": {
+        ...dashboard,
+        agents_active: null,
+        last_agent_heartbeat: null,
+      },
+      "GET /api/jobs": page([]),
+    });
+    renderAt("/");
+    fireEvent.change(await screen.findByLabelText("Theme"), {
+      target: { value: "light" },
+    });
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("carborewind.theme")).toBe("light");
+    fireEvent.change(screen.getByLabelText("Theme"), {
+      target: { value: "system" },
+    });
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem("carborewind.theme")).toBeNull();
+    expect(screen.getByRole("button", { name: /Backups/ })).toBeInTheDocument();
+  });
 });

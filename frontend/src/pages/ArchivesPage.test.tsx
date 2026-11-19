@@ -297,4 +297,76 @@ describe("archives page", () => {
       screen.queryByRole("tab", { name: "Archive policies" }),
     ).not.toBeInTheDocument();
   });
+
+  it("puts a mailbox under legal hold and releases it", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const calls = open(user("super_admin"), {
+      "GET /api/archives/legal-holds": [
+        {
+          account_id: "a1",
+          account_email: "ana@lnhc.dz",
+          messages: 1520,
+          bytes: 3 * 1024 ** 3,
+          last_archived_at: "2026-11-19T10:00:00Z",
+          pending: true,
+        },
+      ],
+      "POST /api/archives/accounts/b1/legal-hold": {
+        status: 202,
+        body: { id: "h1", kind: "archive", status: "queued" },
+      },
+      "DELETE /api/archives/accounts/a1/legal-hold": {
+        status: 204,
+        body: undefined,
+      },
+    });
+    fireEvent.click(await screen.findByRole("tab", { name: "Legal hold" }));
+    const list = await screen.findByRole("table", {
+      name: "Mailboxes under legal hold",
+    });
+    expect(within(list).getByText("ana@lnhc.dz")).toBeInTheDocument();
+    expect(within(list).getByText("running")).toBeInTheDocument();
+    expect(within(list).getByText("3 GB")).toBeInTheDocument();
+
+    const form = screen.getByRole("form", { name: "Legal hold" });
+    fireEvent.change(within(form).getByLabelText("Mailbox address"), {
+      target: { value: "ben@lnhc.dz" },
+    });
+    fireEvent.change(within(form).getByLabelText(/Reason/), {
+      target: { value: "Dossier 2026-17" },
+    });
+    fireEvent.click(
+      within(form).getByRole("button", { name: "Archive the mailbox" }),
+    );
+    expect(
+      await screen.findByText(/Archiving of ben@lnhc.dz started/),
+    ).toBeInTheDocument();
+    expect(
+      calls.find((c) => c.url.endsWith("/api/archives/accounts/b1/legal-hold"))
+        ?.body,
+    ).toEqual({ note: "Dossier 2026-17" });
+
+    fireEvent.click(
+      within(list).getByRole("button", { name: "Release the hold" }),
+    );
+    expect(await screen.findByText("Hold released.")).toBeInTheDocument();
+  });
+
+  it("filters the messages under legal hold", async () => {
+    const calls = open();
+    await screen.findByText("2 messages");
+    fireEvent.change(screen.getByLabelText("Where"), {
+      target: { value: "legal" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.url.includes("legal_hold=true") &&
+            !c.url.includes("removed=legal"),
+        ),
+      ).toBe(true),
+    );
+  });
 });
