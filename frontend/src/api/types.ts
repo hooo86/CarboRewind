@@ -32,12 +32,30 @@ export interface User {
   email: string | null;
   auth_source: "local" | "ldap" | "oidc";
   roles: RoleGrant[];
+  is_active?: boolean;
+  locked_until?: string | null;
+  last_login_at?: string | null;
+  totp_enabled?: boolean;
+  failed_logins?: number;
+  created_at?: string | null;
+  /** /api/auth/me only. */
+  totp_enrollment_required?: boolean;
+  recovery_codes_left?: number;
 }
 
 export interface SessionInfo {
   user: User;
   csrf_token: string;
+  totp_enrollment_required?: boolean;
 }
+
+export interface TotpSetup {
+  secret: string;
+  uri: string;
+  qr_svg: string;
+}
+
+export type TwoFactorPolicy = "none" | "admins" | "all";
 
 export interface Health {
   status: string;

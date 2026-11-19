@@ -31,6 +31,7 @@ import type {
   Policy,
   PolicyInput,
   RestoreRequest,
+  Role,
   SessionInfo,
   Snapshot,
   SnapshotFolder,
@@ -38,13 +39,71 @@ import type {
   StartResult,
   StorageSettings,
   StorageSettingsInput,
+  TotpSetup,
+  TwoFactorPolicy,
   User,
 } from "./types";
 
 export const api = {
   health: () => request<Health>("GET", "/healthz"),
-  login: (username: string, password: string) =>
-    request<SessionInfo>("POST", "/api/auth/login", { username, password }),
+  login: (username: string, password: string, otp?: string) =>
+    request<SessionInfo>(
+      "POST",
+      "/api/auth/login",
+      otp ? { username, password, otp } : { username, password },
+    ),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<undefined>("POST", "/api/auth/password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  totpSetup: () => request<TotpSetup>("POST", "/api/auth/2fa/setup"),
+  totpEnable: (code: string) =>
+    request<{ recovery_codes: string[] }>("POST", "/api/auth/2fa/enable", {
+      code,
+    }),
+  totpDisable: (code: string) =>
+    request<undefined>("POST", "/api/auth/2fa/disable", { code }),
+  totpRecoveryCodes: (code: string) =>
+    request<{ recovery_codes: string[] }>(
+      "POST",
+      "/api/auth/2fa/recovery-codes",
+      { code },
+    ),
+  users: () =>
+    request<Page<User>>("GET", "/api/users", undefined, { limit: 200 }),
+  createUser: (body: {
+    username: string;
+    auth_source: "local" | "ldap";
+    password?: string | null;
+    display_name?: string | null;
+    email?: string | null;
+  }) => request<User>("POST", "/api/users", body),
+  updateUser: (
+    id: string,
+    body: {
+      is_active?: boolean;
+      display_name?: string | null;
+      email?: string | null;
+      unlock?: boolean;
+      password?: string;
+      reset_2fa?: boolean;
+    },
+  ) => request<User>("PATCH", `/api/users/${id}`, body),
+  deleteUser: (id: string) => request<undefined>("DELETE", `/api/users/${id}`),
+  grantRole: (id: string, role: Role, domainId: string | null) =>
+    request<User>("POST", `/api/users/${id}/roles`, {
+      role,
+      domain_id: domainId,
+    }),
+  revokeRole: (id: string, assignmentId: string) =>
+    request<User>("DELETE", `/api/users/${id}/roles/${assignmentId}`),
+  securityPolicy: () =>
+    request<{ require_2fa: TwoFactorPolicy }>("GET", "/api/settings/security"),
+  saveSecurityPolicy: (requireTwoFactor: TwoFactorPolicy) =>
+    request<{ require_2fa: TwoFactorPolicy }>("PUT", "/api/settings/security", {
+      require_2fa: requireTwoFactor,
+    }),
   logout: () => request<undefined>("POST", "/api/auth/logout"),
   me: () => request<User>("GET", "/api/auth/me"),
   dashboard: () => request<Dashboard>("GET", "/api/dashboard"),

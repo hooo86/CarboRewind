@@ -6,6 +6,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Logo (favicon, menu, page de connexion, README).
+- Double authentification TOTP : enrôlement par QR code, codes de secours, connexion en deux étapes,
+  politique « obligatoire pour les administrateurs / pour tous » ; page **Mon compte** (mot de passe,
+  2FA). Migration 0012.
+- Gestion des comptes d'accès dans l'interface : création (local/LDAP), rôles par domaine,
+  réinitialisation du mot de passe et de la 2FA, déblocage, désactivation, suppression.
 - Supervision : évolution du stockage (copie 1 et 2) et prévision de saturation, comptes à risque,
   retard de la copie 2, vérification d'intégrité planifiée (job `verify`, échantillon ou complète,
   copie 1 et 2), agents ; alertes e-mail associées ; métriques Prometheus métier sur `/metrics`

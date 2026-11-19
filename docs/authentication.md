@@ -105,3 +105,38 @@ Chaque tentative est inscrite dans `audit_events`, chaînée par hash, avec acti
 | GET | `/api/auth/me` | session | — |
 
 Le détail des schémas est dans OpenAPI : `/api/docs`.
+
+## Double authentification (TOTP)
+
+Chaque compte (local ou LDAP) peut activer un second facteur dans **Mon compte** (clic sur son nom
+en bas du menu) avec une application d'authentification (Google/Microsoft Authenticator,
+FreeOTP, Aegis, 1Password…) :
+
+1. « Activer la double authentification » → QR code (ou clé à saisir) ;
+2. premier code à 6 chiffres pour confirmer ;
+3. **10 codes de secours** à usage unique, affichés une seule fois (téléphone perdu).
+
+Connexion : identifiant + mot de passe, puis le code (ou un code de secours). Un code n'est jamais
+accepté deux fois ; une dérive d'horloge de ±30 s est tolérée. Un mauvais code compte comme un échec
+de connexion (verrouillage progressif), et le compteur n'est remis à zéro qu'après les deux facteurs.
+Le secret est chiffré en base avec `CARBOREWIND_SECRET_KEY` ; seuls les condensats SHA-256 des codes
+de secours sont conservés.
+
+**Politique** (Comptes d'accès → Politique de sécurité) : double authentification facultative,
+obligatoire pour les administrateurs (super-administrateurs et administrateurs de domaine), ou pour
+tous. Une personne concernée qui ne l'a pas encore activée est dirigée vers l'activation et ne peut
+rien faire d'autre (seul `/api/auth/*` répond) tant qu'elle ne l'a pas fait.
+
+**Téléphone perdu** : utiliser un code de secours, ou demander à un super-administrateur
+« Réinitialiser la double authentification » sur le compte ; si c'est le dernier super-administrateur,
+`carborewind-api set-password` ne suffit pas : réactiver l'accès en base
+(`UPDATE users SET totp_enabled=false, totp_secret_enc=NULL WHERE username='…'`).
+
+## Comptes d'accès
+
+Menu **Comptes d'accès** (super-administrateurs) : création de comptes locaux ou LDAP (un compte LDAP
+créé ici reçoit ses rôles avant sa première connexion), nom et e-mail, rôles par domaine ou globaux,
+réinitialisation du mot de passe (sessions fermées), réinitialisation de la double authentification,
+déblocage après trop d'échecs, désactivation et suppression (jamais soi-même ni le dernier
+super-administrateur actif ; l'historique d'audit est conservé). Chacun change son propre mot de passe
+dans **Mon compte** (ses autres sessions sont fermées).

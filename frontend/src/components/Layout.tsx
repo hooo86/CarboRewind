@@ -1,8 +1,9 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "../auth/AuthContext";
 import { setLanguage, type Language } from "../i18n";
+import { Logo } from "./Logo";
 
 export function LanguageSelect() {
   const { t, i18n } = useTranslation();
@@ -23,11 +24,19 @@ export function LanguageSelect() {
 
 export function Layout() {
   const { t } = useTranslation();
-  const { user, logout, canManageSettings, canManageMigrations } = useAuth();
+  const {
+    user,
+    logout,
+    canManageSettings,
+    canManageMigrations,
+    canManageUsers,
+  } = useAuth();
   return (
     <div className="shell">
       <aside className="sidebar">
-        <span className="brand">CarboRewind</span>
+        <span className="brand">
+          <Logo size={30} withName />
+        </span>
         <nav aria-label="main">
           <NavLink to="/" end>
             {t("nav.dashboard")}
@@ -42,12 +51,15 @@ export function Layout() {
           {canManageMigrations && (
             <NavLink to="/migrations">{t("nav.migrations")}</NavLink>
           )}
+          {canManageUsers && <NavLink to="/users">{t("nav.users")}</NavLink>}
           {canManageSettings && (
             <NavLink to="/settings">{t("nav.settings")}</NavLink>
           )}
         </nav>
         <div className="user">
-          <span className="who">{user?.display_name ?? user?.username}</span>
+          <Link to="/me" className="who" title={t("nav.me")}>
+            {user?.display_name ?? user?.username}
+          </Link>
           <LanguageSelect />
           <button
             type="button"

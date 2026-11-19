@@ -15,8 +15,12 @@ import type { User } from "../api/types";
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, otp?: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Reload the current user (after enrolling 2FA, changing the profile…). */
+  refresh: () => Promise<void>;
+  /** Access accounts management: global super administrators only. */
+  canManageUsers: boolean;
   /** True if the user may start backups on this domain (the API enforces it anyway). */
   canRunBackup: (domainId: string) => boolean;
   /** Restore and see item subjects (restore:run, content:preview). */
@@ -49,10 +53,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const session = await api.login(username, password);
-    setCsrfToken(session.csrf_token);
-    setUser(session.user);
+  const login = useCallback(
+    async (username: string, password: string, otp?: string) => {
+      const session = await api.login(username, password, otp);
+      setCsrfToken(session.csrf_token);
+      setUser({
+        ...session.user,
+        totp_enrollment_required: session.totp_enrollment_required ?? false,
+      });
+    },
+    [],
+  );
+
+  const refresh = useCallback(async () => {
+    setUser(await api.me());
   }, []);
 
   const logout = useCallback(async () => {
@@ -102,11 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (r) => r.role === "super_admin",
   );
   const canManageMigrations = canManageSettings;
+  const canManageUsers = canManageSettings;
 
   const value = useMemo(
     () => ({
       canManageSettings,
       canManageMigrations,
+      canManageUsers,
+      refresh,
       user,
       loading,
       login,
@@ -125,6 +142,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManagePolicies,
       canManageSettings,
       canManageMigrations,
+      canManageUsers,
+      refresh,
     ],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
