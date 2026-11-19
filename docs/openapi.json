@@ -529,6 +529,56 @@
         "title": "AccountStatus",
         "type": "string"
       },
+      "ActionDoneIn": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "title": "ActionDoneIn",
+        "type": "object"
+      },
+      "ActionOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "action",
+          "queued"
+        ],
+        "title": "ActionOut",
+        "type": "object"
+      },
       "ActorType": {
         "enum": [
           "user",
@@ -713,6 +763,95 @@
         ],
         "title": "AgentStatus",
         "type": "string"
+      },
+      "AlertOut": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "account_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Status"
+          },
+          "acknowledged_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acknowledged At"
+          },
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "threshold": {
+            "title": "Threshold",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "account_id",
+          "email",
+          "metric",
+          "value",
+          "threshold",
+          "window_start",
+          "action",
+          "created_at",
+          "acknowledged_at",
+          "account_status"
+        ],
+        "title": "AlertOut",
+        "type": "object"
       },
       "AllBackupRequest": {
         "additionalProperties": false,
@@ -2213,6 +2352,90 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LimitsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "alert",
+            "enum": [
+              "alert",
+              "lock"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "exempt": {
+            "items": {
+              "format": "email",
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Exempt",
+            "type": "array"
+          },
+          "sent_messages_day": {
+            "default": 0,
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Sent Messages Day",
+            "type": "integer"
+          },
+          "sent_messages_hour": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Sent Messages Hour",
+            "type": "integer"
+          },
+          "sent_recipients_day": {
+            "default": 0,
+            "maximum": 100000000.0,
+            "minimum": 0.0,
+            "title": "Sent Recipients Day",
+            "type": "integer"
+          },
+          "sent_recipients_hour": {
+            "default": 0,
+            "maximum": 10000000.0,
+            "minimum": 0.0,
+            "title": "Sent Recipients Hour",
+            "type": "integer"
+          },
+          "spam_sent_day": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Spam Sent Day",
+            "type": "integer"
+          }
+        },
+        "title": "LimitsIn",
+        "type": "object"
+      },
+      "LockIn": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "LockIn",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2234,6 +2457,83 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MailHourIn": {
+        "properties": {
+          "hour": {
+            "format": "date-time",
+            "title": "Hour",
+            "type": "string"
+          },
+          "sent": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "maxProperties": 100000,
+            "title": "Sent",
+            "type": "object"
+          },
+          "spam_in": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 100000,
+            "title": "Spam In",
+            "type": "object"
+          },
+          "spam_out": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 100000,
+            "title": "Spam Out",
+            "type": "object"
+          },
+          "spam_senders": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxProperties": 1000,
+            "title": "Spam Senders",
+            "type": "object"
+          }
+        },
+        "required": [
+          "hour"
+        ],
+        "title": "MailHourIn",
+        "type": "object"
+      },
+      "MailStatsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/MailHourIn"
+            },
+            "maxItems": 72,
+            "title": "Hours",
+            "type": "array"
+          },
+          "log": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log"
+          }
+        },
+        "title": "MailStatsIn",
         "type": "object"
       },
       "MailboxOut": {
@@ -2942,6 +3242,99 @@
         ],
         "title": "Outcome",
         "type": "string"
+      },
+      "Overview": {
+        "properties": {
+          "agents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertOut"
+            },
+            "title": "Alerts",
+            "type": "array"
+          },
+          "hourly": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/LimitsIn"
+          },
+          "pending_actions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Pending Actions",
+            "type": "array"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "spam_recipients": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Spam Recipients",
+            "type": "array"
+          },
+          "spam_senders": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Spam Senders",
+            "type": "array"
+          },
+          "top_senders": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Top Senders",
+            "type": "array"
+          },
+          "totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Totals",
+            "type": "object"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "totals",
+          "top_senders",
+          "spam_recipients",
+          "spam_senders",
+          "hourly",
+          "alerts",
+          "pending_actions",
+          "limits",
+          "agents"
+        ],
+        "title": "Overview",
+        "type": "object"
       },
       "Page_AccountListItem_": {
         "properties": {
@@ -5476,6 +5869,53 @@
         ]
       }
     },
+    "/api/agent/account-actions/{action_id}/done": {
+      "post": {
+        "description": "The agent locked/unlocked the account (or could not).",
+        "operationId": "account_action_done_api_agent_account_actions__action_id__done_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionDoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Action Done",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/enroll": {
       "post": {
         "description": "Exchange a one-time token and a CSR for a client certificate.",
@@ -5908,6 +6348,50 @@
           }
         },
         "summary": "Restore Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/mail-stats": {
+      "post": {
+        "description": "Hourly mail counters from the MTA log; answers with the account actions to apply.",
+        "operationId": "mail_stats_api_agent_mail_stats_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailStatsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mail Stats Api Agent Mail Stats Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail Stats",
         "tags": [
           "agent protocol"
         ]
@@ -6939,6 +7423,218 @@
         "summary": "Get Job",
         "tags": [
           "backups"
+        ]
+      }
+    },
+    "/api/mail/accounts/{account_id}/{action}": {
+      "post": {
+        "description": "Lock or unlock an account by hand (the agent applies it within a minute).",
+        "operationId": "account_action_api_mail_accounts__account_id___action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "lock",
+                "unlock"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Action",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/alerts/{alert_id}/ack": {
+      "post": {
+        "operationId": "acknowledge_api_mail_alerts__alert_id__ack_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Alert Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acknowledge",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/limits": {
+      "get": {
+        "operationId": "get_limits_api_mail_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LimitsIn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Limits",
+        "tags": [
+          "mail traffic"
+        ]
+      },
+      "put": {
+        "operationId": "put_limits_api_mail_limits_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LimitsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LimitsIn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Limits",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/overview": {
+      "get": {
+        "operationId": "overview_api_mail_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Overview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "mail traffic"
         ]
       }
     },

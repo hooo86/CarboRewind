@@ -9,8 +9,8 @@
   mail server never blocks the API or loses a message. A ``dedup_key`` sends each digest or
   alert once.
 * **Events**: a job that failed for good, a backup finished with item errors, a restore with
-  failed items, an agent silent for 30 minutes, a daily digest of unprotected accounts, and
-  the end of a migration batch.
+  failed items, an agent silent for 30 minutes, a daily digest of unprotected accounts, the
+  end of a migration batch, and a mailbox over its sending limit.
 """
 
 from __future__ import annotations
@@ -56,6 +56,7 @@ EVENTS = (
     "agent_offline",
     "daily_digest",
     "migration_done",
+    "mail_limit",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -166,6 +167,20 @@ TEXTS: dict[str, dict[str, str]] = {
             "Boîtes copiées : {done}\nBoîtes en échec : {failed}\n"
             "Messages copiés : {copied}\nMessages non copiés : {errors}\n"
         ),
+        "mail_limit": "[CarboRewind] Limite d'envoi atteinte : {account}",
+        "mail_limit_body": (
+            "Le compte {account} a atteint une limite d'envoi.\n\n"
+            "Mesure : {metric}\nValeur : {value} (seuil {threshold})\nAction : {action}\n\n"
+            "Si le compte est verrouillé, réactivez-le depuis CarboRewind (Trafic mail) après "
+            "avoir changé son mot de passe.\n"
+        ),
+        "metric.sent_messages_hour": "messages envoyés dans l'heure",
+        "metric.sent_recipients_hour": "destinataires dans l'heure",
+        "metric.sent_messages_day": "messages envoyés sur 24 h",
+        "metric.sent_recipients_day": "destinataires sur 24 h",
+        "metric.spam_sent_day": "spams envoyés sur 24 h",
+        "action.alert": "alerte seulement",
+        "action.lock": "compte verrouillé",
         "test": "[CarboRewind] E-mail de test",
         "test_body": "Les notifications de CarboRewind fonctionnent.\n",
         "never": "jamais",
@@ -200,6 +215,20 @@ TEXTS: dict[str, dict[str, str]] = {
             "Mailboxes copied: {done}\nMailboxes failed: {failed}\n"
             "Messages copied: {copied}\nMessages not copied: {errors}\n"
         ),
+        "mail_limit": "[CarboRewind] Sending limit reached: {account}",
+        "mail_limit_body": (
+            "Account {account} reached a sending limit.\n\n"
+            "Metric: {metric}\nValue: {value} (limit {threshold})\nAction: {action}\n\n"
+            "If the account is locked, unlock it from CarboRewind (Mail traffic) after "
+            "changing its password.\n"
+        ),
+        "metric.sent_messages_hour": "messages sent in the hour",
+        "metric.sent_recipients_hour": "recipients in the hour",
+        "metric.sent_messages_day": "messages sent in 24 h",
+        "metric.sent_recipients_day": "recipients in 24 h",
+        "metric.spam_sent_day": "spam sent in 24 h",
+        "action.alert": "alert only",
+        "action.lock": "account locked",
         "test": "[CarboRewind] Test e-mail",
         "test_body": "CarboRewind notifications work.\n",
         "never": "never",
@@ -221,6 +250,9 @@ async def notify(db: AsyncSession, event: str, dedup_key: str | None = None, **v
         return False
     texts = TEXTS.get(cfg.language, TEXTS["fr"])
     safe = {k: _one_line(v) if k != "list" else str(v) for k, v in values.items()}
+    for key in ("metric", "action"):  # codes with a translated label
+        if f"{key}.{safe.get(key)}" in texts:
+            safe[key] = texts[f"{key}.{safe[key]}"]
     stmt = insert(Notification).values(
         event=event,
         subject=texts[event].format(**safe),

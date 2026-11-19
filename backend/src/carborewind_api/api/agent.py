@@ -19,9 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from .. import audit, storage_settings
+from .. import audit, mail_traffic, storage_settings
 from ..db.models import (
     Account,
+    AccountAction,
     AccountStatus,
     ActorType,
     Agent,
@@ -391,6 +392,87 @@ async def storage_status(body: StorageIn, agent: CurrentAgent, db: DbSession) ->
                 error=body.apply.error or "?",
                 job=f"storage settings #{body.apply.revision}",
             )
+
+
+# ------------------------------------------------------------------ mail traffic
+
+
+class MailHourIn(BaseModel):
+    hour: datetime
+    sent: dict[str, list[int]] = Field(default_factory=dict, max_length=100_000)
+    spam_in: dict[str, int] = Field(default_factory=dict, max_length=100_000)
+    spam_out: dict[str, int] = Field(default_factory=dict, max_length=100_000)
+    spam_senders: dict[str, dict[str, Any]] = Field(default_factory=dict, max_length=1000)
+
+    @field_validator("sent")
+    @classmethod
+    def _pairs(cls, value: dict[str, list[int]]) -> dict[str, list[int]]:
+        if any(len(v) != 2 or min(v) < 0 for v in value.values()):
+            raise ValueError("sent counters are [messages, recipients]")
+        return {k.lower()[:320]: v for k, v in value.items()}
+
+
+class MailStatsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    hours: list[MailHourIn] = Field(default_factory=list, max_length=72)
+    log: str | None = Field(default=None, max_length=4096)
+
+
+@router.post("/mail-stats")
+async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> dict[str, Any]:
+    """Hourly mail counters from the MTA log; answers with the account actions to apply."""
+    now = datetime.now(UTC)
+    hours = [h.model_dump(mode="json") for h in body.hours]
+    senders = await mail_traffic.record(db, hours)
+    await mail_traffic.evaluate(db, senders, now)
+    agent.storage = {
+        **(agent.storage or {}),
+        "mail": {"log": body.log, "reported_at": now.isoformat()},
+    }
+    return {"actions": await mail_traffic.pending_actions(db)}
+
+
+class ActionDoneIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    error: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/account-actions/{action_id}/done", status_code=status.HTTP_204_NO_CONTENT)
+async def account_action_done(
+    action_id: uuid.UUID, body: ActionDoneIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """The agent locked/unlocked the account (or could not)."""
+    action = await db.get(AccountAction, action_id, with_for_update=True)
+    if action is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "action not found")
+    if action.status != "pending":
+        return  # idempotent
+    account = await db.get(Account, action.account_id)
+    action.done_at = datetime.now(UTC)
+    action.status, action.error = ("failed", body.error) if body.error else ("done", None)
+    if account is not None and not body.error:
+        account.status = AccountStatus.LOCKED if action.action == "lock" else AccountStatus.ACTIVE
+    if body.error:
+        await notify(
+            db,
+            "job_failed",
+            kind=f"account {action.action}",
+            account=account.email if account else "?",
+            error=body.error,
+            job=str(action.id),
+        )
+    await _audit(
+        db,
+        agent,
+        f"account.{action.action}",
+        Outcome.FAILURE if body.error else Outcome.SUCCESS,
+        target_type="account",
+        target_id=account.email if account else None,
+        domain_id=account.domain_id if account else None,
+        details={"reason": action.reason, "error": body.error, "action": str(action.id)},
+    )
 
 
 # ------------------------------------------------------------------ job protocol

@@ -664,6 +664,103 @@ class MigrationMailbox(Base):
     )
 
 
+# --------------------------------------------------------------------------- mail traffic
+
+
+class MailStat(Base):
+    """Mail sent and spam per account and UTC hour, from the MTA log (absolute counters)."""
+
+    __tablename__ = "mail_stats"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    sent_messages: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    sent_recipients: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    spam_received: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    spam_sent: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        Index("ix_mail_stats_hour", "hour"),
+        Index("ix_mail_stats_account_hour", "account_id", "hour"),
+    )
+
+
+class SpamSender(Base):
+    """Senders of spam received, per UTC hour, with the client IPs seen."""
+
+    __tablename__ = "spam_senders"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    sender: Mapped[str] = mapped_column(String(320), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    ips: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    __table_args__ = (Index("ix_spam_senders_hour", "hour"),)
+
+
+class MailAlert(Base):
+    """A sending limit was reached (once per account, metric and window)."""
+
+    __tablename__ = "mail_alerts"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    email: Mapped[str] = mapped_column(String(320))
+    # sent_messages_hour, sent_messages_day, sent_recipients_hour, sent_recipients_day,
+    # spam_sent_day
+    metric: Mapped[str] = mapped_column(String(32))
+    value: Mapped[int] = mapped_column(Integer)
+    threshold: Mapped[int] = mapped_column(Integer)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    action: Mapped[str] = mapped_column(String(16))  # alert | lock
+    created_at: Mapped[datetime] = _created_at()
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("email", "metric", "window_start", name="uq_mail_alerts_window"),
+        Index(
+            "ix_mail_alerts_open", "created_at", postgresql_where=text("acknowledged_at IS NULL")
+        ),
+    )
+
+
+class AccountAction(Base):
+    """Lock or unlock a Carbonio account, carried out by the agent's mail watcher."""
+
+    __tablename__ = "account_actions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(16))  # lock | unlock
+    reason: Mapped[str | None] = mapped_column(Text)
+    alert_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("mail_alerts.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("action IN ('lock', 'unlock')", name="action_known"),
+        CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
+        Index(
+            "ix_account_actions_pending", "created_at", postgresql_where=text("status = 'pending'")
+        ),
+    )
+
+
 # --------------------------------------------------------------------------- audit
 
 

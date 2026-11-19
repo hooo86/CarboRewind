@@ -28,7 +28,7 @@ from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import audit, storage_settings
+from . import audit, mail_traffic, storage_settings
 from .config import Settings
 from .db.models import (
     Account,
@@ -327,6 +327,7 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
     report.notifications_queued = await periodic_alerts(db, now)
     await enqueue_replicate(db, now, report)
     if retention:
+        await mail_traffic.prune(db, now)
         await apply_retention(db, report)
         await enqueue_purge(db, report)
     return report

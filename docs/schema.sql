@@ -481,4 +481,75 @@ ALTER TABLE accounts ADD COLUMN profile JSONB DEFAULT '{}'::jsonb NOT NULL;
 
 UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
 
+-- Running upgrade 0009 -> 0010
+
+CREATE TABLE mail_stats (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    email VARCHAR(320) NOT NULL,
+    account_id UUID,
+    sent_messages INTEGER DEFAULT 0 NOT NULL,
+    sent_recipients INTEGER DEFAULT 0 NOT NULL,
+    spam_received INTEGER DEFAULT 0 NOT NULL,
+    spam_sent INTEGER DEFAULT 0 NOT NULL,
+    CONSTRAINT pk_mail_stats PRIMARY KEY (hour, email),
+    CONSTRAINT fk_mail_stats_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_mail_stats_hour ON mail_stats (hour);
+
+CREATE INDEX ix_mail_stats_account_hour ON mail_stats (account_id, hour);
+
+CREATE TABLE spam_senders (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    sender VARCHAR(320) NOT NULL,
+    count INTEGER DEFAULT 0 NOT NULL,
+    ips JSONB DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT pk_spam_senders PRIMARY KEY (hour, sender)
+);
+
+CREATE INDEX ix_spam_senders_hour ON spam_senders (hour);
+
+CREATE TABLE mail_alerts (
+    id UUID NOT NULL,
+    account_id UUID,
+    email VARCHAR(320) NOT NULL,
+    metric VARCHAR(32) NOT NULL,
+    value INTEGER NOT NULL,
+    threshold INTEGER NOT NULL,
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    acknowledged_at TIMESTAMP WITH TIME ZONE,
+    acknowledged_by UUID,
+    CONSTRAINT pk_mail_alerts PRIMARY KEY (id),
+    CONSTRAINT fk_mail_alerts_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_mail_alerts_acknowledged_by_users FOREIGN KEY(acknowledged_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT uq_mail_alerts_window UNIQUE (email, metric, window_start)
+);
+
+CREATE INDEX ix_mail_alerts_open ON mail_alerts (created_at) WHERE acknowledged_at IS NULL;
+
+CREATE TABLE account_actions (
+    id UUID NOT NULL,
+    account_id UUID NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    reason TEXT,
+    alert_id UUID,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    error TEXT,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    done_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_account_actions PRIMARY KEY (id),
+    CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock')),
+    CONSTRAINT ck_account_actions_status_known CHECK (status IN ('pending', 'done', 'failed')),
+    CONSTRAINT fk_account_actions_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_account_actions_alert_id_mail_alerts FOREIGN KEY(alert_id) REFERENCES mail_alerts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_account_actions_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_account_actions_pending ON account_actions (created_at) WHERE status = 'pending';
+
+UPDATE alembic_version SET version_num='0010' WHERE alembic_version.version_num = '0009';
+
 COMMIT;
