@@ -124,7 +124,7 @@ class Worker:
         replica: Path | None = None,
         storage_every: int = 3,
         kek: bytes | None = None,
-        space: tuple[float, float, float] = (20.0, 15.0, 2.0),
+        space: tuple[float, float, float] | None = None,
         poll_seconds: float = 10.0,
         inventory_every: int = 60,
         sleep: Callable[[float], bool] | None = None,
@@ -139,7 +139,9 @@ class Worker:
         self._replica = replica
         self._storage_every = storage_every
         self._kek = kek
-        self._space = space  # GiB local, % local, GiB network
+        # (GiB local, % local, GiB network); None = no disk guard (the service passes the
+        # configured values, see AgentSettings.min_free_*).
+        self._space = space
         self._size_cursor = 0
         self._requested_revision: int | None = None
         self._reported_status: float | None = None
@@ -183,6 +185,8 @@ class Worker:
 
     def space_floor(self, path: Path) -> int:
         """Bytes that must stay free on the file system holding ``path``."""
+        if self._space is None:
+            return 0
         info = describe(path)
         gib_local, pct_local, gib_net = self._space
         if info.get("kind") == "network":
@@ -417,7 +421,7 @@ class Worker:
         self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
     ) -> None:
         assert self._repo is not None and self._replica is not None  # noqa: S101
-        floor = int(self._space[2] * GIB)
+        floor = int(self._space[2] * GIB) if self._space else 0
         with self._repo.lock():
             result = replicate(self._repo.root, self._replica, min_free_bytes=floor)
         self._api.replicate_complete(job["job_id"], result.to_payload())

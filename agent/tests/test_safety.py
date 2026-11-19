@@ -161,3 +161,8 @@ def test_replica_stops_before_filling_copy02(tmp_path: Path) -> None:
     repo.put(b"x" * 1000)
     result = replicate(repo.root, tmp_path / "copy", require_mount=False, min_free_bytes=10**30)
     assert result.copied == 0 and "copy 02 is full" in result.errors[0]
+
+
+def test_no_guard_without_configuration(tmp_path: Path) -> None:
+    w, repo = make(tmp_path, Api(), FakeCarbonio())
+    assert w.space_floor(repo.root) == 0
