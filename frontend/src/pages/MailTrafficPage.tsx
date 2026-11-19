@@ -467,16 +467,20 @@ export function MailTrafficPage() {
                   {d.spam_recipients.length === 0 ? (
                     <p className="muted">{t("mail.noSpam")}</p>
                   ) : (
-                    <table>
-                      <tbody>
-                        {d.spam_recipients.map((r) => (
-                          <tr key={r.email}>
-                            <td>{r.email}</td>
-                            <td className="num">{r.count.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="table-wrap">
+                      <table>
+                        <tbody>
+                          {d.spam_recipients.map((r) => (
+                            <tr key={r.email}>
+                              <td>{r.email}</td>
+                              <td className="num">
+                                {r.count.toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </section>
                 <section>
@@ -484,28 +488,32 @@ export function MailTrafficPage() {
                   {d.spam_senders.length === 0 ? (
                     <p className="muted">{t("mail.noSpam")}</p>
                   ) : (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>{t("mail.sender")}</th>
-                          <th className="num">{t("mail.count")}</th>
-                          <th>{t("mail.ips")}</th>
-                          <th>{t("mail.last")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {d.spam_senders.map((s) => (
-                          <tr key={s.sender}>
-                            <td className="wrap">{s.sender}</td>
-                            <td className="num">{s.count.toLocaleString()}</td>
-                            <td className="wrap">
-                              <code>{s.ips.join(", ") || "—"}</code>
-                            </td>
-                            <td>{formatRelative(s.last)}</td>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>{t("mail.sender")}</th>
+                            <th className="num">{t("mail.count")}</th>
+                            <th>{t("mail.ips")}</th>
+                            <th>{t("mail.last")}</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {d.spam_senders.map((s) => (
+                            <tr key={s.sender}>
+                              <td className="wrap">{s.sender}</td>
+                              <td className="num">
+                                {s.count.toLocaleString()}
+                              </td>
+                              <td className="wrap">
+                                <code>{s.ips.join(", ") || "—"}</code>
+                              </td>
+                              <td>{formatRelative(s.last)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </section>
               </div>

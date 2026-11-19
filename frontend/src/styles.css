@@ -1919,3 +1919,20 @@ label {
     display: none;
   }
 }
+
+/* nothing inside a grid or a toolbar may widen the page */
+.split > *,
+.stack > *,
+.toolbar > * {
+  min-width: 0;
+}
+.actions {
+  flex-wrap: wrap;
+}
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.chart {
+  overflow-x: auto;
+}
