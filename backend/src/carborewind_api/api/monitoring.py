@@ -7,6 +7,9 @@ integrity checks, failed jobs, agents. ``settings``: thresholds and the integrit
 
 from __future__ import annotations
 
+import ipaddress
+import re
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -14,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 
-from .. import audit, monitoring
+from .. import audit, blacklist, monitoring
 from ..authz import Permission
 from ..db.models import Agent, AgentStatus, Job, JobStatus, Outcome
 from ..scheduling import Cron, CronError, zone
@@ -179,3 +182,90 @@ async def verify_now(
         details={**body.model_dump(), "queued": job is not None},
     )
     return VerifyOut(queued=job is not None, job_id=str(job.id) if job else None)
+
+
+# ------------------------------------------------------------------ blacklists (DNSBL)
+
+
+class BlacklistSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    ips: list[str] = Field(default_factory=list, max_length=50)
+    zones: list[str] = Field(default_factory=lambda: list(blacklist.DEFAULT_ZONES), max_length=30)
+    interval_minutes: int = Field(default=60, ge=15, le=24 * 60)
+
+    @field_validator("ips")
+    @classmethod
+    def _ips(cls, value: list[str]) -> list[str]:
+        out = []
+        for ip in value:
+            try:
+                address = ipaddress.ip_address(ip.strip())
+            except ValueError as exc:
+                raise ValueError(f"invalid address {ip!r}") from exc
+            if address.is_private or address.is_loopback:
+                raise ValueError(f"{ip} is not a public address: lists only know public ones")
+            out.append(str(address))
+        return sorted(set(out))
+
+    @field_validator("zones")
+    @classmethod
+    def _zones(cls, value: list[str]) -> list[str]:
+        out = []
+        for name in value:
+            clean = name.strip().strip(".").lower()
+            if not re.fullmatch(r"([a-z0-9-]{1,63}\.)+[a-z]{2,63}", clean):
+                raise ValueError(f"invalid list zone {name!r}")
+            out.append(clean)
+        return list(dict.fromkeys(out))
+
+
+class BlacklistOut(BaseModel):
+    settings: BlacklistSettingsIn
+    checked_at: str | None
+    results: list[dict[str, Any]]
+
+
+async def _blacklist_out(db: DbSession) -> BlacklistOut:
+    cfg = await blacklist.load_settings(db)
+    status_ = await blacklist.load_status(db)
+    return BlacklistOut(
+        settings=BlacklistSettingsIn(**asdict(cfg)),
+        checked_at=status_.get("checked_at"),
+        results=status_.get("results", []),
+    )
+
+
+@router.get("/blacklist", response_model=BlacklistOut)
+async def get_blacklist(principal: Admin, db: DbSession) -> BlacklistOut:
+    return await _blacklist_out(db)
+
+
+@router.put("/blacklist", response_model=BlacklistOut)
+async def put_blacklist(
+    body: BlacklistSettingsIn, principal: Admin, db: DbSession, request: Request
+) -> BlacklistOut:
+    if body.enabled and not body.ips:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "add at least one address")
+    await blacklist.save_settings(db, blacklist.BlacklistSettings(**body.model_dump()))
+    await audit.record(
+        db,
+        action="settings.blacklist",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        details=body.model_dump(),
+    )
+    return await _blacklist_out(db)
+
+
+@router.post("/blacklist/check", response_model=BlacklistOut)
+async def check_blacklist(principal: Admin, db: DbSession) -> BlacklistOut:
+    """Check now (a few seconds), whatever the interval."""
+    cfg = await blacklist.load_settings(db)
+    if not cfg.ips:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "no address to check")
+    await blacklist.run_check(db, datetime.now(UTC))
+    return await _blacklist_out(db)

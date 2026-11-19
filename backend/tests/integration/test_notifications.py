@@ -55,9 +55,12 @@ class FakeSMTP:
     sent: ClassVar[list[EmailMessage]] = []
     events: ClassVar[list[tuple[str, Any]]] = []
     fail_with: ClassVar[Exception | None] = None
+    down: ClassVar[set[str]] = set()  # hosts that refuse connections
 
     def __init__(self, host: str, port: int, timeout: float = 0, context: Any = None) -> None:
         FakeSMTP.events.append(("connect", (host, port, "ssl" if context else "plain")))
+        if host in FakeSMTP.down:
+            raise ConnectionRefusedError(111, "Connection refused")
         if FakeSMTP.fail_with:
             raise FakeSMTP.fail_with
 
@@ -85,6 +88,7 @@ class FakeSMTP:
 @pytest.fixture(autouse=True)
 def fake_smtp(monkeypatch: pytest.MonkeyPatch) -> Iterator[type[FakeSMTP]]:
     FakeSMTP.sent, FakeSMTP.events, FakeSMTP.fail_with = [], [], None
+    FakeSMTP.down = set()
     monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
     monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSMTP)
     yield FakeSMTP
@@ -357,3 +361,81 @@ def test_periodic_alerts(migrated: str, engine: Engine, clean: None) -> None:
         s.execute(delete(Notification))
     _enable(engine, digest_hour=23, events={"agent_offline": False})
     assert _run(migrated, periodic_alerts, now) == 0
+
+
+def test_fallback_smtp_server(
+    migrated: str, engine: Engine, clean: None, fake_smtp: type[FakeSMTP]
+) -> None:
+    settings = Settings(secret_key=KEY)  # type: ignore[call-arg]
+    now = datetime.now(UTC) + timedelta(minutes=1)
+    _enable(
+        engine,
+        fallback_enabled=True,
+        fallback_host="relay.backup.test",
+        fallback_port=465,
+        fallback_security="ssl",
+        fallback_username="relay",
+        fallback_password_enc=encrypt(settings, "smtp-secret"),
+        fallback_sender="noreply@backup.example.com",
+    )
+    fake_smtp.down = {"smtp.example.test"}
+    _run(
+        migrated,
+        lambda db: notify(db, "job_failed", kind="backup", account="a", error="e", job="j"),
+    )
+    assert _run(migrated, lambda db: deliver_pending(db, settings, now)) == 1
+    msg = fake_smtp.sent[-1]
+    assert msg["From"] == "noreply@backup.example.com"
+    assert ("connect", ("relay.backup.test", 465, "ssl")) in fake_smtp.events
+    assert ("login", "relay") in fake_smtp.events
+    with Session(engine) as s:
+        note = s.scalar(select(Notification).where(Notification.event == "job_failed"))
+        assert note is not None and note.status == "sent"
+        assert "fallback" in (note.error or "") and "refused" in (note.error or "")
+    # Both down: retried later, with both errors.
+    fake_smtp.down = {"smtp.example.test", "relay.backup.test"}
+    _run(migrated, lambda db: notify(db, "backup_partial", account="b", seq=1, errors=1))
+    _run(migrated, lambda db: deliver_pending(db, settings, now))
+    with Session(engine) as s:
+        note = s.scalar(select(Notification).where(Notification.event == "backup_partial"))
+        assert note is not None and note.status == "pending"
+        assert "main server" in (note.error or "") and "fallback server" in (note.error or "")
+
+    # Settings API: password kept, never returned; test e-mail through the fallback.
+    fake_smtp.down = set()
+    with make_api(migrated, KEY) as api:
+        h = login(api, engine, Role.SUPER_ADMIN)
+        out = api.get("/api/settings/notifications", headers=h).json()
+        assert out["fallback_enabled"] and out["fallback_password_set"]
+        assert "fallback_password_enc" not in out
+        body = {
+            k: out[k]
+            for k in (
+                "enabled",
+                "host",
+                "port",
+                "security",
+                "username",
+                "sender",
+                "recipients",
+                "events",
+                "digest_hour",
+                "timezone",
+                "language",
+                "fallback_enabled",
+                "fallback_host",
+                "fallback_port",
+                "fallback_security",
+                "fallback_username",
+                "fallback_sender",
+            )
+        }
+        body.update(sender="cr@example.com", recipients=["admin@example.com"])
+        r = api.put("/api/settings/notifications", json=body, headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["fallback_password_set"] is True
+        bad = api.put("/api/settings/notifications", json={**body, "fallback_host": ""}, headers=h)
+        assert bad.status_code == 422
+        r = api.post("/api/settings/notifications/test", json={"server": "fallback"}, headers=h)
+        assert r.json() == {"ok": True, "error": None}
+        assert fake_smtp.sent[-1]["From"] == "noreply@backup.example.com"

@@ -13,7 +13,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import monitoring
+from . import blacklist, monitoring
 from .db.models import (
     Account,
     AccountStatus,
@@ -111,6 +111,16 @@ async def collect(db: AsyncSession) -> str:
             view["queue_total"],
             agent=agent.name,
         )
+    status = await blacklist.load_status(db)
+    for r in status.get("results", []):
+        if r.get("listed") is not None:
+            out.gauge(
+                "blacklisted",
+                "Mail server address listed (1) or not (0) in a DNS blacklist",
+                1 if r["listed"] else 0,
+                ip=str(r["ip"]),
+                zone=str(r["zone"]),
+            )
     out.gauge("archived_messages", "Messages kept in the archive", int(archived))
     out.gauge("archived_bytes", "Size of the messages kept in the archive", int(archived_bytes))
     out.gauge(

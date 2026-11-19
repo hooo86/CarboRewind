@@ -1838,6 +1838,74 @@
         "title": "BatchOut",
         "type": "object"
       },
+      "BlacklistOut": {
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/BlacklistSettingsIn"
+          }
+        },
+        "required": [
+          "settings",
+          "checked_at",
+          "results"
+        ],
+        "title": "BlacklistOut",
+        "type": "object"
+      },
+      "BlacklistSettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "interval_minutes": {
+            "default": 60,
+            "maximum": 1440.0,
+            "minimum": 15.0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          },
+          "ips": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Ips",
+            "type": "array"
+          },
+          "zones": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Zones",
+            "type": "array"
+          }
+        },
+        "title": "BlacklistSettingsIn",
+        "type": "object"
+      },
       "BulkBackupOut": {
         "properties": {
           "queued": {
@@ -2082,6 +2150,13 @@
             "default": 0,
             "title": "Archived Removed Bytes",
             "type": "integer"
+          },
+          "blacklisted": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blacklisted",
+            "type": "array"
           },
           "jobs_failed_24h": {
             "title": "Jobs Failed 24H",
@@ -3804,6 +3879,66 @@
             "title": "Events",
             "type": "object"
           },
+          "fallback_enabled": {
+            "default": false,
+            "title": "Fallback Enabled",
+            "type": "boolean"
+          },
+          "fallback_host": {
+            "default": "",
+            "maxLength": 253,
+            "title": "Fallback Host",
+            "type": "string"
+          },
+          "fallback_password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Password"
+          },
+          "fallback_port": {
+            "default": 587,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Fallback Port",
+            "type": "integer"
+          },
+          "fallback_security": {
+            "default": "starttls",
+            "enum": [
+              "starttls",
+              "ssl",
+              "none"
+            ],
+            "title": "Fallback Security",
+            "type": "string"
+          },
+          "fallback_sender": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "default": "",
+            "title": "Fallback Sender"
+          },
+          "fallback_username": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Fallback Username",
+            "type": "string"
+          },
           "host": {
             "default": "",
             "maxLength": 253,
@@ -3903,6 +4038,41 @@
             },
             "title": "Events",
             "type": "object"
+          },
+          "fallback_enabled": {
+            "default": false,
+            "title": "Fallback Enabled",
+            "type": "boolean"
+          },
+          "fallback_host": {
+            "default": "",
+            "title": "Fallback Host",
+            "type": "string"
+          },
+          "fallback_password_set": {
+            "default": false,
+            "title": "Fallback Password Set",
+            "type": "boolean"
+          },
+          "fallback_port": {
+            "default": 587,
+            "title": "Fallback Port",
+            "type": "integer"
+          },
+          "fallback_security": {
+            "default": "starttls",
+            "title": "Fallback Security",
+            "type": "string"
+          },
+          "fallback_sender": {
+            "default": "",
+            "title": "Fallback Sender",
+            "type": "string"
+          },
+          "fallback_username": {
+            "default": "",
+            "title": "Fallback Username",
+            "type": "string"
           },
           "host": {
             "title": "Host",
@@ -6312,6 +6482,15 @@
       "TestRequest": {
         "additionalProperties": false,
         "properties": {
+          "server": {
+            "default": "main",
+            "enum": [
+              "main",
+              "fallback"
+            ],
+            "title": "Server",
+            "type": "string"
+          },
           "to": {
             "anyOf": [
               {
@@ -11722,6 +11901,88 @@
         "summary": "Template",
         "tags": [
           "migrations"
+        ]
+      }
+    },
+    "/api/monitoring/blacklist": {
+      "get": {
+        "operationId": "get_blacklist_api_monitoring_blacklist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlacklistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Blacklist",
+        "tags": [
+          "monitoring"
+        ]
+      },
+      "put": {
+        "operationId": "put_blacklist_api_monitoring_blacklist_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlacklistSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlacklistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Blacklist",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/blacklist/check": {
+      "post": {
+        "description": "Check now (a few seconds), whatever the interval.",
+        "operationId": "check_blacklist_api_monitoring_blacklist_check_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlacklistOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Blacklist",
+        "tags": [
+          "monitoring"
         ]
       }
     },

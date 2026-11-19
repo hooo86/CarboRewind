@@ -70,8 +70,15 @@ class NotificationSettingsIn(BaseModel):
     digest_hour: int = Field(default=8, ge=0, le=23)
     timezone: str = Field(default="UTC", max_length=64)
     language: Literal["fr", "en"] = "fr"
+    fallback_enabled: bool = False
+    fallback_host: str = Field(default="", max_length=253)
+    fallback_port: int = Field(default=587, ge=1, le=65535)
+    fallback_security: Literal["starttls", "ssl", "none"] = "starttls"
+    fallback_username: str = Field(default="", max_length=320)
+    fallback_password: str | None = Field(default=None, max_length=1024, repr=False)
+    fallback_sender: EmailStr | Literal[""] = ""
 
-    @field_validator("host")
+    @field_validator("host", "fallback_host")
     @classmethod
     def _host(cls, value: str) -> str:
         value = value.strip()
@@ -110,6 +117,13 @@ class NotificationSettingsOut(BaseModel):
     digest_hour: int
     timezone: str
     language: str
+    fallback_enabled: bool = False
+    fallback_host: str = ""
+    fallback_port: int = 587
+    fallback_security: str = "starttls"
+    fallback_username: str = ""
+    fallback_password_set: bool = False
+    fallback_sender: str = ""
     secret_key_configured: bool
 
 
@@ -127,6 +141,13 @@ def _out(cfg: SmtpConfig, settings: AppSettings) -> NotificationSettingsOut:
         digest_hour=cfg.digest_hour,
         timezone=cfg.timezone,
         language=cfg.language,
+        fallback_enabled=cfg.fallback_enabled,
+        fallback_host=cfg.fallback_host,
+        fallback_port=cfg.fallback_port,
+        fallback_security=cfg.fallback_security,
+        fallback_username=cfg.fallback_username,
+        fallback_password_set=bool(cfg.fallback_password_enc),
+        fallback_sender=cfg.fallback_sender,
         secret_key_configured=settings.secret_key is not None
         and len(settings.secret_key.get_secret_value()) >= 32,
     )
@@ -156,6 +177,18 @@ async def put_notification_settings(
             password_enc = encrypt(settings, body.password)
         except SecretKeyError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    fallback_enc = current.fallback_password_enc
+    if body.fallback_password == "":
+        fallback_enc = None
+    elif body.fallback_password is not None:
+        try:
+            fallback_enc = encrypt(settings, body.fallback_password)
+        except SecretKeyError as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if body.fallback_enabled and not body.fallback_host:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "the fallback server needs a host"
+        )
     if body.enabled and (not body.host or not body.sender or not body.recipients):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -174,6 +207,13 @@ async def put_notification_settings(
         digest_hour=body.digest_hour,
         timezone=body.timezone,
         language=body.language,
+        fallback_enabled=body.fallback_enabled,
+        fallback_host=body.fallback_host,
+        fallback_port=body.fallback_port,
+        fallback_security=body.fallback_security,
+        fallback_username=body.fallback_username,
+        fallback_password_enc=fallback_enc,
+        fallback_sender=str(body.fallback_sender),
     )
     await save_config(db, cfg)
     await audit.record(
@@ -190,6 +230,8 @@ async def put_notification_settings(
             "security": cfg.security,
             "recipients": len(cfg.recipients),
             "password_changed": body.password is not None,
+            "fallback": cfg.fallback_host if cfg.fallback_enabled else None,
+            "fallback_password_changed": body.fallback_password is not None,
         },
     )
     return _out(cfg, settings)
@@ -204,6 +246,7 @@ class TestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     to: EmailStr | None = None
+    server: Literal["main", "fallback"] = "main"
 
 
 @router.post("/notifications/test", response_model=TestResult)
@@ -218,9 +261,14 @@ async def test_notification(
     cfg = await load_config(db)
     recipients = [str(body.to)] if body.to else cfg.recipients
     texts = TEXTS.get(cfg.language, TEXTS["fr"])
+    target = cfg
+    if body.server == "fallback":
+        if not cfg.fallback_host:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "no fallback server")
+        target = cfg.fallback()
     try:
         await asyncio.to_thread(
-            send_mail, settings, cfg, recipients, texts["test"], texts["test_body"]
+            send_mail, settings, target, recipients, texts["test"], texts["test_body"]
         )
         result = TestResult(ok=True)
     except (SmtpError, SecretKeyError) as exc:
@@ -232,7 +280,7 @@ async def test_notification(
         actor_id=str(principal.user.id),
         actor_name=principal.user.username,
         source_ip=client_ip(request),
-        details={"recipients": len(recipients), "error": result.error},
+        details={"recipients": len(recipients), "server": body.server, "error": result.error},
     )
     return result
 

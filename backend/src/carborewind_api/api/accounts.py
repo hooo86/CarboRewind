@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, select
 
-from .. import monitoring
+from .. import blacklist, monitoring
 from ..authz import Permission
 from ..db.models import (
     Account,
@@ -84,6 +84,8 @@ class Dashboard(BaseModel):
     # Carbonio services down and size of the mail queue (global readers only).
     services_down: list[str] = Field(default_factory=list)
     mail_queue_total: int | None = None
+    # Public addresses found in a blacklist (global readers only): "ip (zone)".
+    blacklisted: list[str] = Field(default_factory=list)
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -237,7 +239,11 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
     storage: list[dict[str, Any]] = []
     services_down: list[str] = []
     queue_total: int | None = None
+    listed: list[str] = []
     if scope is None:
+        listed = [
+            f"{r['ip']} ({r['zone']})" for r in blacklist.listed(await blacklist.load_status(db))
+        ]
         now = datetime.now(UTC)
         for a in await db.scalars(select(Agent).where(Agent.status == AgentStatus.ACTIVE)):
             view = monitoring.services_view(a, now)
@@ -281,6 +287,7 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
     archive = await summary_for(db, scope)
     return Dashboard(
         services_down=services_down,
+        blacklisted=listed,
         mail_queue_total=queue_total,
         archived_messages=archive.messages,
         archived_bytes=archive.bytes,

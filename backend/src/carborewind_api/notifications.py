@@ -21,7 +21,7 @@ import hashlib
 import logging
 import smtplib
 import ssl
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
@@ -65,6 +65,8 @@ EVENTS = (
     "service_down",
     "service_up",
     "mail_queue",
+    "blacklisted",
+    "blacklist_cleared",
 )
 MAX_ATTEMPTS = 6
 AGENT_SILENCE = timedelta(minutes=30)
@@ -109,6 +111,30 @@ class SmtpConfig:
     digest_hour: int = 8
     timezone: str = "UTC"
     language: Literal["fr", "en"] = "fr"
+    # Fallback server: used when the main one refuses or cannot be reached.
+    fallback_enabled: bool = False
+    fallback_host: str = ""
+    fallback_port: int = 587
+    fallback_security: Security = "starttls"
+    fallback_username: str = ""
+    fallback_password_enc: str | None = None
+    fallback_sender: str = ""  # empty: same sender as the main server
+
+    @property
+    def has_fallback(self) -> bool:
+        return self.fallback_enabled and bool(self.fallback_host)
+
+    def fallback(self) -> SmtpConfig:
+        """The same settings, pointing at the fallback server."""
+        return replace(
+            self,
+            host=self.fallback_host,
+            port=self.fallback_port,
+            security=self.fallback_security,
+            username=self.fallback_username,
+            password_enc=self.fallback_password_enc,
+            sender=self.fallback_sender or self.sender,
+        )
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> SmtpConfig:
@@ -203,6 +229,15 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
         ),
+        "blacklisted": "[CarboRewind] Adresse {ip} en liste noire : {zone}",
+        "blacklisted_body": (
+            "L'adresse {ip} du serveur de messagerie apparaît dans la liste noire {zone} "
+            "(code {codes}).\nCertains destinataires risquent de refuser vos messages. Cherchez "
+            "la cause (boîte compromise, envoi massif : voir Trafic mail), corrigez-la puis "
+            "demandez le retrait sur le site de la liste.\n"
+        ),
+        "blacklist_cleared": "[CarboRewind] Adresse {ip} retirée de {zone}",
+        "blacklist_cleared_body": "L'adresse {ip} n'apparaît plus dans la liste noire {zone}.\n",
         "service_down": "[CarboRewind] Service Carbonio arrêté : {service}",
         "service_down_body": (
             "Le service {service} ne fonctionne plus sur le serveur de l'agent {agent} depuis "
@@ -303,6 +338,15 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
         ),
+        "blacklisted": "[CarboRewind] Address {ip} blacklisted: {zone}",
+        "blacklisted_body": (
+            "The mail server address {ip} is listed in the blacklist {zone} (code {codes}).\n"
+            "Some recipients may refuse your messages. Find the cause (compromised mailbox, "
+            "mass mailing: see Mail traffic), fix it, then ask for removal on the list's "
+            "site.\n"
+        ),
+        "blacklist_cleared": "[CarboRewind] Address {ip} removed from {zone}",
+        "blacklist_cleared_body": "The address {ip} is no longer listed in {zone}.\n",
         "service_down": "[CarboRewind] Carbonio service down: {service}",
         "service_down_body": (
             "The service {service} has been down on the server of agent {agent} since "
@@ -417,6 +461,29 @@ def send_mail(
         raise SmtpError(f"{type(exc).__name__}: {exc}") from exc
 
 
+def send_any(
+    settings: Settings, cfg: SmtpConfig, recipients: list[str], subject: str, body: str
+) -> str | None:
+    """Send through the main server, else through the fallback one.
+
+    Returns None when the main server sent it, or the main server's error when the fallback
+    did. Raises :class:`SmtpError` when both failed.
+    """
+    try:
+        send_mail(settings, cfg, recipients, subject, body)
+        return None
+    except (SmtpError, SecretKeyError) as exc:
+        if not cfg.has_fallback:
+            raise SmtpError(str(exc)) from exc
+        primary = str(exc)
+    try:
+        send_mail(settings, cfg.fallback(), recipients, subject, body)
+    except (SmtpError, SecretKeyError) as exc:
+        raise SmtpError(f"main server: {primary}; fallback server: {exc}") from exc
+    log.warning("main SMTP server failed (%s), message sent by the fallback server", primary)
+    return primary
+
+
 async def deliver_pending(db: AsyncSession, settings: Settings, now: datetime) -> int:
     """Send due messages of the outbox; retries with backoff. Returns how many were sent."""
     cfg = await load_config(db)
@@ -438,8 +505,8 @@ async def deliver_pending(db: AsyncSession, settings: Settings, now: datetime) -
         try:
             if not cfg.enabled:
                 raise SmtpError("notifications are disabled")
-            await asyncio.to_thread(
-                send_mail, settings, cfg, list(note.recipients), note.subject, note.body
+            primary_error = await asyncio.to_thread(
+                send_any, settings, cfg, list(note.recipients), note.subject, note.body
             )
         except (SmtpError, SecretKeyError) as exc:
             note.error = str(exc)[:1000]
@@ -449,7 +516,13 @@ async def deliver_pending(db: AsyncSession, settings: Settings, now: datetime) -
                 note.next_attempt_at = now + timedelta(minutes=2**note.attempts)
             log.warning("notification %s not sent: %s", note.id, exc)
             continue
-        note.status, note.sent_at, note.error = NotificationStatus.SENT, now, None
+        note.status, note.sent_at = NotificationStatus.SENT, now
+        # Sent, but say so when the main server failed: someone should look at it.
+        note.error = (
+            f"sent by the fallback server; main: {primary_error}"[:1000]
+            if (primary_error)
+            else None
+        )
         sent += 1
     return sent
 
