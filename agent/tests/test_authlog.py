@@ -83,6 +83,8 @@ def test_counts_failures_and_suspensions_per_ip() -> None:
     "text",
     [
         "Access to IP 198.51.100.20 suspended, for repeated failed login.",
+        # Real Carbonio CE line (mailbox.log, 2026-11-20).
+        "Access from IP 198.51.100.20 suspended, for repeated failed login.",
         "Suspending IP address 198.51.100.20 due to too many failed login attempts",
         "IP 198.51.100.20 has been suspended for 5 minutes",
         "suspended access to IP 198.51.100.20",
@@ -90,7 +92,7 @@ def test_counts_failures_and_suspensions_per_ip() -> None:
 )
 def test_suspension_variants(text: str) -> None:
     agg = AuthAggregator(tz=UTC)
-    agg.feed_mailbox(f"2026-11-19 10:07:30,500 INFO  [qtp1-30] [] misc - {text}")
+    agg.feed_mailbox(f"2026-11-19 10:07:30,523 INFO  [qtp1955846455-2428] [] misc - {text}")
     assert agg.hours[HOUR]["198.51.100.20"].suspended == 1
     agg.feed_mailbox("2026-11-19 10:07:31,000 INFO  [x] [] misc - account suspended for x@y")
     assert list(agg.hours[HOUR]) == ["198.51.100.20"]
@@ -211,3 +213,21 @@ def test_monitor_reports_the_login_filter_and_trusts_ips(monitor: tuple[Any, ...
     server.ip_actions = [{"id": "i4", "action": "untrust", "ip": "203.0.113.9"}]
     mon.tick(NOW)
     assert fake.config["zimbraHttpThrottleSafeIPs"] == ["192.168.8.0/24"]
+
+
+def test_real_carbonio_lines() -> None:
+    """Lines copied from a Carbonio CE mailbox.log (addresses kept, names changed)."""
+    agg = AuthAggregator(tz=UTC)
+    agg.feed_mailbox(
+        "2026-11-19 10:20:22,275 INFO  [qtp1171097095-122] [name=ana@lnhc.dz;ip=192.168.8.40;"
+        "oip=105.103.154.178;oproto=https;port=56646;soapId=439d1e36;] SoapEngine - handler "
+        "exception: authentication failed for [ana@lnhc.dz], account lockout"
+    )
+    agg.feed_mailbox(
+        "2026-11-19 10:58:50,523 INFO  [qtp1955846455-2428] [] misc - Access from IP "
+        "105.103.154.178 suspended, for repeated failed login."
+    )
+    counts = agg.hours[HOUR]["105.103.154.178"]
+    assert (counts.failed_mailbox, counts.suspended) == (1, 1)
+    assert counts.accounts == ["ana@lnhc.dz"]
+    assert counts.last_suspended == "2026-11-19T10:58:50+00:00"
