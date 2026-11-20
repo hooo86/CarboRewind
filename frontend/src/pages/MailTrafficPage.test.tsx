@@ -266,6 +266,7 @@ describe("security and spam origin", () => {
             recently_blocked: false,
             first_seen: "2026-11-19T08:00:00Z",
             last_seen: "2026-11-19T09:00:00Z",
+            last_seen_exact: false,
             accounts: [],
           },
         ],
@@ -291,7 +292,12 @@ describe("security and spam origin", () => {
       await within(blocked).findByText("mail-1.mx.spammer.co.uk"),
     ).toBeInTheDocument();
     expect(within(blocked).getByText("blocked 2 times")).toBeInTheDocument();
-    expect(within(blocked).getByText("not blocked")).toBeInTheDocument();
+    const quiet = within(blocked)
+      .getByText("198.51.100.7")
+      .closest("tr") as HTMLElement;
+    expect(within(quiet).getByText("not blocked")).toBeInTheDocument();
+    expect(within(quiet).queryByRole("button")).toBeNull(); // nothing to unblock
+    expect(within(quiet).getByText(/between .* and /)).toBeInTheDocument();
     expect(
       within(blocked).getByText("42 webmail/IMAP · 3 SMTP"),
     ).toBeInTheDocument();

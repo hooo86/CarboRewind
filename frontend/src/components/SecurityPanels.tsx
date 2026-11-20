@@ -12,6 +12,28 @@ import type {
 import { formatDate, formatRelative } from "../utils/format";
 import { LoadView, StatusBadge, errorMessage, useLoad } from "./common";
 
+const hhmm = (d: Date) =>
+  d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+/** "il y a 5 minutes" when the time is exact, else the hour it happened in. */
+function lastSeen(
+  value: string,
+  exact: boolean,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
+  const at = new Date(value);
+  if (exact)
+    return formatRelative(
+      new Date(Math.min(at.getTime(), Date.now())).toISOString(),
+    );
+  const end = new Date(at.getTime() + 3_600_000);
+  return t("loginSecurity.inHour", {
+    day: at.toLocaleDateString(),
+    from: hhmm(at),
+    to: hhmm(end),
+  });
+}
+
 /** Trust (never block again) or untrust one address; asks first. */
 function IpButton({
   ip,
@@ -220,7 +242,11 @@ export function BlockedIpsPanel({
                           </td>
                         )}
                         <td title={formatDate(ip.last_seen)}>
-                          {formatRelative(ip.last_seen)}
+                          {lastSeen(
+                            ip.last_seen,
+                            ip.last_seen_exact !== false,
+                            t,
+                          )}
                         </td>
                         <td>
                           {ip.pending ? (
@@ -235,16 +261,14 @@ export function BlockedIpsPanel({
                               onDone={done(ip.ip, "untrust")}
                             />
                           ) : (
-                            <IpButton
-                              ip={ip.ip}
-                              action="trust"
-                              label={
-                                ip.suspended > 0
-                                  ? t("loginSecurity.unblock")
-                                  : t("loginSecurity.allow")
-                              }
-                              onDone={done(ip.ip, "trust")}
-                            />
+                            ip.recently_blocked && (
+                              <IpButton
+                                ip={ip.ip}
+                                action="trust"
+                                label={t("loginSecurity.unblock")}
+                                onDone={done(ip.ip, "trust")}
+                              />
+                            )
                           )}
                         </td>
                       </tr>

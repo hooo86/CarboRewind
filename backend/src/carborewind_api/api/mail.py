@@ -274,7 +274,10 @@ class BlockedIp(BaseModel):
     recently_blocked: bool
     blocked_until: datetime | None = None
     first_seen: datetime
+    # Exact time of the last failure when the agent reports it; else the start of the
+    # hour it happened in (last_seen_exact False).
     last_seen: datetime
+    last_seen_exact: bool = True
     accounts: list[str]
     # In Carbonio's trusted addresses (zimbraHttpThrottleSafeIPs): never blocked again.
     trusted: bool = False
@@ -411,9 +414,8 @@ async def login_security(
                 recently_blocked=until(r.last_suspended) is not None,
                 blocked_until=until(r.last_suspended),
                 first_seen=r.first,
-                # Exact time from agents that report it, else the end of the hour (not
-                # in the future: the hour may still be running).
-                last_seen=r.last_failed or min(r.last + timedelta(hours=1), now),
+                last_seen=r.last_failed or r.last,
+                last_seen_exact=r.last_failed is not None,
                 accounts=accounts(r.accounts),
                 trusted=_covered(r.ip, safe),
                 pending=pending.get(r.ip),

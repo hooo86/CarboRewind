@@ -137,7 +137,10 @@ def test_failed_logins_and_blocked_ips(api: TestClient, engine: Engine) -> None:
     assert second["ip"] == "198.51.100.7" and second["suspended"] == 0
     seen = datetime.fromisoformat(first["last_seen"])
     assert abs((seen - (now - timedelta(minutes=6))).total_seconds()) < 2
-    assert datetime.fromisoformat(second["last_seen"]) <= datetime.now(UTC)  # never ahead
+    assert first["last_seen_exact"] is True
+    # Old agents: the hour it happened in, flagged as not exact.
+    assert second["last_seen_exact"] is False
+    assert datetime.fromisoformat(second["last_seen"]) == datetime.fromisoformat(hour(-2))
     blocked = api.get("/api/mail/security", params={"only_blocked": "true"}).json()
     assert [i["ip"] for i in blocked["ips"]] == ["203.0.113.9"]
     assert api.get("/api/mail/security", params={"period": "1h"}).json()["totals"]["ips"] == 1

@@ -2152,6 +2152,11 @@
             "title": "Last Seen",
             "type": "string"
           },
+          "last_seen_exact": {
+            "default": true,
+            "title": "Last Seen Exact",
+            "type": "boolean"
+          },
           "last_suspended_at": {
             "anyOf": [
               {

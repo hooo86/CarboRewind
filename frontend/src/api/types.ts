@@ -935,6 +935,7 @@ export interface BlockedIp {
   blocked_until?: string | null;
   first_seen: string;
   last_seen: string;
+  last_seen_exact?: boolean;
   accounts: string[];
   trusted?: boolean;
   pending?: "trust" | "untrust" | null;

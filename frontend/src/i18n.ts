@@ -262,6 +262,7 @@ export const resources = {
         blocked_other: "bloquée {{count}} fois",
         notBlocked: "non bloquée",
         noBlock: "Aucune adresse IP bloquée sur la période.",
+        inHour: "le {{day}} entre {{from}} et {{to}}",
         failedNotBlocked_one:
           "{{count}} adresse a échoué à se connecter sans être bloquée.",
         failedNotBlocked_other:
@@ -1811,6 +1812,7 @@ export const resources = {
         blocked_other: "blocked {{count}} times",
         notBlocked: "not blocked",
         noBlock: "No IP address blocked in the period.",
+        inHour: "on {{day}} between {{from}} and {{to}}",
         failedNotBlocked_one:
           "{{count}} address failed to log in without being blocked.",
         failedNotBlocked_other:
