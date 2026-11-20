@@ -42,6 +42,7 @@ from ..notifications import (
     SmtpError,
     TelegramConfig,
     TelegramError,
+    decrypt,
     encrypt,
     load_config,
     load_telegram,
@@ -745,6 +746,16 @@ async def get_telegram(principal: Admin, db: DbSession) -> TelegramOut:
     return _telegram_out(await load_telegram(db))
 
 
+def _bot_id(settings: Settings, token_enc: str | None) -> str | None:
+    """The bot's own id: the part of its token before ':' (a bot cannot message itself)."""
+    if not token_enc:
+        return None
+    try:
+        return decrypt(settings, token_enc).split(":", 1)[0] or None
+    except SecretKeyError:
+        return None
+
+
 @router.put("/telegram", response_model=TelegramOut)
 async def put_telegram(
     body: TelegramIn, principal: Admin, db: DbSession, settings: AppSettings, request: Request
@@ -758,6 +769,13 @@ async def put_telegram(
             token_enc = encrypt(settings, body.token)
         except SecretKeyError as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    bot_id = _bot_id(settings, token_enc)
+    if bot_id and bot_id in body.chat_ids:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"{bot_id} is the bot itself (the number before ':' in the token), not a group: "
+            "add the bot to a group, write a message there, then use 'Find groups'",
+        )
     if body.enabled and (not token_enc or not body.chat_ids):
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -840,7 +858,7 @@ async def telegram_chats(
     for update in updates or []:
         for key in ("message", "channel_post", "my_chat_member", "edited_message"):
             chat = (update.get(key) or {}).get("chat")
-            if chat and "id" in chat:
+            if chat and "id" in chat and not chat.get("is_bot"):
                 title = chat.get("title") or " ".join(
                     x for x in (chat.get("first_name"), chat.get("last_name")) if x
                 )

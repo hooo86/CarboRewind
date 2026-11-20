@@ -507,6 +507,8 @@ def test_telegram_alerts(
             assert api.put("/api/settings/telegram", json=bad, headers=h).status_code == 422, bad
         r = api.put("/api/settings/telegram", json={"token": TOKEN}, headers=h)
         assert r.json()["token_set"] is True and TOKEN not in r.text
+        own = api.put("/api/settings/telegram", json={"chat_ids": [TOKEN.split(":")[0]]}, headers=h)
+        assert own.status_code == 422 and "bot itself" in own.text
         chats = api.get("/api/settings/telegram/chats", headers=h).json()
         assert {c["id"] for c in chats} == {"-1001", "42"}
         r = api.put(
