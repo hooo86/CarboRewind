@@ -2032,3 +2032,53 @@ label {
   border-radius: var(--radius);
   color: var(--text-2);
 }
+
+/* ---- grouped account list, favourites */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.group-head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.group-head:hover {
+  background: var(--well);
+}
+.group-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.group-caret {
+  width: 1em;
+  color: var(--text-2);
+}
+.group-body {
+  padding: 0 0.9rem 0.8rem;
+}
+.favorites {
+  min-width: 18rem;
+  max-width: min(26rem, 90vw);
+}
+.view-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.view-item .link.current {
+  font-weight: 600;
+}

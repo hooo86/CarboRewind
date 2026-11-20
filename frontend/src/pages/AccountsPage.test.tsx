@@ -12,7 +12,7 @@ import { setCsrfToken } from "../api/client";
 import type { AccountItem } from "../api/types";
 import i18n from "../i18n";
 import { DOMAIN_ID, fakeApi, page, user } from "../test/fakeApi";
-import { filterLabel } from "./AccountsPage";
+import { filterLabel, groupFilters, groupLabel } from "./AccountsPage";
 
 const OTHER = "d0000000-0000-0000-0000-000000000002";
 
@@ -86,6 +86,7 @@ const facets = {
     has_policy: "boolean",
     policy: "text",
   },
+  groupable: ["domain", "status", "is_admin", "last_login_at"],
 };
 
 function open(role = user("super_admin"), rows = [item(), ben], extra = {}) {
@@ -423,6 +424,134 @@ describe("account list", () => {
   it("shows an empty result", async () => {
     open(user("viewer"), []);
     expect(await screen.findByText("No account.")).toBeInTheDocument();
+  });
+});
+
+describe("grouping and favourites", () => {
+  it("groups accounts by a field and opens a group", async () => {
+    const { calls } = open(user("super_admin"), [item()], {
+      "GET /api/accounts/groups": [
+        { value: "active", count: 2, used_bytes: 2048, stored_bytes: 0 },
+        { value: "locked", count: 120, used_bytes: 0, stored_bytes: 0 },
+      ],
+    });
+    await screen.findByText("ana@example.org");
+    fireEvent.click(screen.getByRole("button", { name: /Group by/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "Status" }));
+    const locked = await screen.findByRole("button", { name: /locked/ });
+    expect(screen.getByText("2 group(s), 122 account(s)")).toBeInTheDocument();
+    const groupCall = calls.find((c) =>
+      c.url.startsWith("/api/accounts/groups"),
+    );
+    expect(groupCall?.url).toContain("group_by=status");
+    fireEvent.click(locked);
+    expect(await screen.findByText("ana@example.org")).toBeInTheDocument();
+    const opened = calls
+      .filter((c) => c.url.startsWith("/api/accounts?"))
+      .pop();
+    expect(decodeURIComponent(opened?.url ?? "")).toContain(
+      "f=status:in:locked",
+    );
+    // More accounts than shown: drill into the group (filter added, grouping removed).
+    fireEvent.click(
+      screen.getByRole("button", { name: /See the 120 accounts/ }),
+    );
+    expect(
+      await screen.findByText("Status is locked"),
+    ).toBeInTheDocument();
+    expect(window.location.search).not.toContain("group=");
+  });
+
+  it("applies, saves, shares and deletes favourites", async () => {
+    let saved: unknown;
+    const { lastQuery } = open(user("super_admin"), [item()], {
+      "GET /api/views": [
+        {
+          id: "v1",
+          page: "accounts",
+          name: "No policy",
+          query: "f=has_policy%3Ais%3Afalse",
+          shared: false,
+          owner: "alice",
+          mine: true,
+          created_at: "2026-11-20T00:00:00Z",
+        },
+        {
+          id: "v2",
+          page: "accounts",
+          name: "By domain",
+          query: "group=domain",
+          shared: true,
+          owner: "bob",
+          mine: false,
+          created_at: "2026-11-20T00:00:00Z",
+        },
+      ],
+      "POST /api/views": (c: { body: unknown }) => {
+        saved = c.body;
+        return { status: 201, body: { id: "v3", ...(c.body as object) } };
+      },
+      "DELETE /api/views/v1": { status: 204, body: undefined },
+    });
+    await screen.findByText("ana@example.org");
+    fireEvent.click(screen.getByRole("button", { name: /Favourites/ }));
+    expect(await screen.findByText("shared by bob")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete view By domain" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "No policy" }));
+    await waitFor(() =>
+      expect(lastQuery().getAll("f")).toEqual(["has_policy:is:false"]),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Favourites/ }));
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "Sans politique" },
+    });
+    fireEvent.click(screen.getByLabelText("Share with the other users"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toEqual({
+      page: "accounts",
+      name: "Sans politique",
+      query: "f=has_policy%3Ais%3Afalse",
+      shared: true,
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete view No policy" }),
+    );
+    await waitFor(() =>
+      expect(
+        (
+          globalThis.fetch as unknown as {
+            mock: { calls: [string, RequestInit][] };
+          }
+        ).mock.calls.some(
+          ([url, init]) => url === "/api/views/v1" && init.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("builds the filters and labels of a group", () => {
+    const t = i18n.t.bind(i18n);
+    expect(groupFilters("status", "choice", "active")).toEqual([
+      "status:in:active",
+    ]);
+    expect(groupFilters("is_admin", "boolean", "true")).toEqual([
+      "is_admin:is:true",
+    ]);
+    expect(groupFilters("domain", "text", "a.dz")).toEqual(["domain:eq:a.dz"]);
+    expect(groupFilters("domain", "text", null)).toEqual(["domain:not_set"]);
+    expect(groupFilters("last_login_at", "date", "2026-03")).toEqual([
+      "last_login_at:after:2026-02-28",
+      "last_login_at:before:2026-04-01",
+    ]);
+    expect(groupLabel("status", "choice", "locked", t)).toBe("locked");
+    expect(groupLabel("is_admin", "boolean", "false", t)).toBe(t("no"));
+    expect(groupLabel("domain", "text", null, t)).toBe("Not set");
+    expect(groupLabel("last_login_at", "date", "2026-03", t)).toMatch(/2026/);
   });
 });
 

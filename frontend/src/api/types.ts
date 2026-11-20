@@ -218,6 +218,47 @@ export interface Policy {
   enabled: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
+  full_schedule?: string | null;
+  next_full_run_at?: string | null;
+  created_at: string;
+  account_count?: number;
+  protected_bytes?: number;
+  stored_bytes?: number;
+  snapshot_count?: number;
+  last_run?: PolicyRun | null;
+}
+
+/** One execution of a policy: the backups queued together (one per account). */
+export interface PolicyRun {
+  started_at: string;
+  finished_at: string | null;
+  backup_type: BackupType;
+  trigger: "schedule" | "manual";
+  status: "running" | "succeeded" | "partial" | "failed" | "cancelled";
+  accounts: number;
+  succeeded: number;
+  failed: number;
+  pending: number;
+  read_bytes: number;
+  new_bytes: number;
+  size_bytes: number;
+}
+
+export interface AccountGroup {
+  value: string | null;
+  count: number;
+  used_bytes: number;
+  stored_bytes: number;
+}
+
+export interface SavedView {
+  id: string;
+  page: string;
+  name: string;
+  query: string;
+  shared: boolean;
+  owner: string;
+  mine: boolean;
   created_at: string;
 }
 
@@ -231,6 +272,8 @@ export interface PolicyInput {
   timezone: string;
   retention: RetentionRule;
   enabled: boolean;
+  /** Full backups on a second schedule; "" removes it. */
+  full_schedule?: string | null;
 }
 
 /** Row of ``GET /api/accounts`` (all fields, see the column picker). */
@@ -267,6 +310,7 @@ export interface AccountFacets {
   domains: { id: string; name: string }[];
   cos: string[];
   fields: Record<string, FieldType>;
+  groupable?: string[];
 }
 
 export interface BulkBackupResult {

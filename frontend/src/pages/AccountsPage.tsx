@@ -6,10 +6,12 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api/endpoints";
 import type {
   AccountFacets,
+  AccountGroup,
   AccountItem,
   BackupType,
   FieldType,
   Page,
+  SavedView,
 } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import {
@@ -288,6 +290,52 @@ export function filterLabel(
   }`;
 }
 
+/** Filters selecting one group of ``GET /api/accounts/groups``. */
+export function groupFilters(
+  field: string,
+  type: FieldType,
+  value: string | null,
+): string[] {
+  if (value === null) return [`${field}:not_set`];
+  if (type === "boolean") return [`${field}:is:${value}`];
+  if (type === "choice") return [`${field}:in:${value}`];
+  if (type === "date") {
+    const [y = 1970, m = 1] = value.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1));
+    const before = new Date(Date.UTC(y, m, 1));
+    const dayBefore = new Date(first.getTime() - 86_400_000);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    return [
+      `${field}:after:${iso(dayBefore)}`,
+      `${field}:before:${iso(before)}`,
+    ];
+  }
+  return [`${field}:eq:${value}`];
+}
+
+/** Human label of a group value. */
+export function groupLabel(
+  field: string,
+  type: FieldType,
+  value: string | null,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
+  if (value === null) return t("groups.none");
+  if (type === "boolean") return value === "true" ? t("yes") : t("no");
+  if (type === "date") {
+    const [y = 1970, m = 1] = value.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString(undefined, {
+      month: "long",
+      year: "numeric",
+    });
+  }
+  if (field in CHOICES)
+    return t(`status.${value}`, {
+      defaultValue: t(`backupType.${value}`, { defaultValue: value }),
+    });
+  return value;
+}
+
 function Dropdown({
   label,
   children,
@@ -460,6 +508,315 @@ function CustomFilter({
   );
 }
 
+function AccountTable({
+  items,
+  visible,
+  selected,
+  onToggle,
+  onTogglePage,
+  sort,
+  order,
+  onSort,
+}: {
+  items: AccountItem[];
+  visible: Column[];
+  selected: Map<string, AccountItem>;
+  onToggle: (a: AccountItem) => void;
+  onTogglePage: (items: AccountItem[], select: boolean) => void;
+  sort: string;
+  order: "asc" | "desc";
+  onSort: (field: string) => void;
+}) {
+  const { t } = useTranslation();
+  const all = items.length > 0 && items.every((a) => selected.has(a.id));
+  return (
+    <div className="table-wrap">
+      <table className="accounts">
+        <thead>
+          <tr>
+            <th>
+              <input
+                type="checkbox"
+                aria-label={t("accounts.selectPage")}
+                checked={all}
+                onChange={() => onTogglePage(items, !all)}
+              />
+            </th>
+            {visible.map((c) => (
+              <th key={c.key} className={c.num ? "num" : undefined}>
+                {c.sort ? (
+                  <button
+                    type="button"
+                    className="th-sort"
+                    onClick={() => onSort(c.sort as string)}
+                  >
+                    {t(`columns.${c.key}`)}
+                    {sort === c.sort ? (order === "asc" ? " ▲" : " ▼") : ""}
+                  </button>
+                ) : (
+                  t(`columns.${c.key}`)
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((a) => (
+            <tr
+              key={a.id}
+              className={selected.has(a.id) ? "selected" : undefined}
+            >
+              <td>
+                <input
+                  type="checkbox"
+                  aria-label={t("accounts.selectOne", { email: a.email })}
+                  checked={selected.has(a.id)}
+                  onChange={() => onToggle(a)}
+                />
+              </td>
+              {visible.map((c) => (
+                <td key={c.key} className={c.num ? "num" : undefined}>
+                  {c.render(a, t)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const GROUP_PAGE = 100;
+
+/** One group of the grouped view: header with figures, accounts loaded on opening. */
+function GroupSection({
+  group,
+  field,
+  type,
+  q,
+  filters,
+  sort,
+  order,
+  tableProps,
+  onOpen,
+}: {
+  group: AccountGroup;
+  field: string;
+  type: FieldType;
+  q: string;
+  filters: string[];
+  sort: string;
+  order: "asc" | "desc";
+  tableProps: Omit<
+    Parameters<typeof AccountTable>[0],
+    "items" | "sort" | "order"
+  >;
+  onOpen: (extra: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<AccountItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const extra = groupFilters(field, type, group.value);
+  const label = groupLabel(field, type, group.value, t);
+  const key = [q, ...filters, ...extra, sort, order].join("|");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setError(null);
+    api
+      .accountList({
+        q: q || undefined,
+        filters: [...filters, ...extra],
+        sort,
+        order,
+        limit: GROUP_PAGE,
+        offset: 0,
+      })
+      .then((p) => !cancelled && setItems(p.items))
+      .catch((err: unknown) => !cancelled && setError(errorMessage(err)));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, key]);
+
+  return (
+    <div className="group">
+      <button
+        type="button"
+        className="group-head"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="group-caret">{open ? "▾" : "▸"}</span>
+        <strong>{label}</strong>
+        <span className="muted">
+          {t("groups.count", { count: group.count })}
+          {group.used_bytes > 0 &&
+            ` · ${t("groups.used", { size: formatBytes(group.used_bytes) })}`}
+          {group.stored_bytes > 0 &&
+            ` · ${t("groups.stored", { size: formatBytes(group.stored_bytes) })}`}
+        </span>
+      </button>
+      {open && (
+        <div className="group-body">
+          {error && (
+            <p role="alert" className="alert error">
+              {t("error", { message: error })}
+            </p>
+          )}
+          {items === null && !error && <p className="muted">{t("loading")}</p>}
+          {items && (
+            <>
+              <AccountTable
+                {...tableProps}
+                items={items}
+                sort={sort}
+                order={order}
+              />
+              {group.count > items.length && (
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => onOpen(extra)}
+                >
+                  {t("groups.openAll", { count: group.count })}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Saved searches of the page (Odoo "Favourites"): apply, save, share, delete. */
+function Favorites({
+  page,
+  current,
+  onApply,
+}: {
+  page: string;
+  current: string;
+  onApply: (query: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [views, setViews] = useState<SavedView[] | null>(null);
+  const [name, setName] = useState("");
+  const [shared, setShared] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = () =>
+    api
+      .views(page)
+      .then(setViews)
+      .catch((err: unknown) => setError(errorMessage(err)));
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  async function save() {
+    setError(null);
+    try {
+      await api.saveView({ page, name, query: current, shared });
+      setName("");
+      setShared(false);
+      await load();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  async function remove(view: SavedView) {
+    if (!window.confirm(t("views.confirmDelete", { name: view.name }))) return;
+    try {
+      await api.deleteView(view.id);
+      await load();
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <div className="favorites">
+      {views === null && !error && <p className="muted">{t("loading")}</p>}
+      {views && views.length === 0 && (
+        <p className="muted small">{t("views.none")}</p>
+      )}
+      {views && views.length > 0 && (
+        <ul className="menu">
+          {views.map((v) => (
+            <li key={v.id} className="view-item">
+              <button
+                type="button"
+                className={`link${v.query === current ? " current" : ""}`}
+                onClick={() => onApply(v.query)}
+              >
+                {v.name}
+              </button>
+              {v.shared && (
+                <span className="muted small">
+                  {v.mine
+                    ? t("views.sharedByMe")
+                    : t("views.sharedBy", { owner: v.owner })}
+                </span>
+              )}
+              {v.mine && (
+                <button
+                  type="button"
+                  className="chip-x"
+                  aria-label={t("views.delete", { name: v.name })}
+                  onClick={() => void remove(v)}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <h3>{t("views.saveTitle")}</h3>
+      <form
+        className="custom-filter"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) void save();
+        }}
+      >
+        <label>
+          {t("views.name")}
+          <input
+            value={name}
+            maxLength={100}
+            placeholder={t("views.namePlaceholder")}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={shared}
+            onChange={(e) => setShared(e.target.checked)}
+          />
+          {t("views.share")}
+        </label>
+        <button type="submit" disabled={!name.trim()}>
+          {t("views.save")}
+        </button>
+      </form>
+      {error && (
+        <p role="alert" className="alert error">
+          {t("error", { message: error })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function AccountsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -471,6 +828,7 @@ export function AccountsPage() {
   const order = params.get("order") === "desc" ? "desc" : "asc";
   const limit = Number(params.get("limit")) || 50;
   const offset = Number(params.get("offset")) || 0;
+  const groupBy = params.get("group") ?? "";
   const [draft, setDraft] = useState(q);
   const [columns, setColumns] = useState<string[]>(loadColumns);
   const [selected, setSelected] = useState<Map<string, AccountItem>>(new Map());
@@ -481,6 +839,13 @@ export function AccountsPage() {
   const key = params.toString();
   const [accounts, reload] = useLoad<Page<AccountItem>>(
     () => api.accountList({ q, filters, sort, order, limit, offset }),
+    [key],
+  );
+  const [groups, reloadGroups] = useLoad<AccountGroup[] | null>(
+    () =>
+      groupBy
+        ? api.accountGroups({ groupBy, q: q || undefined, filters })
+        : Promise.resolve(null),
     [key],
   );
 
@@ -497,6 +862,11 @@ export function AccountsPage() {
     if (!keepOffset) next.delete("offset");
     setParams(next, { replace: true });
   };
+  const viewQuery = (() => {
+    const copy = new URLSearchParams(params);
+    copy.delete("offset");
+    return copy.toString();
+  })();
   const toggleFilter = (filter: string) =>
     update({
       f: filters.includes(filter)
@@ -510,9 +880,6 @@ export function AccountsPage() {
     });
 
   const visible = COLUMNS.filter((c) => columns.includes(c.key));
-  const pageItems = accounts.state === "ready" ? accounts.data.items : [];
-  const allPageSelected =
-    pageItems.length > 0 && pageItems.every((a) => selected.has(a.id));
   const selection = [...selected.values()];
   const mayBackup =
     selection.length > 0 && selection.every((a) => canRunBackup(a.domain_id));
@@ -527,11 +894,11 @@ export function AccountsPage() {
       else next.set(a.id, a);
       return next;
     });
-  const togglePage = () =>
+  const togglePage = (items: AccountItem[], select: boolean) =>
     setSelected((prev) => {
       const next = new Map(prev);
-      if (allPageSelected) pageItems.forEach((a) => next.delete(a.id));
-      else pageItems.forEach((a) => next.set(a.id, a));
+      if (select) items.forEach((a) => next.set(a.id, a));
+      else items.forEach((a) => next.delete(a.id));
       return next;
     });
 
@@ -564,8 +931,17 @@ export function AccountsPage() {
     filtersOfPreset.every((f) => filters.includes(f));
 
   const columnLabel = (key: string) => t(`columns.${key}`);
-  const sortIndicator = (field?: string) =>
-    field && sort === field ? (order === "asc" ? " ▲" : " ▼") : "";
+  const groupable =
+    facets.state === "ready" ? (facets.data.groupable ?? []) : [];
+  const groupType: FieldType =
+    (facets.state === "ready" && facets.data.fields[groupBy]) || "text";
+  const tableProps = {
+    visible,
+    selected,
+    onToggle: toggleOne,
+    onTogglePage: togglePage,
+    onSort: setSort,
+  };
 
   const totalLabel = useMemo(() => {
     if (accounts.state !== "ready") return "";
@@ -667,6 +1043,65 @@ export function AccountsPage() {
             </div>
           )}
         </Dropdown>
+        <Dropdown
+          label={
+            groupBy
+              ? t("groups.by", {
+                  field: columnLabel(
+                    groupBy === "policy" ? "policies" : groupBy,
+                  ),
+                })
+              : t("groups.title")
+          }
+        >
+          {(close) => (
+            <ul className="menu">
+              {groupable.map((g) => (
+                <li key={g}>
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="group-by"
+                      checked={groupBy === g}
+                      onChange={() => {
+                        update({ group: g });
+                        close();
+                      }}
+                    />
+                    {columnLabel(g === "policy" ? "policies" : g)}
+                  </label>
+                </li>
+              ))}
+              {groupBy && (
+                <li>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      update({ group: null });
+                      close();
+                    }}
+                  >
+                    {t("groups.clear")}
+                  </button>
+                </li>
+              )}
+            </ul>
+          )}
+        </Dropdown>
+        <Dropdown label={t("views.title")}>
+          {(close) => (
+            <Favorites
+              page="accounts"
+              current={viewQuery}
+              onApply={(query) => {
+                setParams(new URLSearchParams(query), { replace: true });
+                setDraft(new URLSearchParams(query).get("q") ?? "");
+                close();
+              }}
+            />
+          )}
+        </Dropdown>
         <Dropdown label={t("columns.picker")}>
           {() => (
             <ul className="menu columns-menu">
@@ -762,111 +1197,104 @@ export function AccountsPage() {
       )}
       <NoticeBar notice={notice} />
 
-      <LoadView load={accounts} reload={reload}>
-        {(page) =>
-          page.items.length === 0 ? (
-            <p className="muted">{t("accounts.empty")}</p>
-          ) : (
-            <>
-              <div className="table-wrap">
-                <table className="accounts">
-                  <thead>
-                    <tr>
-                      <th>
-                        <input
-                          type="checkbox"
-                          aria-label={t("accounts.selectPage")}
-                          checked={allPageSelected}
-                          onChange={togglePage}
-                        />
-                      </th>
-                      {visible.map((c) => (
-                        <th key={c.key} className={c.num ? "num" : undefined}>
-                          {c.sort ? (
-                            <button
-                              type="button"
-                              className="th-sort"
-                              onClick={() => setSort(c.sort as string)}
-                            >
-                              {columnLabel(c.key)}
-                              {sortIndicator(c.sort)}
-                            </button>
-                          ) : (
-                            columnLabel(c.key)
-                          )}
-                        </th>
+      {groupBy ? (
+        <LoadView load={groups} reload={reloadGroups}>
+          {(list) =>
+            !list || list.length === 0 ? (
+              <p className="muted">{t("accounts.empty")}</p>
+            ) : (
+              <div className="groups">
+                <p className="muted small">
+                  {t("groups.summary", {
+                    groups: list.length,
+                    count: list.reduce((n, g) => n + g.count, 0),
+                  })}
+                </p>
+                {list.map((g) => (
+                  <GroupSection
+                    key={`${groupBy}:${g.value ?? "∅"}`}
+                    group={g}
+                    field={groupBy}
+                    type={groupType}
+                    q={q}
+                    filters={filters}
+                    sort={sort}
+                    order={order}
+                    tableProps={tableProps}
+                    onOpen={(extra) =>
+                      update({
+                        group: null,
+                        f: [
+                          ...filters,
+                          ...extra.filter((f) => !filters.includes(f)),
+                        ],
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )
+          }
+        </LoadView>
+      ) : (
+        <LoadView load={accounts} reload={reload}>
+          {(page) =>
+            page.items.length === 0 ? (
+              <p className="muted">{t("accounts.empty")}</p>
+            ) : (
+              <>
+                <AccountTable
+                  {...tableProps}
+                  items={page.items}
+                  sort={sort}
+                  order={order}
+                />
+                <div className="pager">
+                  <span className="muted">{totalLabel}</span>
+                  <label className="inline">
+                    {t("accounts.pageSize")}
+                    <select
+                      value={limit}
+                      onChange={(e) => update({ limit: e.target.value })}
+                    >
+                      {PAGE_SIZES.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {page.items.map((a) => (
-                      <tr
-                        key={a.id}
-                        className={selected.has(a.id) ? "selected" : undefined}
-                      >
-                        <td>
-                          <input
-                            type="checkbox"
-                            aria-label={t("accounts.selectOne", {
-                              email: a.email,
-                            })}
-                            checked={selected.has(a.id)}
-                            onChange={() => toggleOne(a)}
-                          />
-                        </td>
-                        {visible.map((c) => (
-                          <td key={c.key} className={c.num ? "num" : undefined}>
-                            {c.render(a, t)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="pager">
-                <span className="muted">{totalLabel}</span>
-                <label className="inline">
-                  {t("accounts.pageSize")}
-                  <select
-                    value={limit}
-                    onChange={(e) => update({ limit: e.target.value })}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary small"
+                    disabled={page.offset === 0}
+                    onClick={() =>
+                      update(
+                        {
+                          offset: String(Math.max(0, page.offset - page.limit)),
+                        },
+                        true,
+                      )
+                    }
                   >
-                    {PAGE_SIZES.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="secondary small"
-                  disabled={page.offset === 0}
-                  onClick={() =>
-                    update(
-                      { offset: String(Math.max(0, page.offset - page.limit)) },
-                      true,
-                    )
-                  }
-                >
-                  {t("accounts.previous")}
-                </button>
-                <button
-                  type="button"
-                  className="secondary small"
-                  disabled={page.offset + page.items.length >= page.total}
-                  onClick={() =>
-                    update({ offset: String(page.offset + page.limit) }, true)
-                  }
-                >
-                  {t("accounts.next")}
-                </button>
-              </div>
-            </>
-          )
-        }
-      </LoadView>
+                    {t("accounts.previous")}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary small"
+                    disabled={page.offset + page.items.length >= page.total}
+                    onClick={() =>
+                      update({ offset: String(page.offset + page.limit) }, true)
+                    }
+                  >
+                    {t("accounts.next")}
+                  </button>
+                </div>
+              </>
+            )
+          }
+        </LoadView>
+      )}
     </>
   );
 }

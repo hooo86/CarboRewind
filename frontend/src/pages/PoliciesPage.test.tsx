@@ -276,6 +276,76 @@ describe("policies page", () => {
     );
   });
 
+  it("adds a weekly full backup to a nightly incremental", async () => {
+    const { created } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Mixte" },
+    });
+    fireEvent.change(screen.getByLabelText("Full"), {
+      target: { value: "weekly" },
+    });
+    const times = screen.getAllByLabelText("Time");
+    fireEvent.change(times[1] as HTMLElement, { target: { value: "03:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(created()).toBeDefined());
+    expect(created()).toMatchObject({
+      schedule: "0 1 * * *",
+      backup_type: "incremental",
+      full_schedule: "30 3 * * 0",
+    });
+  });
+
+  it("shows the volume, the last run and the history of a policy", async () => {
+    const run = {
+      started_at: "2026-11-20T00:00:00Z",
+      finished_at: "2026-11-20T00:42:00Z",
+      backup_type: "incremental",
+      trigger: "schedule",
+      status: "partial",
+      accounts: 40,
+      succeeded: 39,
+      failed: 1,
+      pending: 0,
+      read_bytes: 2 * 1024 ** 3,
+      new_bytes: 1024 ** 3,
+      size_bytes: 300 * 1024 ** 3,
+    };
+    open(
+      user("super_admin"),
+      [
+        policy({
+          full_schedule: "0 2 * * 0",
+          next_full_run_at: "2026-11-22T01:00:00Z",
+          account_count: 40,
+          protected_bytes: 300 * 1024 ** 3,
+          stored_bytes: 120 * 1024 ** 3,
+          snapshot_count: 400,
+          last_run: run as never,
+        }),
+      ],
+      { "GET /api/policies/p1/runs": page([run]) },
+    );
+    const row = (await screen.findByText("Nightly")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(
+      within(row).getByText(/full every Sunday at 02:00/),
+    ).toBeInTheDocument();
+    expect(within(row).getByText(/^300(\.0)? GB$/)).toBeInTheDocument();
+    expect(within(row).getByText("40 accounts")).toBeInTheDocument();
+    expect(within(row).getByText("39/40 succeeded")).toBeInTheDocument();
+    fireEvent.click(
+      within(row).getByRole("button", { name: /History of Nightly/ }),
+    );
+    const panel = await screen.findByRole("region", {
+      name: "History of Nightly",
+    });
+    expect(await within(panel).findByText("1 failed")).toBeInTheDocument();
+    expect(within(panel).getByText("42 min")).toBeInTheDocument();
+    expect(within(panel).getByText("scheduled")).toBeInTheDocument();
+  });
+
   it("limits domain admins to their domain", async () => {
     open(user("domain_admin", DOMAIN_ID), [
       policy(),
@@ -299,9 +369,13 @@ describe("policies page", () => {
       within(own).getByRole("button", { name: "Edit" }),
     ).toBeInTheDocument();
     const other = screen.getByText("Other").closest("tr") as HTMLElement;
-    expect(within(other).queryByRole("button")).not.toBeInTheDocument();
+    // Only the history: no run, edit, suspend or delete.
+    expect(within(other).getAllByRole("button")).toHaveLength(1);
+    expect(
+      within(other).getByRole("button", { name: /History/ }),
+    ).toBeInTheDocument();
     const glob = screen.getByText("Global").closest("tr") as HTMLElement;
-    expect(within(glob).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(glob).getAllByRole("button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "New policy" }));
     const scope = screen.getByLabelText("Scope");
     expect(within(scope).queryByText("All accounts")).not.toBeInTheDocument();

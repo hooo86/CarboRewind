@@ -6,6 +6,20 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Sauvegardes programmées : une même politique peut combiner une sauvegarde incrémentale (par
+  ex. chaque nuit) et une **complète** (chaque semaine, chaque mois ou cron) ; quand les deux
+  tombent au même moment, seule la complète est lancée. Migration 0017.
+- Pour chaque politique : volume protégé (dernières sauvegardes des comptes couverts), données
+  écrites, nombre de comptes, résultat de la dernière exécution, et **historique des exécutions**
+  (date, planifiée ou manuelle, type, comptes réussis / en échec, durée, volumes lus et écrits).
+- Comptes : **regrouper par** un champ comme dans Odoo (domaine, état, classe de service,
+  administrateur, politique, état et type de la dernière sauvegarde, dates par mois, société,
+  service, fonction, ville…), avec effectif et volumes par groupe, ouverture d'un groupe et
+  « voir tous les comptes du groupe ».
+- **Favoris** : enregistrer la recherche actuelle (filtres, regroupement, tri) sous un nom,
+  personnelle ou partagée avec les autres utilisateurs.
+
+### Added
 - Journaux dans l'interface (menu Configuration → Journaux, super-administrateurs) : API et
   planificateur CarboRewind, agent, MTA Carbonio et mailbox.log lus par l'agent ; nombre de lignes,
   niveau, filtre texte, actualisation automatique, téléchargement ; chaque lecture est auditée.

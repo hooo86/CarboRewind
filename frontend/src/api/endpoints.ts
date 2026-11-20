@@ -1,5 +1,8 @@
 import { request } from "./client";
 import type {
+  AccountGroup,
+  PolicyRun,
+  SavedView,
   ArchivedMailbox,
   RestoreTests,
   RestoreTestSettings,
@@ -155,6 +158,26 @@ export const api = {
       offset: params.offset,
     }),
   accountFacets: () => request<AccountFacets>("GET", "/api/accounts/facets"),
+  accountGroups: (params: { groupBy: string; q?: string; filters: string[] }) =>
+    request<AccountGroup[]>("GET", "/api/accounts/groups", undefined, {
+      group_by: params.groupBy,
+      q: params.q,
+      f: params.filters,
+    }),
+  views: (page: string) =>
+    request<SavedView[]>("GET", "/api/views", undefined, { page }),
+  saveView: (body: {
+    page: string;
+    name: string;
+    query: string;
+    shared: boolean;
+  }) => request<SavedView>("POST", "/api/views", body),
+  deleteView: (id: string) => request<undefined>("DELETE", `/api/views/${id}`),
+  policyRuns: (id: string, offset = 0) =>
+    request<Page<PolicyRun>>("GET", `/api/policies/${id}/runs`, undefined, {
+      limit: 20,
+      offset,
+    }),
   bulkBackup: (accountIds: string[], backupType: BackupType) =>
     request<BulkBackupResult>("POST", "/api/backups/bulk", {
       account_ids: accountIds,

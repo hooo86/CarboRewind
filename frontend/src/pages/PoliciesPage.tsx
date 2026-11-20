@@ -11,6 +11,7 @@ import type {
   Page,
   Policy,
   PolicyInput,
+  PolicyRun,
   RetentionRule,
   TargetType,
 } from "../api/types";
@@ -21,7 +22,7 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
-import { formatDate, formatRelative } from "../utils/format";
+import { formatBytes, formatDate, formatRelative } from "../utils/format";
 
 type Preset = "daily" | "weekly" | "custom";
 const DAYS = [1, 2, 3, 4, 5, 6, 0];
@@ -56,6 +57,53 @@ export function buildSchedule(
   if (preset === "custom") return custom.trim();
   const [h = "1", m = "0"] = time.split(":");
   return `${Number(m)} ${Number(h)} * * ${preset === "daily" ? "*" : day}`;
+}
+
+type FullMode = "none" | "weekly" | "monthly" | "custom";
+
+/** "0 2 * * 0" -> weekly Sunday 02:00; "0 2 1 * *" -> monthly on the 1st; else custom. */
+export function readFull(cron: string | null | undefined): {
+  mode: FullMode;
+  time: string;
+  day: number;
+  dom: number;
+} {
+  if (!cron) return { mode: "none", time: "02:00", day: 0, dom: 1 };
+  const weekly = /^(\d{1,2}) (\d{1,2}) \* \* ([0-7])$/.exec(cron.trim());
+  const monthly = /^(\d{1,2}) (\d{1,2}) (\d{1,2}) \* \*$/.exec(cron.trim());
+  const m = weekly ?? monthly;
+  if (!m) return { mode: "custom", time: "02:00", day: 0, dom: 1 };
+  const time = `${m[2]?.padStart(2, "0")}:${m[1]?.padStart(2, "0")}`;
+  return weekly
+    ? { mode: "weekly", time, day: Number(m[3]) % 7, dom: 1 }
+    : { mode: "monthly", time, day: 0, dom: Number(m[3]) };
+}
+
+export function buildFull(
+  mode: FullMode,
+  time: string,
+  day: number,
+  dom: number,
+  custom: string,
+): string {
+  if (mode === "none") return "";
+  if (mode === "custom") return custom.trim();
+  const [h = "2", m = "0"] = time.split(":");
+  return mode === "weekly"
+    ? `${Number(m)} ${Number(h)} * * ${day}`
+    : `${Number(m)} ${Number(h)} ${dom} * *`;
+}
+
+function fullLabel(
+  cron: string,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
+  const f = readFull(cron);
+  if (f.mode === "weekly")
+    return t("policies.fullWeekly", { day: t(`days.${f.day}`), time: f.time });
+  if (f.mode === "monthly")
+    return t("policies.fullMonthly", { dom: f.dom, time: f.time });
+  return t("policies.fullCron", { cron });
 }
 
 function scheduleLabel(
@@ -127,6 +175,7 @@ function PolicyForm({
         timezone: initial.timezone,
         retention: initial.retention,
         enabled: initial.enabled,
+        full_schedule: initial.full_schedule ?? null,
       }
     : preselection
       ? {
@@ -145,6 +194,12 @@ function PolicyForm({
   const [time, setTime] = useState(parsed.time);
   const [day, setDay] = useState(parsed.day);
   const [custom, setCustom] = useState(start.schedule);
+  const full = readFull(start.full_schedule);
+  const [fullMode, setFullMode] = useState<FullMode>(full.mode);
+  const [fullTime, setFullTime] = useState(full.time);
+  const [fullDay, setFullDay] = useState(full.day);
+  const [fullDom, setFullDom] = useState(full.dom);
+  const [fullCustom, setFullCustom] = useState(start.full_schedule ?? "");
   const [accountDomain, setAccountDomain] = useState(domains[0]?.id ?? "");
   const [accountQuery, setAccountQuery] = useState(
     initial?.target_type === "account" ? (initial.target_name ?? "") : "",
@@ -190,6 +245,13 @@ function PolicyForm({
           ? null
           : form.target_id,
       schedule: buildSchedule(preset, time, day, custom),
+      full_schedule: buildFull(
+        fullMode,
+        fullTime,
+        fullDay,
+        fullDom,
+        fullCustom,
+      ),
     };
     if (form.target_type !== "accounts") delete body.account_ids;
     try {
@@ -413,6 +475,79 @@ function PolicyForm({
       </fieldset>
 
       <fieldset>
+        <legend>{t("policies.full")}</legend>
+        <p className="hint">{t("policies.fullHint")}</p>
+        <div className="row">
+          <label>
+            {t("policies.fullMode")}
+            <select
+              value={fullMode}
+              onChange={(e) => setFullMode(e.target.value as FullMode)}
+            >
+              <option value="none">{t("policies.fullModes.none")}</option>
+              <option value="weekly">{t("policies.fullModes.weekly")}</option>
+              <option value="monthly">{t("policies.fullModes.monthly")}</option>
+              <option value="custom">{t("policies.fullModes.custom")}</option>
+            </select>
+          </label>
+          {fullMode === "weekly" && (
+            <label>
+              {t("policies.day")}
+              <select
+                value={fullDay}
+                onChange={(e) => setFullDay(Number(e.target.value))}
+              >
+                {DAYS.map((d) => (
+                  <option key={d} value={d}>
+                    {t(`days.${d}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {fullMode === "monthly" && (
+            <label>
+              {t("policies.dayOfMonth")}
+              <input
+                type="number"
+                min={1}
+                max={28}
+                value={fullDom}
+                onChange={(e) =>
+                  setFullDom(
+                    Math.min(28, Math.max(1, Number(e.target.value) || 1)),
+                  )
+                }
+              />
+            </label>
+          )}
+          {(fullMode === "weekly" || fullMode === "monthly") && (
+            <label>
+              {t("policies.time")}
+              <input
+                type="time"
+                required
+                value={fullTime}
+                onChange={(e) => setFullTime(e.target.value)}
+              />
+            </label>
+          )}
+          {fullMode === "custom" && (
+            <label className="grow">
+              {t("policies.cron")}
+              <input
+                required
+                value={fullCustom}
+                placeholder="0 2 * * 0"
+                onChange={(e) => setFullCustom(e.target.value)}
+              />
+              <span className="hint">{t("policies.cronHint")}</span>
+            </label>
+          )}
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>{t("policies.retention")}</legend>
         <p className="hint">{t("policies.retentionHint")}</p>
         <div className="row">
@@ -464,6 +599,152 @@ function PolicyForm({
   );
 }
 
+function runDuration(run: PolicyRun): string {
+  if (!run.finished_at) return "—";
+  const seconds = Math.max(
+    0,
+    Math.round(
+      (new Date(run.finished_at).getTime() -
+        new Date(run.started_at).getTime()) /
+        1000,
+    ),
+  );
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+/** Execution history of one policy, newest first. */
+function PolicyHistory({
+  policy,
+  onClose,
+}: {
+  policy: Policy;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [offset, setOffset] = useState(0);
+  const [runs, reload] = useLoad<Page<PolicyRun>>(
+    () => api.policyRuns(policy.id, offset),
+    [policy.id, offset],
+    10000,
+  );
+  return (
+    <section
+      className="card"
+      aria-label={t("policies.historyOf", { name: policy.name })}
+    >
+      <div className="page-head">
+        <h2>{t("policies.historyOf", { name: policy.name })}</h2>
+        <button type="button" className="secondary small" onClick={onClose}>
+          {t("policies.close")}
+        </button>
+      </div>
+      <p className="muted small">
+        {t("policies.totals", {
+          accounts: policy.account_count ?? 0,
+          protected: formatBytes(policy.protected_bytes ?? 0),
+          stored: formatBytes(policy.stored_bytes ?? 0),
+          snapshots: policy.snapshot_count ?? 0,
+        })}
+      </p>
+      <LoadView load={runs} reload={reload}>
+        {(page) =>
+          page.items.length === 0 ? (
+            <p className="muted">{t("policies.noRun")}</p>
+          ) : (
+            <>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t("policies.runDate")}</th>
+                      <th>{t("policies.trigger")}</th>
+                      <th>{t("policies.backupType")}</th>
+                      <th>{t("policies.result")}</th>
+                      <th className="num">{t("policies.runAccounts")}</th>
+                      <th>{t("jobs.duration")}</th>
+                      <th className="num">{t("policies.read")}</th>
+                      <th className="num">{t("policies.written")}</th>
+                      <th className="num">{t("policies.size")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {page.items.map((run) => (
+                      <tr key={`${run.started_at}-${run.backup_type}`}>
+                        <td>{formatDate(run.started_at)}</td>
+                        <td>{t(`policies.triggers.${run.trigger}`)}</td>
+                        <td>{t(`backupType.${run.backup_type}`)}</td>
+                        <td>
+                          <StatusBadge status={run.status} />
+                        </td>
+                        <td className="num">
+                          {t("policies.runCount", {
+                            ok: run.succeeded,
+                            total: run.accounts,
+                          })}
+                          {run.failed > 0 && (
+                            <>
+                              <br />
+                              <span className="bad-text small">
+                                {t("policies.runFailed", { count: run.failed })}
+                              </span>
+                            </>
+                          )}
+                          {run.pending > 0 && (
+                            <>
+                              <br />
+                              <span className="muted small">
+                                {t("policies.runPending", {
+                                  count: run.pending,
+                                })}
+                              </span>
+                            </>
+                          )}
+                        </td>
+                        <td>{runDuration(run)}</td>
+                        <td className="num">{formatBytes(run.read_bytes)}</td>
+                        <td className="num">{formatBytes(run.new_bytes)}</td>
+                        <td className="num">{formatBytes(run.size_bytes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="pager">
+                <span className="muted">
+                  {t("jobs.range", {
+                    from: page.offset + 1,
+                    to: page.offset + page.items.length,
+                    total: page.total,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - page.limit))}
+                >
+                  {t("jobs.previous")}
+                </button>
+                <button
+                  type="button"
+                  className="secondary small"
+                  disabled={offset + page.items.length >= page.total}
+                  onClick={() => setOffset(offset + page.limit)}
+                >
+                  {t("jobs.next")}
+                </button>
+              </div>
+            </>
+          )
+        }
+      </LoadView>
+    </section>
+  );
+}
+
 export function PoliciesPage() {
   const { t } = useTranslation();
   const { canManagePolicies } = useAuth();
@@ -479,6 +760,7 @@ export function PoliciesPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [history, setHistory] = useState<Policy | null>(null);
   const domainList = domains.state === "ready" ? domains.data.items : [];
   const canCreate =
     domains.state === "ready" &&
@@ -585,6 +867,7 @@ export function PoliciesPage() {
                     <th>{t("policies.target")}</th>
                     <th>{t("policies.when")}</th>
                     <th>{t("policies.retention")}</th>
+                    <th className="num">{t("policies.volume")}</th>
                     <th>{t("policies.next")}</th>
                     <th>{t("policies.last")}</th>
                     <th>{t("policies.state")}</th>
@@ -610,13 +893,63 @@ export function PoliciesPage() {
                         <span className="muted">
                           {t(`backupType.${p.backup_type}`)} · {p.timezone}
                         </span>
+                        {p.full_schedule && (
+                          <>
+                            <br />
+                            <span className="small">
+                              + {fullLabel(p.full_schedule, t)}
+                            </span>
+                          </>
+                        )}
                       </td>
                       <td className="wrap">{retentionLabel(p.retention, t)}</td>
+                      <td
+                        className="num"
+                        title={t("policies.volumeHelp", {
+                          stored: formatBytes(p.stored_bytes ?? 0),
+                          snapshots: p.snapshot_count ?? 0,
+                        })}
+                      >
+                        {formatBytes(p.protected_bytes ?? 0)}
+                        <br />
+                        <span className="muted small">
+                          {t("policies.accountCount", {
+                            count: p.account_count ?? 0,
+                          })}
+                        </span>
+                      </td>
                       <td title={formatDate(p.next_run_at)}>
                         {p.next_run_at ? formatRelative(p.next_run_at) : "—"}
+                        {p.next_full_run_at && (
+                          <>
+                            <br />
+                            <span
+                              className="muted small"
+                              title={formatDate(p.next_full_run_at)}
+                            >
+                              {t("policies.nextFull", {
+                                when: formatRelative(p.next_full_run_at),
+                              })}
+                            </span>
+                          </>
+                        )}
                       </td>
                       <td>
-                        {neverRan(p) ? (
+                        {p.last_run ? (
+                          <>
+                            <StatusBadge status={p.last_run.status} />{" "}
+                            <span className="small">
+                              {t("policies.runCount", {
+                                ok: p.last_run.succeeded,
+                                total: p.last_run.accounts,
+                              })}
+                            </span>
+                            <br />
+                            <span className="muted small">
+                              {formatDate(p.last_run.started_at)}
+                            </span>
+                          </>
+                        ) : neverRan(p) ? (
                           <span className="muted">{t("accounts.never")}</span>
                         ) : (
                           formatDate(p.last_run_at)
@@ -628,6 +961,20 @@ export function PoliciesPage() {
                         />
                       </td>
                       <td>
+                        <span className="actions wrap-actions">
+                          <button
+                            type="button"
+                            className="small secondary"
+                            aria-label={t("policies.historyOf", {
+                              name: p.name,
+                            })}
+                            onClick={() =>
+                              setHistory(history?.id === p.id ? null : p)
+                            }
+                          >
+                            {t("policies.history")}
+                          </button>
+                        </span>
                         {owns(p, domainList) && (
                           <span className="actions wrap-actions">
                             <button
@@ -677,6 +1024,17 @@ export function PoliciesPage() {
           )
         }
       </LoadView>
+      {history && (
+        <PolicyHistory
+          key={history.id}
+          policy={
+            (policies.state === "ready" &&
+              policies.data.find((p) => p.id === history.id)) ||
+            history
+          }
+          onClose={() => setHistory(null)}
+        />
+      )}
     </>
   );
 }
