@@ -592,7 +592,11 @@ async def account_action_done(
     action.done_at = datetime.now(UTC)
     action.status, action.error = ("failed", body.error) if body.error else ("done", None)
     if account is not None and not body.error:
-        account.status = AccountStatus.LOCKED if action.action == "lock" else AccountStatus.ACTIVE
+        account.status = {
+            "lock": AccountStatus.LOCKED,
+            "unlock": AccountStatus.ACTIVE,
+            "delete": AccountStatus.DELETED,  # still restorable from its backups
+        }[action.action]
     if body.error:
         await notify(
             db,

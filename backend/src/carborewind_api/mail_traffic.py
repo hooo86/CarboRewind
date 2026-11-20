@@ -297,13 +297,13 @@ async def _raise(
 async def queue_action(
     db: AsyncSession,
     account_id: uuid.UUID,
-    action: Literal["lock", "unlock"],
+    action: Literal["lock", "unlock", "delete"],
     reason: str | None,
     *,
     alert_id: uuid.UUID | None = None,
     user_id: uuid.UUID | None = None,
 ) -> AccountAction | None:
-    """Queue a lock/unlock for the agent (None if the same one is already pending)."""
+    """Queue a lock/unlock/delete for the agent (None if the same one is already pending)."""
     pending = await db.scalar(
         select(AccountAction).where(
             AccountAction.account_id == account_id,

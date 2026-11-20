@@ -375,7 +375,12 @@ describe("archives page", () => {
     expect(
       calls.find((c) => c.url.endsWith("/api/archives/accounts/b1/legal-hold"))
         ?.body,
-    ).toEqual({ note: "Dossier 2026-17" });
+    ).toEqual({
+      note: "Dossier 2026-17",
+      remove_from_mailbox: false,
+      older_than_days: 0,
+      confirm: "",
+    });
 
     fireEvent.click(
       within(list).getByRole("button", { name: "Release the hold" }),

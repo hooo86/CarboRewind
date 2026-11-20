@@ -959,6 +959,9 @@ function LegalHoldTab() {
   const [load, reload] = useLoad(() => api.legalHolds(), [], 15000);
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
+  const [days, setDays] = useState(0);
+  const [remove, setRemove] = useState(false);
+  const [confirm, setConfirm] = useState("");
   const [notice, setNotice] = useState<Notice>(null);
 
   async function start(event: FormEvent) {
@@ -967,13 +970,21 @@ function LegalHoldTab() {
     try {
       const [id] = await resolveEmails(email);
       if (!id) throw new Error(email);
-      await api.startLegalHold(id, note);
+      await api.startLegalHold(id, note, {
+        remove_from_mailbox: remove,
+        older_than_days: days,
+        confirm: remove ? confirm.trim() : "",
+      });
       setNotice({
         kind: "ok",
-        text: t("archives.legalQueued", { email: email.trim() }),
+        text: remove
+          ? t("mailbox.archiveRemoveQueued")
+          : t("archives.legalQueued", { email: email.trim() }),
       });
       setEmail("");
       setNote("");
+      setRemove(false);
+      setConfirm("");
       reload();
     } catch (err) {
       setNotice({
@@ -1024,8 +1035,54 @@ function LegalHoldTab() {
             />
           </label>
         </div>
+        <div className="row">
+          <label>
+            {t("mailbox.olderThan")}
+            <input
+              type="number"
+              min={0}
+              max={36500}
+              value={days}
+              onChange={(e) =>
+                setDays(Math.max(0, Number(e.target.value) || 0))
+              }
+            />
+            <span className="hint">{t("mailbox.olderThanHint")}</span>
+          </label>
+        </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={remove}
+            onChange={(e) => setRemove(e.target.checked)}
+          />
+          {t("mailbox.removeAfter")}
+        </label>
+        {remove && (
+          <>
+            <p className="alert warn small">{t("mailbox.removeWarning")}</p>
+            <label>
+              {t("mailbox.confirm", { email: email.trim() || "…" })}
+              <input
+                value={confirm}
+                autoComplete="off"
+                onChange={(e) => setConfirm(e.target.value)}
+              />
+            </label>
+          </>
+        )}
         <div className="actions">
-          <button type="submit">{t("archives.legalStart")}</button>
+          <button
+            type="submit"
+            disabled={
+              remove &&
+              confirm.trim().toLowerCase() !== email.trim().toLowerCase()
+            }
+          >
+            {remove
+              ? t("mailbox.archiveRemoveButton")
+              : t("archives.legalStart")}
+          </button>
         </div>
       </form>
       <NoticeBar notice={notice} />

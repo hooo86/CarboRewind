@@ -377,10 +377,25 @@ export const api = {
   ) =>
     request<Job[]>("POST", `/api/archives/accounts/${accountId}/restore`, body),
   legalHolds: () => request<LegalHold[]>("GET", "/api/archives/legal-holds"),
-  startLegalHold: (accountId: string, note: string) =>
+  startLegalHold: (
+    accountId: string,
+    note: string,
+    options: {
+      remove_from_mailbox?: boolean;
+      older_than_days?: number;
+      confirm?: string;
+    } = {},
+  ) =>
     request<Job>("POST", `/api/archives/accounts/${accountId}/legal-hold`, {
       note,
+      ...options,
     }),
+  deleteMailbox: (accountId: string, confirm: string, reason?: string) =>
+    request<{ id: string | null; action: string; queued: boolean }>(
+      "POST",
+      `/api/mail/accounts/${accountId}/delete`,
+      { confirm, reason: reason || null },
+    ),
   releaseLegalHold: (accountId: string) =>
     request<undefined>(
       "DELETE",

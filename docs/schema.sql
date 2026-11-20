@@ -770,4 +770,12 @@ ALTER TABLE login_failures ADD COLUMN last_failed_at TIMESTAMP WITH TIME ZONE;
 
 UPDATE alembic_version SET version_num='0020' WHERE alembic_version.version_num = '0019';
 
+-- Running upgrade 0020 -> 0021
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete'));
+
+UPDATE alembic_version SET version_num='0021' WHERE alembic_version.version_num = '0020';
+
 COMMIT;

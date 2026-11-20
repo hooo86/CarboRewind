@@ -256,14 +256,28 @@ def test_monitor_sends_counters_and_locks(setup: tuple[Any, ...]) -> None:
     assert done["/account-actions/a1/done"] == {"error": None}
     assert "NO_SUCH_ACCOUNT" in done["/account-actions/a2/done"]["error"]
     assert "unknown action" in done["/account-actions/a3/done"]["error"]
+    ben.attrs["zimbraPasswordLockoutFailureTime"] = "20261120112135Z"
     server.actions = [{"id": "a4", "action": "unlock", "carbonio_id": ben.id}]
     monitor.tick(NOW)
     assert ben.status == "active"
+    assert "zimbraPasswordLockoutFailureTime" not in ben.attrs  # failures forgotten
     ana = next(m for m in fake.mailboxes.values() if m.name == "ana@lnhc.dz")
     server.actions = [{"id": "a5", "action": "lock", "carbonio_id": ana.id, "email": ana.name}]
     monitor.tick(NOW)
     assert ana.status == "active"  # the agent's own account is never locked
     assert "protected" in server.calls[-1][1]["error"]
+    # Delete: never the agent's own account; an unknown one reports Carbonio's fault.
+    server.actions = [
+        {"id": "a6", "action": "delete", "carbonio_id": ana.id, "email": ana.name},
+        {"id": "a7", "action": "delete", "carbonio_id": ben.id, "email": ben.name},
+        {"id": "a8", "action": "delete", "carbonio_id": "nope", "email": "x@y"},
+    ]
+    monitor.tick(NOW)
+    done = {p: b for p, b in server.calls if p.startswith("/account-actions/")}
+    assert "protected" in done["/account-actions/a6/done"]["error"]
+    assert done["/account-actions/a7/done"] == {"error": None}
+    assert "NO_SUCH_ACCOUNT" in done["/account-actions/a8/done"]["error"]
+    assert ben.id not in fake.mailboxes and ana.id in fake.mailboxes
 
 
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:

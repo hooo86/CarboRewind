@@ -6,7 +6,7 @@ from __future__ import annotations
 import base64
 import uuid
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -621,3 +621,34 @@ def test_archives_by_mailbox_and_full_restore(
     assert (
         api.post(f"/api/archives/accounts/{nobody}/restore", json={}, headers=h).status_code == 404
     )
+
+
+def test_archive_mailbox_then_remove(
+    api: TestClient, engine: Engine, world: dict[str, Any]
+) -> None:
+    h, agent = world["admin"], world["agent"]
+    ana = world["ids"]["ana"]
+    with Session(engine) as s:
+        email = s.get(Account, ana).email  # type: ignore[union-attr]
+    url = f"/api/archives/accounts/{ana}/legal-hold"
+    body = {"remove_from_mailbox": True, "older_than_days": 365}
+    assert api.post(url, json=body, headers=h).status_code == 422  # not confirmed
+    assert api.post(url, json={**body, "confirm": "x@y.z"}, headers=h).status_code == 422
+    r = api.post(url, json={**body, "confirm": email.upper()}, headers=h)
+    assert r.status_code == 202, r.text
+    job = r.json()
+    p = _claim(world, engine, job["id"])["params"]
+    assert p["mode"] == "archive" and p["legal_hold"] and p["all_folders"]
+    before = datetime.fromisoformat(p["before"])
+    assert abs((before - (datetime.now(UTC) - timedelta(days=365))).total_seconds()) < 60
+    agent.post(f"/jobs/{job['id']}/archive-stored", {"entries": _entries(2, start=5)})
+    done = agent.post(
+        f"/jobs/{job['id']}/archive-complete",
+        {"mode": "archive", "removed": [305, 306], "removed_bytes": 2048},
+    )
+    assert done.status_code == 204, done.text
+    found = api.get(
+        "/api/archives/messages", params={"account_id": str(ana), "legal_hold": "true"}, headers=h
+    ).json()["items"]
+    removed = [m for m in found if m["removed_at"]]
+    assert len(removed) >= 2

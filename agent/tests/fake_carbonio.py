@@ -300,6 +300,13 @@ class FakeCarbonio:
         queues = [{"name": k, "n": v} for k, v in self.queues.items()]
         return {"server": [{"name": body["server"]["name"], "queue": queues}]}
 
+    def _DeleteAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if body["id"] not in self.mailboxes:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        del self.mailboxes[body["id"]]
+        return {}
+
     def _GetAllConfigRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
         return {"a": [{"n": n, "_content": v} for n, vs in self.config.items() for v in vs]}
@@ -329,6 +336,8 @@ class FakeCarbonio:
         for attr in body.get("a", []):
             if attr["n"] == "zimbraAccountStatus":
                 mbox.status = attr["_content"]
+            elif attr["_content"] == "":
+                mbox.attrs.pop(attr["n"], None)
             else:
                 mbox.attrs[attr["n"]] = attr["_content"]
         return {"account": [self._account_entry(mbox)]}

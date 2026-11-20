@@ -317,12 +317,18 @@ class CarbonioClient:
         """Lock (``locked``) or reactivate (``active``) an account (``ModifyAccountRequest``)."""
         if status not in {"locked", "active"}:
             raise ValueError(f"unsupported status {status!r}")
+        attrs = [{"n": "zimbraAccountStatus", "_content": status}]
+        if status == "active":
+            # Also forget the failed logins that put the account in "lockout": otherwise
+            # one more wrong password would lock it again at once.
+            attrs.append({"n": "zimbraPasswordLockoutFailureTime", "_content": ""})
         self._admin.invoke(
-            "ModifyAccount",
-            NS_ADMIN,
-            {"id": account_id, "a": [{"n": "zimbraAccountStatus", "_content": status}]},
-            token=self._admin_auth(),
+            "ModifyAccount", NS_ADMIN, {"id": account_id, "a": attrs}, token=self._admin_auth()
         )
+
+    def delete_account(self, account_id: str) -> None:
+        """Delete the account and its mailbox from Carbonio (``DeleteAccountRequest``)."""
+        self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_auth())
 
     def get_account(self, account_id: str) -> AccountInfo:
         """All attributes of one account (``GetAccountRequest``), for recreating it later."""

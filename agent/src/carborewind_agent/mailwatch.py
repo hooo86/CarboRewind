@@ -165,11 +165,24 @@ class MailMonitor:
         self._api.ip_action_done(str(action["id"]), error)
 
     def apply(self, action: dict[str, Any]) -> None:
-        status = STATUSES.get(str(action.get("action")))
+        kind = str(action.get("action"))
+        status = STATUSES.get(kind)
         error = None
+        protected = str(action.get("email", "")).lower() in self._protected
+        if kind == "delete":
+            if protected:
+                error = "protected account (used by CarboRewind itself): not deleted"
+            else:
+                try:
+                    self._carbonio.delete_account(str(action["carbonio_id"]))
+                    log.warning("account %s deleted: %s", action.get("email"), action.get("reason"))
+                except SoapFaultError as exc:
+                    error = f"{exc.code}: {exc}"[:500]
+            self._api.mail_action_done(str(action["id"]), error)
+            return
         if status is None:
             error = f"unknown action {action.get('action')!r}"
-        elif status == "locked" and str(action.get("email", "")).lower() in self._protected:
+        elif status == "locked" and protected:
             error = "protected account (used by CarboRewind itself): not locked"
         else:
             try:

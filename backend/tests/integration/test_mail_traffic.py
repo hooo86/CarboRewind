@@ -19,12 +19,15 @@ from carborewind_api.db.models import (
     AccountStatus,
     AppSetting,
     AuditEvent,
+    BackupType,
     Job,
     JobStatus,
     MailAlert,
     MailStat,
     Notification,
     Role,
+    Snapshot,
+    SnapshotStatus,
     SpamSender,
 )
 from carborewind_api.main import create_app
@@ -229,3 +232,37 @@ def test_validation_rbac_and_retention(api: TestClient, engine: Engine, migrated
     viewer = login(api, engine, Role.DOMAIN_ADMIN)
     assert api.get("/api/mail/overview").status_code == 403
     assert api.put("/api/mail/limits", json={}, headers=viewer).status_code == 403
+
+
+def test_delete_mailbox(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    e = accounts(agent, uuid.uuid4().hex[:6])
+    with Session(engine) as s:
+        ben = s.scalar(select(Account).where(Account.email == e["ben"]))
+        assert ben is not None
+        ben_id, carbonio_id = ben.id, ben.carbonio_id
+    url = f"/api/mail/accounts/{ben_id}/delete"
+    assert api.post(url, json={"confirm": "nope@x.io"}, headers=h).status_code == 422
+    no_backup = api.post(url, json={"confirm": e["ben"]}, headers=h)
+    assert no_backup.status_code == 409 and "back it up" in no_backup.json()["detail"]
+    with Session(engine) as s, s.begin():
+        s.add(
+            Snapshot(
+                account_id=ben_id,
+                seq=1,
+                backup_type=BackupType.FULL,
+                status=SnapshotStatus.COMPLETE,
+                taken_at=datetime.now(UTC),
+                manifest_ref="m",
+            )
+        )
+    r = api.post(url, json={"confirm": e["ben"].upper(), "reason": "départ"}, headers=h)
+    assert r.status_code == 200 and r.json()["queued"] is True, r.text
+    actions = agent.post("/mail-stats", {"hours": []}).json()["actions"]
+    [delete] = [a for a in actions if a["action"] == "delete"]
+    assert delete["carbonio_id"] == carbonio_id and delete["email"] == e["ben"]
+    agent.post(f"/account-actions/{delete['id']}/done", {"error": None})
+    with Session(engine) as s:
+        assert s.get(Account, ben_id).status == AccountStatus.DELETED  # type: ignore[union-attr]
+    assert api.post(url, json={"confirm": e["ben"]}, headers=h).status_code == 404

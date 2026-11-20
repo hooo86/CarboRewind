@@ -22,13 +22,18 @@ from ..authz import Permission
 from ..db.models import (
     Account,
     AccountAction,
+    AccountStatus,
     Agent,
     AgentStatus,
     IpAction,
+    Job,
+    JobStatus,
     LoginFailure,
     MailAlert,
     MailStat,
     Outcome,
+    Snapshot,
+    SnapshotStatus,
     SpamSender,
 )
 from .deps import DbSession, Principal, client_ip, require
@@ -664,6 +669,76 @@ class ActionOut(BaseModel):
     id: uuid.UUID | None
     action: str
     queued: bool
+
+
+class DeleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # The mailbox address typed again: a deletion is never one click away.
+    confirm: str = Field(max_length=320)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/accounts/{account_id}/delete", response_model=ActionOut)
+async def delete_mailbox(
+    account_id: uuid.UUID, body: DeleteIn, principal: Admin, db: DbSession, request: Request
+) -> ActionOut:
+    """Delete the mailbox from Carbonio (the agent applies it within a minute). Refused
+    without a successful backup: the account stays restorable from it."""
+    account = await db.get(Account, account_id)
+    if account is None or account.status is AccountStatus.DELETED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+    if body.confirm.strip().lower() != account.email.lower():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "type the mailbox address to confirm"
+        )
+    backup = await db.scalar(
+        select(Snapshot)
+        .where(
+            Snapshot.account_id == account.id,
+            Snapshot.status.in_([SnapshotStatus.COMPLETE, SnapshotStatus.PARTIAL]),
+        )
+        .order_by(Snapshot.seq.desc())
+        .limit(1)
+    )
+    if backup is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "no backup of this mailbox: back it up first, it could not be restored",
+        )
+    running = await db.scalar(
+        select(Job.id).where(
+            Job.account_id == account.id, Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])
+        )
+    )
+    if running is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "a job of this mailbox is queued or running: wait for it"
+        )
+    queued = await mail_traffic.queue_action(
+        db,
+        account.id,
+        "delete",
+        body.reason or f"by {principal.user.username}",
+        user_id=principal.user.id,
+    )
+    await audit.record(
+        db,
+        action="account.delete_request",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="account",
+        target_id=account.email,
+        domain_id=account.domain_id,
+        details={
+            "reason": body.reason,
+            "last_backup": backup.taken_at.isoformat(),
+            "backup_seq": backup.seq,
+        },
+    )
+    return ActionOut(id=queued.id if queued else None, action="delete", queued=queued is not None)
 
 
 @router.post("/accounts/{account_id}/{action}", response_model=ActionOut)

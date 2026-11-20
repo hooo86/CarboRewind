@@ -6,6 +6,17 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Fiche d'un compte → **Gestion de la boîte** (super-administrateurs) :
+  - **Débloquer le compte** quand il est verrouillé (y compris « lockout » après trop de mots de
+    passe erronés : le compteur d'échecs est remis à zéro) ;
+  - **Archiver la boîte**, éventuellement seulement les messages de plus de N jours, et
+    **supprimer les messages de la boîte après archivage** (seulement une fois archivés, relus
+    et vérifiés ; confirmation en retapant l'adresse). Aussi dans Archives → Conservation légale ;
+  - **Supprimer la boîte** de Carbonio : refusé sans sauvegarde existante ou si un job de la
+    boîte est en cours, confirmation en retapant l'adresse, motif tracé dans l'audit ; le compte
+    reste restaurable depuis ses sauvegardes. Migration 0021.
+
+### Added
 - Sauvegardes programmées : planification **par jour de la semaine** (mode par défaut) —
   pour chaque jour, complète, incrémentale ou aucune, à une heure choisie (par ex. complète
   le vendredi, incrémentale les autres jours). Affichée « complète : vendredi · incrémentale :

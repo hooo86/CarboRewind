@@ -890,6 +890,12 @@ class LegalHoldIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     note: str = Field(default="", max_length=500, description="Reason (case, request…)")
+    # Delete the messages from the mailbox once archived and verified (frees its space).
+    remove_from_mailbox: bool = False
+    # Only messages older than this many days (0 = all of them).
+    older_than_days: int = Field(default=0, ge=0, le=36500)
+    # The mailbox address typed again, required when messages are deleted.
+    confirm: str = Field(default="", max_length=320)
 
 
 class LegalHoldOut(BaseModel):
@@ -905,10 +911,16 @@ class LegalHoldOut(BaseModel):
 async def start_legal_hold(
     account_id: uuid.UUID, body: LegalHoldIn, principal: Manager, db: DbSession, request: Request
 ) -> JobOut:
-    """Copy the whole mailbox into the archive under legal hold (it stays in the mailbox)."""
+    """Copy the whole mailbox (or its messages older than N days) into the archive under
+    legal hold; with ``remove_from_mailbox`` they are then deleted from the mailbox, once
+    archived and verified."""
     account = await db.get(Account, account_id)
     if account is None or account.status is AccountStatus.DELETED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "account not found")
+    if body.remove_from_mailbox and body.confirm.strip().lower() != account.email.lower():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "type the mailbox address to confirm"
+        )
     busy = await db.scalar(
         select(Job.id).where(
             Job.kind == JobKind.ARCHIVE,
@@ -919,7 +931,13 @@ async def start_legal_hold(
     if busy is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "this mailbox is already being archived")
     job = await archiving.enqueue_legal_hold(
-        db, account, datetime.now(UTC), principal.user.id, body.note.strip()
+        db,
+        account,
+        datetime.now(UTC),
+        principal.user.id,
+        body.note.strip(),
+        remove=body.remove_from_mailbox,
+        older_than_days=body.older_than_days,
     )
     await db.refresh(job)
     await audit.record(
@@ -932,7 +950,12 @@ async def start_legal_hold(
         target_type="account",
         target_id=account.email,
         domain_id=account.domain_id,
-        details={"job": str(job.id), "note": body.note.strip()},
+        details={
+            "job": str(job.id),
+            "note": body.note.strip(),
+            "remove_from_mailbox": body.remove_from_mailbox,
+            "older_than_days": body.older_than_days,
+        },
     )
     return JobOut.of(job, account.email)
 

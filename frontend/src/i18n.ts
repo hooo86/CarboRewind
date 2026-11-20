@@ -306,6 +306,39 @@ export const resources = {
         noPtr: "Sans nom inverse",
         senderDomains: "Domaines d'expéditeur",
       },
+      mailbox: {
+        title: "Gestion de la boîte",
+        unlock: "Débloquer le compte",
+        lockedHelp:
+          "Le compte est verrouillé (par un administrateur ou après trop de mots de passe erronés). Le débloquer efface aussi le compteur d'échecs.",
+        unlockQueued: "Le compte sera débloqué par l'agent dans la minute.",
+        alreadyPending: "Cette action est déjà en attente.",
+        archive: "Archiver la boîte",
+        archiveHelp:
+          "Copie les messages de tous les dossiers dans l'archive, sous conservation légale (jamais supprimés par la durée de conservation).",
+        olderThan: "Messages de plus de (jours)",
+        olderThanHint: "0 = tous les messages",
+        removeAfter: "Supprimer les messages de la boîte après archivage",
+        removeWarning:
+          "Les messages ne sont supprimés de la boîte qu'une fois archivés, relus et vérifiés. Ils restent consultables et restaurables depuis Archives.",
+        confirm: "Pour confirmer, tapez l'adresse {{email}}",
+        archiveButton: "Archiver",
+        archiveRemoveButton: "Archiver puis supprimer de la boîte",
+        archiveQueued: "Archivage lancé : suivez-le dans Jobs.",
+        archiveRemoveQueued:
+          "Archivage lancé : les messages seront supprimés de la boîte une fois archivés et vérifiés.",
+        delete: "Supprimer la boîte",
+        deleteWarning:
+          "La boîte, son compte et tous ses messages seront supprimés de Carbonio. Ils restent restaurables depuis la dernière sauvegarde ({{date}}) tant que la rétention la garde.",
+        deleteNoBackup:
+          "Aucune sauvegarde de cette boîte : sauvegardez-la d'abord, elle ne pourrait pas être restaurée.",
+        deleteArchiveFirst:
+          "Pour garder ses messages indéfiniment, archivez-la d'abord sous conservation légale :",
+        reason: "Motif",
+        deleteButton: "Supprimer définitivement de Carbonio",
+        deleteQueued:
+          "La boîte sera supprimée de Carbonio par l'agent dans la minute.",
+      },
       telegram: {
         title: "Alertes Telegram",
         intro:
@@ -1855,6 +1888,39 @@ export const resources = {
         senders: "Sender domains",
         noPtr: "No reverse name",
         senderDomains: "Sender domains",
+      },
+      mailbox: {
+        title: "Mailbox management",
+        unlock: "Unlock the account",
+        lockedHelp:
+          "The account is locked (by an administrator or after too many wrong passwords). Unlocking also clears the failure counter.",
+        unlockQueued: "The agent will unlock the account within a minute.",
+        alreadyPending: "This action is already pending.",
+        archive: "Archive the mailbox",
+        archiveHelp:
+          "Copies the messages of every folder into the archive, under legal hold (never deleted by the retention).",
+        olderThan: "Messages older than (days)",
+        olderThanHint: "0 = every message",
+        removeAfter: "Delete the messages from the mailbox after archiving",
+        removeWarning:
+          "Messages leave the mailbox only once archived, read back and verified. They stay readable and restorable from Archives.",
+        confirm: "To confirm, type the address {{email}}",
+        archiveButton: "Archive",
+        archiveRemoveButton: "Archive, then delete from the mailbox",
+        archiveQueued: "Archiving started: follow it in Jobs.",
+        archiveRemoveQueued:
+          "Archiving started: the messages will leave the mailbox once archived and verified.",
+        delete: "Delete the mailbox",
+        deleteWarning:
+          "The mailbox, its account and all its messages will be deleted from Carbonio. They stay restorable from the last backup ({{date}}) while the retention keeps it.",
+        deleteNoBackup:
+          "No backup of this mailbox: back it up first, it could not be restored.",
+        deleteArchiveFirst:
+          "To keep its messages forever, archive it under legal hold first:",
+        reason: "Reason",
+        deleteButton: "Delete from Carbonio for good",
+        deleteQueued:
+          "The agent will delete the mailbox from Carbonio within a minute.",
       },
       telegram: {
         title: "Telegram alerts",

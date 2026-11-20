@@ -211,13 +211,23 @@ LEGAL_MAX_MESSAGES = 200_000
 
 
 async def enqueue_legal_hold(
-    db: AsyncSession, account: Account, now: datetime, created_by: uuid.UUID | None, note: str
+    db: AsyncSession,
+    account: Account,
+    now: datetime,
+    created_by: uuid.UUID | None,
+    note: str,
+    *,
+    remove: bool = False,
+    older_than_days: int = 0,
 ) -> Job:
-    """Copy a whole mailbox into the archive under legal hold (nothing leaves the mailbox).
+    """Copy a whole mailbox into the archive under legal hold.
 
     Every message, in every folder (Trash, Junk and Drafts included), is copied; messages
     already in the archive are put under hold too. Repeat it to take later messages in.
+    With ``remove`` the messages are then deleted from the mailbox (``archive`` mode: only
+    once stored, read back and verified); ``older_than_days`` limits it to older messages.
     """
+    before = now - timedelta(days=older_than_days) if older_than_days else now + timedelta(days=1)
     await db.execute(
         update(ArchivedMessage)
         .where(ArchivedMessage.account_id == account.id)
@@ -231,8 +241,8 @@ async def enqueue_legal_hold(
         priority=60,  # asked by a person: before scheduled archiving
         max_attempts=3,
         params={
-            "mode": "copy",
-            "before": (now + timedelta(days=1)).astimezone(UTC).isoformat(),
+            "mode": "archive" if remove else "copy",
+            "before": before.astimezone(UTC).isoformat(),
             "exclude_folders": [],
             "all_folders": True,
             "keep_flagged": False,

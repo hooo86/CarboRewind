@@ -2597,6 +2597,33 @@
         "title": "DashboardLayout",
         "type": "object"
       },
+      "DeleteIn": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "maxLength": 320,
+            "title": "Confirm",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "confirm"
+        ],
+        "title": "DeleteIn",
+        "type": "object"
+      },
       "DomainOut": {
         "properties": {
           "account_count": {
@@ -3485,12 +3512,30 @@
       "LegalHoldIn": {
         "additionalProperties": false,
         "properties": {
+          "confirm": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Confirm",
+            "type": "string"
+          },
           "note": {
             "default": "",
             "description": "Reason (case, request…)",
             "maxLength": 500,
             "title": "Note",
             "type": "string"
+          },
+          "older_than_days": {
+            "default": 0,
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Older Than Days",
+            "type": "integer"
+          },
+          "remove_from_mailbox": {
+            "default": false,
+            "title": "Remove From Mailbox",
+            "type": "boolean"
           }
         },
         "title": "LegalHoldIn",
@@ -10740,7 +10785,7 @@
         ]
       },
       "post": {
-        "description": "Copy the whole mailbox into the archive under legal hold (it stays in the mailbox).",
+        "description": "Copy the whole mailbox (or its messages older than N days) into the archive under\nlegal hold; with ``remove_from_mailbox`` they are then deleted from the mailbox, once\narchived and verified.",
         "operationId": "start_legal_hold_api_archives_accounts__account_id__legal_hold_post",
         "parameters": [
           {
@@ -12885,6 +12930,60 @@
         "summary": "Server Log",
         "tags": [
           "logs"
+        ]
+      }
+    },
+    "/api/mail/accounts/{account_id}/delete": {
+      "post": {
+        "description": "Delete the mailbox from Carbonio (the agent applies it within a minute). Refused\nwithout a successful backup: the account stays restorable from it.",
+        "operationId": "delete_mailbox_api_mail_accounts__account_id__delete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Mailbox",
+        "tags": [
+          "mail traffic"
         ]
       }
     },

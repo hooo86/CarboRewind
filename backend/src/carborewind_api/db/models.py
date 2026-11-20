@@ -931,13 +931,13 @@ class IpAction(Base):
 
 
 class AccountAction(Base):
-    """Lock or unlock a Carbonio account, carried out by the agent's mail watcher."""
+    """Lock, unlock or delete a Carbonio account, carried out by the agent's mail watcher."""
 
     __tablename__ = "account_actions"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
-    action: Mapped[str] = mapped_column(String(16))  # lock | unlock
+    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete
     reason: Mapped[str | None] = mapped_column(Text)
     alert_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("mail_alerts.id", ondelete="SET NULL")

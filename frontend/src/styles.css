@@ -2218,3 +2218,12 @@ button.icon-btn[aria-pressed="true"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+button.danger-solid {
+  background: var(--bad-solid);
+  border-color: var(--bad-solid);
+  color: #fff;
+}
+button.danger-solid:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
