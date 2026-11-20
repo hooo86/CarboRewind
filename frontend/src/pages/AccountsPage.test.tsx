@@ -456,9 +456,7 @@ describe("grouping and favourites", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /See the 120 accounts/ }),
     );
-    expect(
-      await screen.findByText("Status is locked"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Status is locked")).toBeInTheDocument();
     expect(window.location.search).not.toContain("group=");
   });
 
