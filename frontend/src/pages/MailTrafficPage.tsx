@@ -16,6 +16,7 @@ import { NoticeBar, type Notice } from "../components/notices";
 import {
   BlockedIpsPanel,
   SpamSourcesPanel,
+  TrustedIpsPanel,
 } from "../components/SecurityPanels";
 import { formatDate, formatRelative } from "../utils/format";
 
@@ -193,6 +194,8 @@ export function MailTrafficPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
   const [period, setPeriod] = useState<MailPeriod>("24h");
+  const [onlyBlocked, setOnlyBlocked] = useState(false);
+  const [filterTick, setFilterTick] = useState(0);
   const [load, reload] = useLoad<MailOverview>(
     () => api.mailOverview(period),
     [period],
@@ -514,7 +517,23 @@ export function MailTrafficPage() {
       <section className="card stack" aria-labelledby="security-title">
         <h2 id="security-title">{t("loginSecurity.title")}</h2>
         <p className="muted small">{t("loginSecurity.intro")}</p>
-        <BlockedIpsPanel period={period} />
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={onlyBlocked}
+            onChange={(e) => setOnlyBlocked(e.target.checked)}
+          />
+          {t("widgets.onlyBlocked")}
+        </label>
+        <BlockedIpsPanel
+          period={period}
+          onlyBlocked={onlyBlocked}
+          onChange={() => setFilterTick((n) => n + 1)}
+        />
+      </section>
+      <section className="card stack" aria-labelledby="trusted-title">
+        <h2 id="trusted-title">{t("loginSecurity.trustedTitle")}</h2>
+        <TrustedIpsPanel refresh={filterTick} />
       </section>
       <section className="card stack" aria-labelledby="spam-sources-title">
         <h2 id="spam-sources-title">{t("spamSources.title")}</h2>

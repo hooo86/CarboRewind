@@ -935,6 +935,29 @@ export interface BlockedIp {
   first_seen: string;
   last_seen: string;
   accounts: string[];
+  trusted?: boolean;
+  pending?: "trust" | "untrust" | null;
+}
+
+export interface IpAction {
+  id: string;
+  ip: string;
+  action: "trust" | "untrust";
+  status: "pending" | "done" | "failed";
+  error: string | null;
+  created_at: string;
+  done_at: string | null;
+}
+
+export interface LoginFilter {
+  config: {
+    safe_ips: string[];
+    max_failed: number | null;
+    block_minutes: number | null;
+    task_minutes: number | null;
+    at: string | null;
+  } | null;
+  actions: IpAction[];
 }
 
 export interface LoginSecurity {
@@ -943,6 +966,8 @@ export interface LoginSecurity {
   totals: { ips: number; failed: number; blocked: number };
   ips: BlockedIp[];
   reported: boolean;
+  log_status?: "ok" | "denied" | "missing" | "agent_outdated" | "not_reporting";
+  log_path?: string | null;
 }
 
 export interface SpamSource {

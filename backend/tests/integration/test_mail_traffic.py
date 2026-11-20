@@ -112,7 +112,10 @@ def test_counters_overview_and_limits(api: TestClient, engine: Engine) -> None:
         "log": "/var/log/carbonio.log",
     }
     r = agent.post("/mail-stats", report)
-    assert r.status_code == 200 and r.json() == {"actions": []}  # limits off by default
+    assert r.status_code == 200 and r.json() == {
+        "actions": [],
+        "ip_actions": [],
+    }  # limits off by default
     # Re-sending the same absolute counters does not double them.
     agent.post("/mail-stats", report)
     ov = api.get("/api/mail/overview", params={"period": "24h"}).json()

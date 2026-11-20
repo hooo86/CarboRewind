@@ -745,4 +745,23 @@ CREATE INDEX ix_login_failures_hour ON login_failures (hour);
 
 UPDATE alembic_version SET version_num='0018' WHERE alembic_version.version_num = '0017';
 
+-- Running upgrade 0018 -> 0019
+
+CREATE TABLE ip_actions (
+    id UUID NOT NULL,
+    ip VARCHAR(64) NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    error TEXT,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    done_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_ip_actions PRIMARY KEY (id),
+    CONSTRAINT ck_ip_actions_action_known CHECK (action IN ('trust', 'untrust')),
+    CONSTRAINT ck_ip_actions_status_known CHECK (status IN ('pending', 'done', 'failed')),
+    CONSTRAINT fk_ip_actions_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL
+);
+
+UPDATE alembic_version SET version_num='0019' WHERE alembic_version.version_num = '0018';
+
 COMMIT;

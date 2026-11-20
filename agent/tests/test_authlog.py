@@ -98,12 +98,25 @@ def test_ip_limit_per_hour(monkeypatch: pytest.MonkeyPatch) -> None:
     assert list(agg.hours[HOUR]) == ["203.0.113.9"]
 
 
+class IpServer(FakeServer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.ip_actions: list[dict[str, Any]] = []
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        response = super().handler(request)
+        if request.url.path.endswith("/mail-stats") and not self.down:
+            pending, self.ip_actions = self.ip_actions, []
+            return httpx.Response(200, json={**response.json(), "ip_actions": pending})
+        return response
+
+
 @pytest.fixture
-def monitor(tmp_path: Path) -> tuple[MailMonitor, FakeServer, Path, Path]:
+def monitor(tmp_path: Path) -> tuple[MailMonitor, IpServer, Path, Path]:
     fake = FakeCarbonio()
     fake.add_mailbox("ana@lnhc.dz")
     client: CarbonioClient = build_client(_settings(tmp_path), transport=fake.transport())
-    server = FakeServer()
+    server = IpServer()
     http = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(server.handler))
     mta = tmp_path / "carbonio.log"
     mta.write_text("")
@@ -117,6 +130,7 @@ def monitor(tmp_path: Path) -> tuple[MailMonitor, FakeServer, Path, Path]:
         mailbox_log=mailbox,
     )
     mon.auth.tz = UTC
+    mon.fake = fake  # type: ignore[attr-defined]
     return mon, server, mta, mailbox
 
 
@@ -128,6 +142,7 @@ def test_monitor_reports_failed_logins(monitor: tuple[Any, ...], tmp_path: Path)
     _, body = server.calls[-1]
     assert body["security"][0]["ips"]["203.0.113.9"]["suspended"] == 1
     assert body["security"][0]["ips"]["203.0.113.9"]["failed_smtp"] == 1
+    assert body["mailbox_log"] == {"path": str(mailbox), "exists": True, "readable": True}
     mon.tick(NOW)
     assert "security" not in server.calls[-1][1]  # nothing new
     # The state survives a restart: nothing is read or sent twice.
@@ -146,3 +161,34 @@ def test_monitor_survives_an_unreadable_mailbox_log(monitor: tuple[Any, ...]) ->
     mon.tick(NOW)
     mon.tick(NOW)
     assert mon._mailbox_denied and "security" not in server.calls[-1][1]
+    assert server.calls[-1][1]["mailbox_log"]["readable"] is False
+
+
+def test_monitor_reports_the_login_filter_and_trusts_ips(monitor: tuple[Any, ...]) -> None:
+    mon, server, _mta, _mailbox = monitor
+    fake = mon.fake
+    mon.tick(NOW)
+    assert server.calls[-1][1]["login_filter"] == {
+        "safe_ips": ["192.168.8.0/24"],
+        "max_failed": 10,
+        "block_minutes": 15,
+        "task_minutes": 5,
+    }
+    mon.tick(NOW)
+    assert "login_filter" not in server.calls[-1][1]  # read every few minutes only
+    server.ip_actions = [
+        {"id": "i1", "action": "trust", "ip": "203.0.113.9"},
+        {"id": "i2", "action": "untrust", "ip": "198.51.100.1"},  # not in the list
+        {"id": "i3", "action": "explode", "ip": "1.2.3.4"},
+    ]
+    mon.tick(NOW)
+    assert fake.config["zimbraHttpThrottleSafeIPs"] == ["192.168.8.0/24", "203.0.113.9"]
+    done = {p: b for p, b in server.calls if p.startswith("/ip-actions/")}
+    assert done["/ip-actions/i1/done"] == {"error": None}
+    assert "INVALID_REQUEST" in done["/ip-actions/i2/done"]["error"]
+    assert "unknown action" in done["/ip-actions/i3/done"]["error"]
+    mon.tick(NOW)  # the new list is reported at once
+    assert "203.0.113.9" in server.calls[-1][1]["login_filter"]["safe_ips"]
+    server.ip_actions = [{"id": "i4", "action": "untrust", "ip": "203.0.113.9"}]
+    mon.tick(NOW)
+    assert fake.config["zimbraHttpThrottleSafeIPs"] == ["192.168.8.0/24"]

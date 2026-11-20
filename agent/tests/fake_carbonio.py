@@ -111,6 +111,14 @@ class FakeCarbonio:
         self.services: dict[str, tuple[bool, int]] = {}
         self.upload_reply: str | None = None  # e.g. "401,'null'": the servlet refuses
         self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
+        # Global configuration (multi-valued attributes are lists).
+        self.config: dict[str, list[str]] = {
+            "zimbraHttpThrottleSafeIPs": ["192.168.8.0/24"],
+            "zimbraInvalidLoginFilterMaxFailedLogin": ["10"],
+            "zimbraInvalidLoginFilterDelayInMinBetwnReqBeforeReinstating": ["15"],
+            "zimbraInvalidLoginFilterReinstateIpTaskIntervalInMin": ["5"],
+            "zimbraSoapRequestMaxSize": ["31457280"],
+        }
 
     # ------------------------------------------------------------------ setup helpers
 
@@ -291,6 +299,27 @@ class FakeCarbonio:
             raise _Fault("service.FAILURE", "queue info unavailable")
         queues = [{"name": k, "n": v} for k, v in self.queues.items()]
         return {"server": [{"name": body["server"]["name"], "queue": queues}]}
+
+    def _GetAllConfigRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        return {"a": [{"n": n, "_content": v} for n, vs in self.config.items() for v in vs]}
+
+    def _ModifyConfigRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        for attr in body.get("a", []):
+            name, value = attr["n"], attr["_content"]
+            if name.startswith("+"):
+                values = self.config.setdefault(name[1:], [])
+                if value not in values:
+                    values.append(value)
+            elif name.startswith("-"):
+                values = self.config.get(name[1:], [])
+                if value not in values:
+                    raise _Fault("service.INVALID_REQUEST", f"no such value {value}")
+                values.remove(value)
+            else:
+                self.config[name] = [value]
+        return {}
 
     def _ModifyAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)

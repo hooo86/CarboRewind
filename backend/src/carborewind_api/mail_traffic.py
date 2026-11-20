@@ -35,6 +35,7 @@ from .db.models import (
     AccountStatus,
     ActorType,
     AppSetting,
+    IpAction,
     LoginFailure,
     MailAlert,
     MailStat,
@@ -343,6 +344,16 @@ async def pending_actions(db: AsyncSession) -> list[dict[str, Any]]:
         }
         for a, acc in rows
     ]
+
+
+async def pending_ip_actions(db: AsyncSession) -> list[dict[str, Any]]:
+    rows = await db.scalars(
+        select(IpAction)
+        .where(IpAction.status == "pending")
+        .order_by(IpAction.created_at)
+        .limit(100)
+    )
+    return [{"id": str(a.id), "action": a.action, "ip": a.ip} for a in rows]
 
 
 async def record_logins(db: AsyncSession, hours: list[dict[str, Any]]) -> None:

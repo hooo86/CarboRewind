@@ -2152,6 +2152,17 @@
             ],
             "title": "Last Suspended At"
           },
+          "pending": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending"
+          },
           "ptr": {
             "anyOf": [
               {
@@ -2170,6 +2181,11 @@
           "suspended": {
             "title": "Suspended",
             "type": "integer"
+          },
+          "trusted": {
+            "default": false,
+            "title": "Trusted",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3010,6 +3026,82 @@
         "title": "InventoryOut",
         "type": "object"
       },
+      "IpActionOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ip",
+          "action",
+          "status",
+          "error",
+          "created_at",
+          "done_at"
+        ],
+        "title": "IpActionOut",
+        "type": "object"
+      },
+      "IpIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ip": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Ip",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip"
+        ],
+        "title": "IpIn",
+        "type": "object"
+      },
       "ItemIn": {
         "properties": {
           "blob": {
@@ -3569,6 +3661,146 @@
         "title": "LoginCountsIn",
         "type": "object"
       },
+      "LoginFilterConfig": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "block_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Minutes"
+          },
+          "max_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Failed"
+          },
+          "safe_ips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Safe Ips",
+            "type": "array"
+          },
+          "task_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Minutes"
+          }
+        },
+        "required": [
+          "safe_ips",
+          "max_failed",
+          "block_minutes",
+          "task_minutes",
+          "at"
+        ],
+        "title": "LoginFilterConfig",
+        "type": "object"
+      },
+      "LoginFilterIn": {
+        "description": "Carbonio's invalid login filter settings and trusted addresses (global config).",
+        "properties": {
+          "block_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Block Minutes"
+          },
+          "max_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Failed"
+          },
+          "safe_ips": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "title": "Safe Ips",
+            "type": "array"
+          },
+          "task_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Minutes"
+          }
+        },
+        "title": "LoginFilterIn",
+        "type": "object"
+      },
+      "LoginFilterOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/IpActionOut"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoginFilterConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "config",
+          "actions"
+        ],
+        "title": "LoginFilterOut",
+        "type": "object"
+      },
       "LoginHourIn": {
         "properties": {
           "hour": {
@@ -3634,6 +3866,29 @@
             },
             "title": "Ips",
             "type": "array"
+          },
+          "log_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Path"
+          },
+          "log_status": {
+            "default": "ok",
+            "enum": [
+              "ok",
+              "denied",
+              "missing",
+              "agent_outdated",
+              "not_reporting"
+            ],
+            "title": "Log Status",
+            "type": "string"
           },
           "period": {
             "title": "Period",
@@ -3739,6 +3994,26 @@
             ],
             "title": "Log"
           },
+          "login_filter": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LoginFilterIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mailbox_log": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MailboxLogIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "security": {
             "items": {
               "$ref": "#/components/schemas/LoginHourIn"
@@ -3749,6 +4024,30 @@
           }
         },
         "title": "MailStatsIn",
+        "type": "object"
+      },
+      "MailboxLogIn": {
+        "properties": {
+          "exists": {
+            "title": "Exists",
+            "type": "boolean"
+          },
+          "path": {
+            "maxLength": 4096,
+            "title": "Path",
+            "type": "string"
+          },
+          "readable": {
+            "title": "Readable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "exists",
+          "readable"
+        ],
+        "title": "MailboxLogIn",
         "type": "object"
       },
       "MailboxOut": {
@@ -9540,6 +9839,53 @@
         ]
       }
     },
+    "/api/agent/ip-actions/{action_id}/done": {
+      "post": {
+        "description": "The agent added / removed the trusted address (or could not).",
+        "operationId": "ip_action_done_api_agent_ip_actions__action_id__done_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionDoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ip Action Done",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/jobs/claim": {
       "post": {
         "description": "Lease the next job: first an abandoned one (expired lease, resumed from its\ncheckpoint), else the highest-priority queued job.",
@@ -12671,6 +13017,85 @@
           }
         },
         "summary": "Put Limits",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/login-filter": {
+      "get": {
+        "description": "Carbonio's invalid login filter (as last read by the agent), trusted addresses and\nthe latest trust / untrust requests.",
+        "operationId": "login_filter_api_mail_login_filter_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginFilterOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Login Filter",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/login-filter/{action}": {
+      "post": {
+        "description": "Add an address to Carbonio's trusted addresses (it is then never blocked again), or\nremove it; the agent applies it within a minute.",
+        "operationId": "queue_ip_action_api_mail_login_filter__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "trust",
+                "untrust"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IpIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue Ip Action",
         "tags": [
           "mail traffic"
         ]

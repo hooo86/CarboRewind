@@ -6,6 +6,16 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- IP bloquées : bouton **Débloquer** (l'agent ajoute l'adresse aux adresses de confiance de
+  Carbonio, `zimbraHttpThrottleSafeIPs` : elle n'est plus jamais bloquée), « Retirer la
+  confiance », liste des adresses de confiance avec ajout d'une adresse ou d'un réseau, règle
+  de blocage de Carbonio (N échecs → blocage X minutes) et heure approximative de levée du
+  blocage. Filtre « Seulement les IP bloquées ». Migration 0019.
+- L'agent indique s'il peut lire `mailbox.log` : message précis (agent trop ancien, droit
+  manquant, fichier absent) au lieu de « Aucune donnée reçue ». Quand rien n'est bloqué : « Aucune
+  adresse IP bloquée sur la période ».
+
+### Added
 - **Tableau de bord personnalisable** (bouton « Personnaliser ») : ajouter, retirer, déplacer
   les widgets, choisir leur largeur (pleine ou demi), leur titre et les données affichées
   (chiffres clés au choix, nombre de lignes, filtres d'état et de type des jobs, période…).

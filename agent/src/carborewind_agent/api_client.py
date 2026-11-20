@@ -172,14 +172,23 @@ class AgentApi:
         hours: list[dict[str, Any]],
         log_path: str | None,
         security: list[dict[str, Any]] | None = None,
+        mailbox_log: dict[str, Any] | None = None,
+        login_filter: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Hourly mail counters (absolute values), and failed logins / blocked IPs per hour;
         the answer lists account actions."""
         body: dict[str, Any] = {"hours": hours, "log": log_path}
         if security:
             body["security"] = security
+        if mailbox_log is not None:
+            body["mailbox_log"] = mailbox_log
+        if login_filter is not None:
+            body["login_filter"] = login_filter
         result: dict[str, Any] = self._post("/mail-stats", body).json()
         return result
+
+    def ip_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/ip-actions/{action_id}/done", {"error": error})
 
     def mail_action_done(self, action_id: str, error: str | None) -> None:
         self._post(f"/account-actions/{action_id}/done", {"error": error})

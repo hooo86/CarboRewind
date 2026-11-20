@@ -320,7 +320,7 @@ describe("security and spam origin", () => {
     );
   });
 
-  it("explains when the agent sends nothing yet", async () => {
+  it("explains why nothing shows, and says when nothing is blocked", async () => {
     open(user("super_admin"), {
       "GET /api/mail/security": {
         period: "24h",
@@ -328,10 +328,135 @@ describe("security and spam origin", () => {
         totals: { ips: 0, failed: 0, blocked: 0 },
         reported: false,
         ips: [],
+        log_status: "denied",
+        log_path: "/opt/zextras/log/mailbox.log",
       },
     });
     expect(
-      await screen.findByText(/No data received: update the agent/),
+      await screen.findByText(
+        /cannot read \/opt\/zextras\/log\/mailbox.log: add the carborewind user/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No IP address blocked in the period."),
+    ).toBeNull();
+  });
+
+  it("unblocks an IP and manages the trusted addresses", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    let trusted = ["192.168.8.0/24"];
+    const posted: unknown[] = [];
+    const security = (blocked: boolean) => ({
+      period: "24h",
+      since: "2026-11-19T00:00:00Z",
+      totals: { ips: 1, failed: 12, blocked: blocked ? 1 : 0 },
+      reported: true,
+      log_status: "ok",
+      ips: [
+        {
+          ip: "203.0.113.9",
+          ptr: null,
+          domain: null,
+          failed_mailbox: 12,
+          failed_smtp: 0,
+          suspended: blocked ? 1 : 0,
+          last_suspended_at: blocked ? new Date().toISOString() : null,
+          recently_blocked: blocked,
+          first_seen: "2026-11-19T08:00:00Z",
+          last_seen: "2026-11-19T11:00:00Z",
+          accounts: [],
+          trusted: false,
+          pending: posted.length ? "trust" : null,
+        },
+      ],
+    });
+    open(user("super_admin"), {
+      "GET /api/mail/security": () => ({ body: security(true) }),
+      "GET /api/mail/login-filter": () => ({
+        body: {
+          config: {
+            safe_ips: trusted,
+            max_failed: 10,
+            block_minutes: 15,
+            task_minutes: 5,
+            at: "2026-11-19T11:00:00Z",
+          },
+          actions: [],
+        },
+      }),
+      "POST /api/mail/login-filter/trust": (c: { body: unknown }) => {
+        posted.push(c.body);
+        return {
+          status: 202,
+          body: { id: "i1", ip: "x", action: "trust", status: "pending" },
+        };
+      },
+      "POST /api/mail/login-filter/untrust": (c: { body: unknown }) => {
+        trusted = [];
+        return {
+          status: 202,
+          body: {
+            id: "i2",
+            ip: (c.body as { ip: string }).ip,
+            action: "untrust",
+          },
+        };
+      },
+    });
+    const panel = await screen.findByRole("region", {
+      name: "Failed logins and blocked IPs",
+    });
+    expect(await within(panel).findByText(/until ~/)).toBeInTheDocument();
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Unblock 203.0.113.9" }),
+    );
+    expect(
+      await within(panel).findByText(
+        /will add 203.0.113.9 to the trusted addresses/,
+      ),
+    ).toBeInTheDocument();
+    expect(posted).toEqual([{ ip: "203.0.113.9" }]);
+    expect(await within(panel).findByText("unblocking…")).toBeInTheDocument();
+
+    const list = screen.getByRole("region", {
+      name: "Trusted addresses (never blocked)",
+    });
+    expect(
+      await within(list).findByText(
+        /blocks an address after 10 failed logins, for 15 minutes/,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(
+      within(list).getByLabelText("Add an address or a network"),
+      {
+        target: { value: "10.1.0.0/16" },
+      },
+    );
+    fireEvent.click(within(list).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(posted).toContainEqual({ ip: "10.1.0.0/16" }));
+    fireEvent.click(
+      within(list).getByRole("button", {
+        name: "Remove 192.168.8.0/24 from the trusted addresses",
+      }),
+    );
+    expect(
+      await within(list).findByText("No trusted address."),
+    ).toBeInTheDocument();
+  });
+
+  it("says when no IP was blocked", async () => {
+    open(user("super_admin"), {
+      "GET /api/mail/security": {
+        period: "24h",
+        since: "2026-11-19T00:00:00Z",
+        totals: { ips: 0, failed: 0, blocked: 0 },
+        reported: false,
+        log_status: "ok",
+        ips: [],
+      },
+    });
+    expect(
+      await screen.findByText("No IP address blocked in the period."),
     ).toBeInTheDocument();
     expect(
       screen.getByText("No failed login in the period."),

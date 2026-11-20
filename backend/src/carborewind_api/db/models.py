@@ -905,6 +905,30 @@ class MailAlert(Base):
     )
 
 
+class IpAction(Base):
+    """Add an IP address to (``trust``) or remove it from (``untrust``) Carbonio's trusted
+    addresses (``zimbraHttpThrottleSafeIPs``), carried out by the agent's mail watcher. A
+    trusted address is never blocked by the invalid login filter."""
+
+    __tablename__ = "ip_actions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    ip: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(16))  # trust | untrust
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("action IN ('trust', 'untrust')", name="action_known"),
+        CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
+    )
+
+
 class AccountAction(Base):
     """Lock or unlock a Carbonio account, carried out by the agent's mail watcher."""
 

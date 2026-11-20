@@ -8,12 +8,13 @@ be locked or unlocked by hand (the agent applies it within a minute).
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import desc, func, select
 
 from .. import audit, mail_traffic, rdns
@@ -23,6 +24,7 @@ from ..db.models import (
     AccountAction,
     Agent,
     AgentStatus,
+    IpAction,
     LoginFailure,
     MailAlert,
     MailStat,
@@ -262,6 +264,13 @@ class BlockedIp(BaseModel):
     first_seen: datetime
     last_seen: datetime
     accounts: list[str]
+    # In Carbonio's trusted addresses (zimbraHttpThrottleSafeIPs): never blocked again.
+    trusted: bool = False
+    # A "trust" or "untrust" of this address is waiting for the agent.
+    pending: str | None = None
+
+
+LogStatus = Literal["ok", "denied", "missing", "agent_outdated", "not_reporting"]
 
 
 class LoginSecurity(BaseModel):
@@ -270,6 +279,38 @@ class LoginSecurity(BaseModel):
     totals: dict[str, int]
     ips: list[BlockedIp]
     reported: bool
+    # Can the agent read mailbox.log? (the reason why nothing shows, if nothing does)
+    log_status: LogStatus = "ok"
+    log_path: str | None = None
+
+
+STALE_REPORT = timedelta(minutes=10)
+
+
+async def _log_status(db: DbSession, now: datetime) -> tuple[LogStatus, str | None]:
+    reports = [
+        (storage or {}).get("mail") or {}
+        for storage in await db.scalars(
+            select(Agent.storage).where(Agent.status == AgentStatus.ACTIVE)
+        )
+    ]
+    fresh = [
+        r
+        for r in reports
+        if r.get("reported_at") and datetime.fromisoformat(r["reported_at"]) >= now - STALE_REPORT
+    ]
+    if not fresh:
+        return "not_reporting", None
+    logs = [r["mailbox_log"] for r in fresh if isinstance(r.get("mailbox_log"), dict)]
+    if not logs:
+        return "agent_outdated", None
+    readable = next((m for m in logs if m.get("readable")), None)
+    if readable is not None:
+        return "ok", readable.get("path")
+    present = next((m for m in logs if m.get("exists")), None)
+    if present is not None:
+        return "denied", present.get("path")
+    return "missing", logs[0].get("path")
 
 
 @router.get("/security", response_model=LoginSecurity)
@@ -315,6 +356,12 @@ async def login_security(
     ).one()
     names = await rdns.resolve(r.ip for r in rows)
     reported = await db.scalar(select(func.count()).select_from(LoginFailure)) or 0
+    safe = _networks((await _login_filter(db) or {}).get("safe_ips", []))
+    pending = {
+        a.ip: a.action
+        for a in await db.scalars(select(IpAction).where(IpAction.status == "pending"))
+    }
+    log_status, log_path = await _log_status(db, now)
 
     def accounts(nested: Any) -> list[str]:
         seen: list[str] = []
@@ -341,10 +388,156 @@ async def login_security(
                 first_seen=r.first,
                 last_seen=r.last + timedelta(hours=1),
                 accounts=accounts(r.accounts),
+                trusted=_covered(r.ip, safe),
+                pending=pending.get(r.ip),
             )
             for r in rows
         ],
         reported=reported > 0,
+        log_status=log_status,
+        log_path=log_path,
+    )
+
+
+def _networks(values: list[str]) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    out = []
+    for value in values:
+        try:
+            out.append(ipaddress.ip_network(value.strip(), strict=False))
+        except ValueError:
+            continue
+    return out
+
+
+def _covered(ip: str, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr.version == n.version and addr in n for n in networks)
+
+
+async def _login_filter(db: DbSession) -> dict[str, Any] | None:
+    """The latest report of Carbonio's login filter settings among the active agents."""
+    reports = [
+        ((storage or {}).get("mail") or {}).get("login_filter")
+        for storage in await db.scalars(
+            select(Agent.storage).where(Agent.status == AgentStatus.ACTIVE)
+        )
+    ]
+    found = [r for r in reports if isinstance(r, dict)]
+    return max(found, key=lambda r: str(r.get("at", ""))) if found else None
+
+
+class LoginFilterConfig(BaseModel):
+    safe_ips: list[str]
+    max_failed: int | None
+    block_minutes: int | None
+    task_minutes: int | None
+    at: datetime | None
+
+
+class IpActionOut(BaseModel):
+    id: uuid.UUID
+    ip: str
+    action: str
+    status: str
+    error: str | None
+    created_at: datetime
+    done_at: datetime | None
+
+
+class LoginFilterOut(BaseModel):
+    config: LoginFilterConfig | None
+    actions: list[IpActionOut]
+
+
+@router.get("/login-filter", response_model=LoginFilterOut)
+async def login_filter(principal: Admin, db: DbSession) -> LoginFilterOut:
+    """Carbonio's invalid login filter (as last read by the agent), trusted addresses and
+    the latest trust / untrust requests."""
+    cfg = await _login_filter(db)
+    actions = await db.scalars(select(IpAction).order_by(IpAction.created_at.desc()).limit(20))
+    return LoginFilterOut(
+        config=LoginFilterConfig(**{"at": None, **cfg}) if cfg else None,
+        actions=[
+            IpActionOut(
+                id=a.id,
+                ip=a.ip,
+                action=a.action,
+                status=a.status,
+                error=a.error,
+                created_at=a.created_at,
+                done_at=a.done_at,
+            )
+            for a in actions
+        ],
+    )
+
+
+class IpIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ip: str = Field(min_length=2, max_length=64)
+
+    @field_validator("ip")
+    @classmethod
+    def _ip(cls, value: str) -> str:
+        """A single address or a network (CIDR), as Carbonio accepts both."""
+        value = value.strip()
+        try:
+            if "/" in value:
+                return str(ipaddress.ip_network(value, strict=False))
+            return str(ipaddress.ip_address(value))
+        except ValueError as exc:
+            raise ValueError("not an IP address or network") from exc
+
+
+@router.post(
+    "/login-filter/{action}", response_model=IpActionOut, status_code=status.HTTP_202_ACCEPTED
+)
+async def queue_ip_action(
+    action: Literal["trust", "untrust"],
+    body: IpIn,
+    principal: Admin,
+    db: DbSession,
+    request: Request,
+) -> IpActionOut:
+    """Add an address to Carbonio's trusted addresses (it is then never blocked again), or
+    remove it; the agent applies it within a minute."""
+    existing = await db.scalar(
+        select(IpAction).where(
+            IpAction.ip == body.ip, IpAction.action == action, IpAction.status == "pending"
+        )
+    )
+    item = existing or IpAction(ip=body.ip, action=action, created_by=principal.user.id)
+    if existing is None:
+        # A pending opposite request is replaced by this one.
+        for other in await db.scalars(
+            select(IpAction).where(IpAction.ip == body.ip, IpAction.status == "pending")
+        ):
+            await db.delete(other)
+        db.add(item)
+        await db.flush()
+        await db.refresh(item)
+        await audit.record(
+            db,
+            action=f"mail.ip_{action}",
+            outcome=Outcome.SUCCESS,
+            actor_id=str(principal.user.id),
+            actor_name=principal.user.username,
+            target_type="ip",
+            target_id=body.ip,
+            source_ip=client_ip(request),
+        )
+    return IpActionOut(
+        id=item.id,
+        ip=item.ip,
+        action=item.action,
+        status=item.status,
+        error=item.error,
+        created_at=item.created_at,
+        done_at=item.done_at,
     )
 
 

@@ -1,5 +1,7 @@
 import { request } from "./client";
 import type {
+  IpAction,
+  LoginFilter,
   LoginSecurity,
   SpamSources,
   Widget,
@@ -441,6 +443,9 @@ export const api = {
       only_blocked: onlyBlocked ? "true" : undefined,
       limit,
     }),
+  loginFilter: () => request<LoginFilter>("GET", "/api/mail/login-filter"),
+  ipAction: (action: "trust" | "untrust", ip: string) =>
+    request<IpAction>("POST", `/api/mail/login-filter/${action}`, { ip }),
   spamSources: (period: MailPeriod) =>
     request<SpamSources>("GET", "/api/mail/spam-sources", undefined, {
       period,

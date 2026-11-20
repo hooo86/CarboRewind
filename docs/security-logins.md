@@ -18,6 +18,23 @@ Le blocage est fait par le filtre de connexions invalides de Carbonio (attributs
 légitime (NAT de l'entreprise, supervision) ne soit plus bloquée, ajoutez-la à
 `zimbraHttpThrottleSafeIPs` puis redémarrez le service mailbox.
 
+## Débloquer une adresse
+
+Le bouton **Débloquer** demande à l'agent d'ajouter l'adresse à `zimbraHttpThrottleSafeIPs`
+(`ModifyConfigRequest`, valeur ajoutée avec `+`) : elle n'est plus jamais bloquée.
+**Retirer la confiance** l'enlève (`-`). Les adresses et réseaux de confiance sont listés
+sous « Adresses de confiance » ; l'agent relit la liste et la règle de blocage toutes les
+10 minutes, et juste après chaque modification.
+
+Carbonio garde les blocages en cours en mémoire, sans commande pour en lever un : un blocage
+se lève à la fin du délai (`zimbraInvalidLoginFilterDelayInMinBetwnReqBeforeReinstating`),
+ou au redémarrage du service mailbox, qui peut aussi être nécessaire pour que la nouvelle liste
+soit prise en compte :
+
+```bash
+su - zextras -c "zmmailboxdctl restart"
+```
+
 « bloquée » (rouge) = blocage dans la dernière heure ; « bloquée N fois » = blocages plus anciens
 sur la période.
 
@@ -43,4 +60,5 @@ l'est beaucoup moins.
 
 - `GET /api/mail/security?period=24h&only_blocked=false&limit=100`
 - `GET /api/mail/spam-sources?period=24h`
+- `GET /api/mail/login-filter`, `POST /api/mail/login-filter/trust|untrust` `{"ip": "203.0.113.9"}`
 - `GET /api/me/dashboard`, `PUT /api/me/dashboard` `{"widgets": [...] | null}`

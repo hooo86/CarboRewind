@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from carborewind_api import rdns
 from carborewind_api.config import Settings
-from carborewind_api.db.models import Agent, AgentStatus, LoginFailure, SpamSender
+from carborewind_api.db.models import Agent, AgentStatus, IpAction, LoginFailure, SpamSender
 from carborewind_api.main import create_app
 from carborewind_api.pki import init_ca
 
@@ -49,10 +50,12 @@ def api(
     )
     with Session(engine) as s, s.begin():
         s.execute(delete(LoginFailure))
+        s.execute(delete(IpAction))
         s.execute(delete(SpamSender))
     with TestClient(create_app(settings), base_url="https://testserver") as client:
         yield client
-    with Session(engine) as s, s.begin():  # leave no extra active agent behind
+    with Session(engine) as s, s.begin():  # leave no extra agent or pending action behind
+        s.execute(delete(IpAction))
         s.execute(
             update(Agent)
             .where(Agent.status == AgentStatus.ACTIVE)
@@ -90,7 +93,15 @@ def test_failed_logins_and_blocked_ips(api: TestClient, engine: Engine) -> None:
     }
     assert agent.post("/mail-stats", report).status_code == 200
     agent.post("/mail-stats", report)  # absolute counters: not doubled
+    assert api.get("/api/mail/security").json()["log_status"] == "agent_outdated"
+    log = {"path": "/opt/zextras/log/mailbox.log", "exists": True, "readable": False}
+    agent.post("/mail-stats", {"hours": [], "mailbox_log": log})
+    assert api.get("/api/mail/security").json()["log_status"] == "denied"
+    agent.post("/mail-stats", {"hours": [], "mailbox_log": {**log, "exists": False}})
+    assert api.get("/api/mail/security").json()["log_status"] == "missing"
+    agent.post("/mail-stats", {"hours": [], "mailbox_log": {**log, "readable": True}})
     out = api.get("/api/mail/security", params={"period": "24h"}).json()
+    assert out["log_status"] == "ok" and out["log_path"] == log["path"]
     assert out["totals"] == {"ips": 2, "failed": 47, "blocked": 1} and out["reported"]
     first, second = out["ips"]
     assert first["ip"] == "203.0.113.9" and first["suspended"] == 1
@@ -191,3 +202,59 @@ def test_reverse_dns_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     asyncio.run(rdns.resolve(["203.0.113.1", "203.0.113.2"]))  # cached, hits and misses
     assert calls == ["203.0.113.1", "203.0.113.2"]
+
+
+def test_trust_and_untrust_ips(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    assert api.get("/api/mail/login-filter").json() == {"config": None, "actions": []}
+    lf = {"safe_ips": ["192.168.8.0/24"], "max_failed": 10, "block_minutes": 15, "task_minutes": 5}
+    blocked = {
+        "hour": hour(),
+        "ips": {
+            "203.0.113.9": {"failed_mailbox": 12, "suspended": 1},
+            "192.168.8.20": {"failed_mailbox": 1},
+        },
+    }
+    agent.post("/mail-stats", {"hours": [], "security": [blocked], "login_filter": lf})
+    out = api.get("/api/mail/login-filter").json()
+    assert out["config"]["safe_ips"] == ["192.168.8.0/24"] and out["config"]["block_minutes"] == 15
+    ips = {i["ip"]: i for i in api.get("/api/mail/security").json()["ips"]}
+    assert ips["192.168.8.20"]["trusted"] is True  # inside a trusted network
+    assert ips["203.0.113.9"]["trusted"] is False and ips["203.0.113.9"]["pending"] is None
+    # Bad input, then a trust request (asked twice: one request).
+    for bad in ("nope", "300.1.1.1", "10.0.0.0/99"):
+        assert (
+            api.post("/api/mail/login-filter/trust", json={"ip": bad}, headers=h).status_code == 422
+        )
+    first = api.post("/api/mail/login-filter/trust", json={"ip": " 203.0.113.9 "}, headers=h)
+    assert first.status_code == 202 and first.json()["ip"] == "203.0.113.9"
+    again = api.post("/api/mail/login-filter/trust", json={"ip": "203.0.113.9"}, headers=h)
+    assert again.json()["id"] == first.json()["id"]
+    assert api.get("/api/mail/security").json()["ips"][0]["pending"] == "trust"
+    # The agent gets it with the next report (the filter settings are kept meanwhile).
+    answer = agent.post("/mail-stats", {"hours": []}).json()
+    assert answer["ip_actions"] == [
+        {"id": first.json()["id"], "action": "trust", "ip": "203.0.113.9"}
+    ]
+    assert api.get("/api/mail/login-filter").json()["config"]["max_failed"] == 10
+    done = agent.post(f"/ip-actions/{first.json()['id']}/done", {"error": None})
+    assert done.status_code == 204
+    agent.post(f"/ip-actions/{first.json()['id']}/done", {"error": None})  # idempotent
+    assert agent.post(f"/ip-actions/{uuid.uuid4()}/done", {"error": None}).status_code == 404
+    out = api.get("/api/mail/login-filter").json()
+    assert out["config"]["safe_ips"] == ["192.168.8.0/24", "203.0.113.9"]
+    assert out["actions"][0]["status"] == "done"
+    ips = {i["ip"]: i for i in api.get("/api/mail/security").json()["ips"]}
+    assert ips["203.0.113.9"]["trusted"] is True and ips["203.0.113.9"]["pending"] is None
+    # Untrust: a failure is recorded with its reason.
+    gone = api.post("/api/mail/login-filter/untrust", json={"ip": "203.0.113.9"}, headers=h).json()
+    agent.post(f"/ip-actions/{gone['id']}/done", {"error": "service.FAILURE: x"})
+    out = api.get("/api/mail/login-filter").json()
+    assert out["actions"][0]["status"] == "failed" and "FAILURE" in out["actions"][0]["error"]
+    assert "203.0.113.9" in out["config"]["safe_ips"]  # unchanged
+    # A pending request is replaced by the opposite one.
+    api.post("/api/mail/login-filter/untrust", json={"ip": "10.1.0.0/16"}, headers=h)
+    api.post("/api/mail/login-filter/trust", json={"ip": "10.1.0.0/16"}, headers=h)
+    pending = agent.post("/mail-stats", {"hours": []}).json()["ip_actions"]
+    assert [(p["action"], p["ip"]) for p in pending] == [("trust", "10.1.0.0/16")]

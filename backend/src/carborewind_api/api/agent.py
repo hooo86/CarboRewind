@@ -42,6 +42,7 @@ from ..db.models import (
     Domain,
     FetchedContent,
     FolderVersion,
+    IpAction,
     ItemKind,
     ItemVersion,
     Job,
@@ -466,6 +467,21 @@ class LoginHourIn(BaseModel):
     ips: dict[str, LoginCountsIn] = Field(default_factory=dict, max_length=5000)
 
 
+class MailboxLogIn(BaseModel):
+    path: str = Field(max_length=4096)
+    exists: bool
+    readable: bool
+
+
+class LoginFilterIn(BaseModel):
+    """Carbonio's invalid login filter settings and trusted addresses (global config)."""
+
+    safe_ips: list[str] = Field(default_factory=list, max_length=1000)
+    max_failed: int | None = None
+    block_minutes: int | None = None
+    task_minutes: int | None = None
+
+
 class MailStatsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -473,6 +489,8 @@ class MailStatsIn(BaseModel):
     log: str | None = Field(default=None, max_length=4096)
     # Failed logins and IPs blocked by Carbonio (agents from this version on).
     security: list[LoginHourIn] = Field(default_factory=list, max_length=72)
+    mailbox_log: MailboxLogIn | None = None
+    login_filter: LoginFilterIn | None = None
 
 
 class ServiceIn(BaseModel):
@@ -511,17 +529,52 @@ async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> d
     if body.security:
         await mail_traffic.record_logins(db, [h.model_dump(mode="json") for h in body.security])
     await mail_traffic.evaluate(db, senders, now)
+    previous = ((agent.storage or {}).get("mail") or {}).get("login_filter")
+    login_filter = (
+        {**body.login_filter.model_dump(), "at": now.isoformat()}
+        if body.login_filter
+        else previous  # read every few minutes only: keep the last one
+    )
     agent.storage = {
         **(agent.storage or {}),
-        "mail": {"log": body.log, "reported_at": now.isoformat()},
+        "mail": {
+            "log": body.log,
+            "reported_at": now.isoformat(),
+            **({"mailbox_log": body.mailbox_log.model_dump()} if body.mailbox_log else {}),
+            **({"login_filter": login_filter} if login_filter else {}),
+        },
     }
-    return {"actions": await mail_traffic.pending_actions(db)}
+    return {
+        "actions": await mail_traffic.pending_actions(db),
+        "ip_actions": await mail_traffic.pending_ip_actions(db),
+    }
 
 
 class ActionDoneIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     error: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/ip-actions/{action_id}/done", status_code=status.HTTP_204_NO_CONTENT)
+async def ip_action_done(
+    action_id: uuid.UUID, body: ActionDoneIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """The agent added / removed the trusted address (or could not)."""
+    action = await db.get(IpAction, action_id, with_for_update=True)
+    if action is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "action not found")
+    if action.status != "pending":
+        return  # idempotent
+    action.done_at = datetime.now(UTC)
+    action.status, action.error = ("failed", body.error) if body.error else ("done", None)
+    # Mirror the change at once so the interface shows it before the next report.
+    mail = dict((agent.storage or {}).get("mail") or {})
+    lf = dict(mail.get("login_filter") or {})
+    if not body.error and lf:
+        ips = [ip for ip in lf.get("safe_ips", []) if ip != action.ip]
+        lf["safe_ips"] = [*ips, action.ip] if action.action == "trust" else ips
+        agent.storage = {**(agent.storage or {}), "mail": {**mail, "login_filter": lf}}
 
 
 @router.post("/account-actions/{action_id}/done", status_code=status.HTTP_204_NO_CONTENT)

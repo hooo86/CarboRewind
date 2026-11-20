@@ -241,8 +241,15 @@ export const resources = {
           "Adresses IP ayant échoué à se connecter (webmail, IMAP, POP3, ActiveSync, envoi SMTP) et celles que Carbonio a bloquées après trop d'échecs (« Access to IP … suspended, for repeated failed login » dans mailbox.log). Pour débloquer une adresse légitime, ajoutez-la à zimbraHttpThrottleSafeIPs.",
         totals:
           "{{ips}} adresse(s), {{failed}} échec(s) de connexion, {{blocked}} adresse(s) bloquée(s) sur la période.",
-        notReported:
-          "Aucune donnée reçue : mettez l'agent à jour et vérifiez qu'il peut lire /opt/zextras/log/mailbox.log (groupe zextras).",
+        logStatus: {
+          not_reporting:
+            "L'agent n'envoie pas de statistiques de messagerie depuis plus de 10 minutes : vérifiez qu'il tourne et que « Surveillance du journal MTA » est activée (Paramètres → Agent).",
+          agent_outdated:
+            "L'agent installé sur le serveur Carbonio est trop ancien pour lire les connexions échouées : mettez-le à jour.",
+          denied:
+            "L'agent ne peut pas lire {{path}} : ajoutez l'utilisateur carborewind au groupe zextras puis redémarrez l'agent.",
+          missing: "L'agent ne trouve pas {{path}} sur le serveur Carbonio.",
+        },
         none: "Aucune connexion échouée sur la période.",
         ip: "Adresse IP",
         state: "État",
@@ -254,6 +261,34 @@ export const resources = {
         blocked_one: "bloquée {{count}} fois",
         blocked_other: "bloquée {{count}} fois",
         notBlocked: "non bloquée",
+        noBlock: "Aucune adresse IP bloquée sur la période.",
+        trusted: "de confiance",
+        until: "jusqu'à ~{{time}}",
+        unblock: "Débloquer",
+        allow: "Autoriser",
+        untrust: "Retirer la confiance",
+        trustTitle: "Débloquer {{ip}}",
+        untrustTitle: "Retirer {{ip}} des adresses de confiance",
+        trustConfirm:
+          "Ajouter {{ip}} aux adresses de confiance de Carbonio ? Elle ne sera plus jamais bloquée. Un blocage en cours se lève à la fin du délai de blocage (ou après redémarrage du service mailbox).",
+        untrustConfirm:
+          "Retirer {{ip}} des adresses de confiance ? Elle pourra de nouveau être bloquée après trop d'échecs.",
+        trustQueued:
+          "{{ip}} sera ajoutée aux adresses de confiance par l'agent dans la minute.",
+        untrustQueued:
+          "{{ip}} sera retirée des adresses de confiance par l'agent dans la minute.",
+        pending: { trust: "déblocage en cours…", untrust: "retrait en cours…" },
+        trustedTitle: "Adresses de confiance (jamais bloquées)",
+        rule: "Carbonio bloque une adresse après {{max}} échecs de connexion, pendant {{minutes}} minutes.",
+        noConfig:
+          "Réglages de blocage de Carbonio pas encore reçus : mettez l'agent à jour (lecture toutes les 10 minutes).",
+        noTrusted: "Aucune adresse de confiance.",
+        addTrusted: "Ajouter une adresse ou un réseau",
+        addButton: "Ajouter",
+        history: "Dernières modifications",
+        actions: { trust: "ajout de", untrust: "retrait de" },
+        trustHelp:
+          "Liste zimbraHttpThrottleSafeIPs de Carbonio, modifiée par l'agent. Carbonio peut ne la relire qu'au redémarrage du service mailbox (su - zextras -c \"zmmailboxdctl restart\") ; un blocage en cours se lève de toute façon à la fin du délai.",
       },
       spamSources: {
         title: "Origine du spam",
@@ -1736,8 +1771,15 @@ export const resources = {
           "IP addresses that failed to log in (webmail, IMAP, POP3, ActiveSync, SMTP submission) and those Carbonio blocked after too many failures (“Access to IP … suspended, for repeated failed login” in mailbox.log). To unblock a legitimate address, add it to zimbraHttpThrottleSafeIPs.",
         totals:
           "{{ips}} address(es), {{failed}} failed login(s), {{blocked}} blocked address(es) in the period.",
-        notReported:
-          "No data received: update the agent and check it can read /opt/zextras/log/mailbox.log (zextras group).",
+        logStatus: {
+          not_reporting:
+            "The agent has sent no mail statistics for more than 10 minutes: check it is running and that “MTA log monitoring” is on (Settings → Agent).",
+          agent_outdated:
+            "The agent installed on the Carbonio server is too old to read failed logins: update it.",
+          denied:
+            "The agent cannot read {{path}}: add the carborewind user to the zextras group, then restart the agent.",
+          missing: "The agent does not find {{path}} on the Carbonio server.",
+        },
         none: "No failed login in the period.",
         ip: "IP address",
         state: "State",
@@ -1749,6 +1791,34 @@ export const resources = {
         blocked_one: "blocked {{count}} time",
         blocked_other: "blocked {{count}} times",
         notBlocked: "not blocked",
+        noBlock: "No IP address blocked in the period.",
+        trusted: "trusted",
+        until: "until ~{{time}}",
+        unblock: "Unblock",
+        allow: "Allow",
+        untrust: "Remove trust",
+        trustTitle: "Unblock {{ip}}",
+        untrustTitle: "Remove {{ip}} from the trusted addresses",
+        trustConfirm:
+          "Add {{ip}} to Carbonio's trusted addresses? It will never be blocked again. A current block ends with the blocking delay (or after a restart of the mailbox service).",
+        untrustConfirm:
+          "Remove {{ip}} from the trusted addresses? It can be blocked again after too many failures.",
+        trustQueued:
+          "The agent will add {{ip}} to the trusted addresses within a minute.",
+        untrustQueued:
+          "The agent will remove {{ip}} from the trusted addresses within a minute.",
+        pending: { trust: "unblocking…", untrust: "removing…" },
+        trustedTitle: "Trusted addresses (never blocked)",
+        rule: "Carbonio blocks an address after {{max}} failed logins, for {{minutes}} minutes.",
+        noConfig:
+          "Carbonio's blocking settings not received yet: update the agent (read every 10 minutes).",
+        noTrusted: "No trusted address.",
+        addTrusted: "Add an address or a network",
+        addButton: "Add",
+        history: "Latest changes",
+        actions: { trust: "added", untrust: "removed" },
+        trustHelp:
+          'Carbonio\'s zimbraHttpThrottleSafeIPs list, changed by the agent. Carbonio may only read it again when the mailbox service restarts (su - zextras -c "zmmailboxdctl restart"); a current block ends with the delay anyway.',
       },
       spamSources: {
         title: "Spam origin",

@@ -102,6 +102,14 @@ class _Token:
     expires_at: float
 
 
+LOGIN_FILTER = {
+    "zimbraInvalidLoginFilterMaxFailedLogin": "max_failed",
+    "zimbraInvalidLoginFilterDelayInMinBetwnReqBeforeReinstating": "block_minutes",
+    "zimbraInvalidLoginFilterReinstateIpTaskIntervalInMin": "task_minutes",
+}
+SAFE_IPS = "zimbraHttpThrottleSafeIPs"
+
+
 def _attrs(entry: dict[str, Any]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for a in entry.get("a", []):
@@ -284,6 +292,26 @@ class CarbonioClient:
             offset += len(accounts)
             if not resp.get("more") or not accounts:
                 return used
+
+    def login_filter(self) -> dict[str, Any]:
+        """Invalid login filter settings and trusted addresses (``GetAllConfigRequest``)."""
+        resp = self._admin.invoke("GetAllConfig", NS_ADMIN, {}, token=self._admin_auth())
+        attrs = _attrs(resp)
+        out: dict[str, Any] = {"safe_ips": attrs.get(SAFE_IPS, [])}
+        for attr, key in LOGIN_FILTER.items():
+            value = (attrs.get(attr) or [""])[0]
+            out[key] = int(value) if value.isdigit() else None
+        return out
+
+    def set_trusted_ip(self, ip: str, trusted: bool) -> None:
+        """Add to / remove from the global trusted addresses (``ModifyConfigRequest``)."""
+        sign = "+" if trusted else "-"
+        self._admin.invoke(
+            "ModifyConfig",
+            NS_ADMIN,
+            {"a": [{"n": f"{sign}{SAFE_IPS}", "_content": ip}]},
+            token=self._admin_auth(),
+        )
 
     def set_account_status(self, account_id: str, status: str) -> None:
         """Lock (``locked``) or reactivate (``active``) an account (``ModifyAccountRequest``)."""
