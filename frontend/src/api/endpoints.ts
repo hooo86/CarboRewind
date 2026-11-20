@@ -1,5 +1,8 @@
 import { request } from "./client";
 import type {
+  LoginSecurity,
+  SpamSources,
+  Widget,
   AccountGroup,
   PolicyRun,
   SavedView,
@@ -432,6 +435,22 @@ export const api = {
       "/api/monitoring/verify",
       { target, sample },
     ),
+  mailSecurity: (period: MailPeriod, onlyBlocked = false, limit = 100) =>
+    request<LoginSecurity>("GET", "/api/mail/security", undefined, {
+      period,
+      only_blocked: onlyBlocked ? "true" : undefined,
+      limit,
+    }),
+  spamSources: (period: MailPeriod) =>
+    request<SpamSources>("GET", "/api/mail/spam-sources", undefined, {
+      period,
+    }),
+  dashboardLayout: () =>
+    request<{ widgets: Widget[] | null }>("GET", "/api/me/dashboard"),
+  saveDashboardLayout: (widgets: Widget[] | null) =>
+    request<{ widgets: Widget[] | null }>("PUT", "/api/me/dashboard", {
+      widgets,
+    }),
   mailOverview: (period: MailPeriod) =>
     request<MailOverview>("GET", "/api/mail/overview", undefined, { period }),
   saveMailLimits: (body: MailLimits) =>

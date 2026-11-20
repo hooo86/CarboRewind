@@ -922,3 +922,57 @@ export interface AgentTuning extends AgentTuningInput {
   revision: number;
   agents: { name: string; applied: { revision: number; at: string } | null }[];
 }
+
+export interface BlockedIp {
+  ip: string;
+  ptr: string | null;
+  domain: string | null;
+  failed_mailbox: number;
+  failed_smtp: number;
+  suspended: number;
+  last_suspended_at: string | null;
+  recently_blocked: boolean;
+  first_seen: string;
+  last_seen: string;
+  accounts: string[];
+}
+
+export interface LoginSecurity {
+  period: MailPeriod;
+  since: string;
+  totals: { ips: number; failed: number; blocked: number };
+  ips: BlockedIp[];
+  reported: boolean;
+}
+
+export interface SpamSource {
+  domain: string | null;
+  count: number;
+  ips: { ip: string; ptr: string | null; count: number }[];
+  sender_domains: string[];
+}
+
+export interface SpamSources {
+  period: MailPeriod;
+  since: string;
+  sources: SpamSource[];
+  sender_domains: { domain: string; count: number }[];
+}
+
+export type WidgetType =
+  | "kpis"
+  | "storage"
+  | "manual_backup"
+  | "jobs"
+  | "policies"
+  | "mail_top"
+  | "spam_sources"
+  | "blocked_ips";
+
+export interface Widget {
+  id: string;
+  type: WidgetType;
+  size: "full" | "half";
+  title?: string | null;
+  options: Record<string, unknown>;
+}

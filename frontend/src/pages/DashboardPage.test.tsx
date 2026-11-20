@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
@@ -151,6 +157,164 @@ describe("dashboard", () => {
       await screen.findByText(
         /Server address\(es\) blacklisted: 203.0.113.10 \(bl.spamcop.net\)/,
       ),
+    ).toBeInTheDocument();
+  });
+});
+
+const security = {
+  period: "24h",
+  since: "2026-11-19T00:00:00Z",
+  totals: { ips: 2, failed: 47, blocked: 1 },
+  reported: true,
+  ips: [
+    {
+      ip: "203.0.113.9",
+      ptr: "mail-1.mx.spammer.co.uk",
+      domain: "spammer.co.uk",
+      failed_mailbox: 42,
+      failed_smtp: 3,
+      suspended: 1,
+      last_suspended_at: "2026-11-19T10:00:00Z",
+      recently_blocked: true,
+      first_seen: "2026-11-19T08:00:00Z",
+      last_seen: "2026-11-19T11:00:00Z",
+      accounts: ["ana@lnhc.dz"],
+    },
+  ],
+};
+const spam = {
+  period: "24h",
+  since: "2026-11-19T00:00:00Z",
+  sources: [
+    {
+      domain: "spammer.co.uk",
+      count: 12,
+      ips: [{ ip: "203.0.113.9", ptr: "mail-1.mx.spammer.co.uk", count: 7 }],
+      sender_domains: ["deals.example"],
+    },
+  ],
+  sender_domains: [{ domain: "deals.example", count: 5 }],
+};
+
+describe("customizable dashboard", () => {
+  it("shows the default widgets, with blocked IPs and spam origin for admins", async () => {
+    open(user("super_admin"), {
+      "GET /api/me/dashboard": { widgets: null },
+      "GET /api/mail/security": security,
+      "GET /api/mail/spam-sources": spam,
+    });
+    const blocked = await screen.findByRole("region", {
+      name: "Blocked IPs and failed logins",
+    });
+    expect(await within(blocked).findByText("203.0.113.9")).toBeInTheDocument();
+    expect(within(blocked).getByText("blocked")).toBeInTheDocument();
+    const origin = screen.getByRole("region", { name: "Spam origin" });
+    expect(
+      await within(origin).findByText("spammer.co.uk"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Key figures" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the security widgets from viewers", async () => {
+    open(user("viewer"), { "GET /api/me/dashboard": { widgets: null } });
+    expect(
+      await screen.findByRole("region", { name: "Key figures" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Spam origin" })).toBeNull();
+  });
+
+  it("adds, edits, moves, removes widgets and saves the layout", async () => {
+    let saved: unknown;
+    const calls = open(user("super_admin"), {
+      "GET /api/me/dashboard": {
+        widgets: [
+          {
+            id: "kpis",
+            type: "kpis",
+            size: "full",
+            options: { items: ["accounts", "failed"] },
+          },
+          { id: "jobs", type: "jobs", size: "full", options: { count: 5 } },
+        ],
+      },
+      "PUT /api/me/dashboard": (c: { body: unknown }) => {
+        saved = c.body;
+        return { body: c.body };
+      },
+    });
+    const figures = await screen.findByRole("region", { name: "Key figures" });
+    expect(await within(figures).findByText("Accounts")).toBeInTheDocument();
+    expect(within(figures).queryByText("Running jobs")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    // Show one more figure, rename and narrow the jobs widget, move it up.
+    fireEvent.click(within(figures).getByLabelText("Running jobs"));
+    const jobs = screen.getByRole("region", { name: "Latest jobs" });
+    fireEvent.change(within(jobs).getByLabelText("Title"), {
+      target: { value: "Échecs" },
+    });
+    const failures = screen.getByRole("region", { name: "Échecs" });
+    fireEvent.change(within(failures).getByLabelText("Filter"), {
+      target: { value: "failed" },
+    });
+    fireEvent.click(
+      within(failures).getByRole("button", { name: "Half width" }),
+    );
+    fireEvent.click(
+      within(failures).getByRole("button", { name: "Move Échecs up" }),
+    );
+    // Add a scheduled-backups widget, then remove it again.
+    fireEvent.change(screen.getByLabelText("Add a widget"), {
+      target: { value: "policies" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Remove Scheduled backups" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved).toBeDefined());
+    expect(saved).toEqual({
+      widgets: [
+        {
+          id: "jobs",
+          type: "jobs",
+          size: "half",
+          title: "Échecs",
+          options: { count: 5, status: "failed" },
+        },
+        {
+          id: "kpis",
+          type: "kpis",
+          size: "full",
+          options: { items: ["accounts", "running", "failed"] },
+        },
+      ],
+    });
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("status=failed"))).toBe(true),
+    );
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("resets to the default layout", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    let saved: unknown = "untouched";
+    open(user("viewer"), {
+      "GET /api/me/dashboard": {
+        widgets: [{ id: "jobs", type: "jobs", size: "full", options: {} }],
+      },
+      "PUT /api/me/dashboard": (c: { body: unknown }) => {
+        saved = c.body;
+        return { body: c.body };
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Customize" }));
+    fireEvent.click(screen.getByRole("button", { name: "Default layout" }));
+    await waitFor(() => expect(saved).toEqual({ widgets: null }));
+    expect(
+      await screen.findByRole("region", { name: "Key figures" }),
     ).toBeInTheDocument();
   });
 });

@@ -13,6 +13,10 @@ import {
   useLoad,
 } from "../components/common";
 import { NoticeBar, type Notice } from "../components/notices";
+import {
+  BlockedIpsPanel,
+  SpamSourcesPanel,
+} from "../components/SecurityPanels";
 import { formatDate, formatRelative } from "../utils/format";
 
 const PERIODS: MailPeriod[] = ["1h", "24h", "7d", "30d"];
@@ -507,6 +511,16 @@ export function MailTrafficPage() {
           );
         }}
       </LoadView>
+      <section className="card stack" aria-labelledby="security-title">
+        <h2 id="security-title">{t("loginSecurity.title")}</h2>
+        <p className="muted small">{t("loginSecurity.intro")}</p>
+        <BlockedIpsPanel period={period} />
+      </section>
+      <section className="card stack" aria-labelledby="spam-sources-title">
+        <h2 id="spam-sources-title">{t("spamSources.title")}</h2>
+        <p className="muted small">{t("spamSources.intro")}</p>
+        <SpamSourcesPanel period={period} />
+      </section>
     </>
   );
 }

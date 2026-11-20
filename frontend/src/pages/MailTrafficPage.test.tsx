@@ -232,3 +232,109 @@ describe("mail traffic page", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("security and spam origin", () => {
+  it("lists blocked IPs and spam networks for the chosen period", async () => {
+    const calls = open(user("super_admin"), {
+      "GET /api/mail/security": {
+        period: "24h",
+        since: "2026-11-19T00:00:00Z",
+        totals: { ips: 2, failed: 47, blocked: 1 },
+        reported: true,
+        ips: [
+          {
+            ip: "203.0.113.9",
+            ptr: "mail-1.mx.spammer.co.uk",
+            domain: "spammer.co.uk",
+            failed_mailbox: 42,
+            failed_smtp: 3,
+            suspended: 2,
+            last_suspended_at: "2026-11-18T10:00:00Z",
+            recently_blocked: false,
+            first_seen: "2026-11-18T08:00:00Z",
+            last_seen: "2026-11-19T11:00:00Z",
+            accounts: ["ana@lnhc.dz", "contact@lnhc.dz"],
+          },
+          {
+            ip: "198.51.100.7",
+            ptr: null,
+            domain: null,
+            failed_mailbox: 0,
+            failed_smtp: 2,
+            suspended: 0,
+            last_suspended_at: null,
+            recently_blocked: false,
+            first_seen: "2026-11-19T08:00:00Z",
+            last_seen: "2026-11-19T09:00:00Z",
+            accounts: [],
+          },
+        ],
+      },
+      "GET /api/mail/spam-sources": {
+        period: "24h",
+        since: "2026-11-19T00:00:00Z",
+        sources: [
+          {
+            domain: null,
+            count: 4,
+            ips: [{ ip: "192.0.2.55", ptr: null, count: 4 }],
+            sender_domains: ["nowhere.example"],
+          },
+        ],
+        sender_domains: [{ domain: "nowhere.example", count: 4 }],
+      },
+    });
+    const blocked = await screen.findByRole("region", {
+      name: "Failed logins and blocked IPs",
+    });
+    expect(
+      await within(blocked).findByText("mail-1.mx.spammer.co.uk"),
+    ).toBeInTheDocument();
+    expect(within(blocked).getByText("blocked 2 times")).toBeInTheDocument();
+    expect(within(blocked).getByText("not blocked")).toBeInTheDocument();
+    expect(
+      within(blocked).getByText("42 webmail/IMAP · 3 SMTP"),
+    ).toBeInTheDocument();
+    expect(
+      within(blocked).getByText("ana@lnhc.dz, contact@lnhc.dz"),
+    ).toBeInTheDocument();
+    expect(
+      within(blocked).getByText(
+        /2 address\(es\), 47 failed login\(s\), 1 blocked/,
+      ),
+    ).toBeInTheDocument();
+    const origin = screen.getByRole("region", { name: "Spam origin" });
+    expect(
+      await within(origin).findByText("No reverse name"),
+    ).toBeInTheDocument();
+    expect(within(origin).getAllByText("nowhere.example")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "7 days" }));
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.url.startsWith("/api/mail/security") &&
+            c.url.includes("period=7d"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("explains when the agent sends nothing yet", async () => {
+    open(user("super_admin"), {
+      "GET /api/mail/security": {
+        period: "24h",
+        since: "2026-11-19T00:00:00Z",
+        totals: { ips: 0, failed: 0, blocked: 0 },
+        reported: false,
+        ips: [],
+      },
+    });
+    expect(
+      await screen.findByText(/No data received: update the agent/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("No failed login in the period."),
+    ).toBeInTheDocument();
+  });
+});

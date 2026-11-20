@@ -6,6 +6,21 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Tableau de bord personnalisable** (bouton « Personnaliser ») : ajouter, retirer, déplacer
+  les widgets, choisir leur largeur (pleine ou demi), leur titre et les données affichées
+  (chiffres clés au choix, nombre de lignes, filtres d'état et de type des jobs, période…).
+  Widgets : chiffres clés, stockage, sauvegarde manuelle, derniers jobs, sauvegardes
+  programmées, IP bloquées, origine du spam, principaux expéditeurs. Disposition propre à
+  chaque utilisateur, retour à la disposition par défaut en un clic. Migration 0018.
+- **IP bloquées par Carbonio** après des connexions échouées : l'agent lit `mailbox.log`
+  (« Access to IP … suspended, for repeated failed login », « authentication failed for … »
+  avec l'IP d'origine `oip`) et les échecs SASL du journal MTA. Trafic mail → « Connexions
+  échouées et IP bloquées » : IP, nom DNS inverse, état (bloquée, nombre de blocages), échecs
+  webmail/IMAP et SMTP, comptes visés. Voir `docs/security-logins.md`.
+- **Origine du spam** : adresses IP des serveurs envoyeurs regroupées par le domaine de leur
+  nom DNS inverse, avec les domaines d'expéditeur (Trafic mail et widget).
+
+### Added
 - Sauvegardes programmées : une même politique peut combiner une sauvegarde incrémentale (par
   ex. chaque nuit) et une **complète** (chaque semaine, chaque mois ou cron) ; quand les deux
   tombent au même moment, seule la complète est lancée. Migration 0017.
