@@ -7,9 +7,10 @@ which check the caller's scope as usual, so sharing a view never shares data.
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -151,3 +152,72 @@ async def delete_view(
         details={"page": view.page, "name": view.name},
     )
     await db.delete(view)
+
+
+# ------------------------------------------------------------------ personal dashboard
+
+me_router = APIRouter(prefix="/api/me", tags=["views"])
+
+WidgetType = Literal[
+    "kpis",
+    "storage",
+    "manual_backup",
+    "jobs",
+    "policies",
+    "mail_top",
+    "spam_sources",
+    "blocked_ips",
+]
+MAX_WIDGETS = 24
+MAX_OPTIONS = 2000  # bytes of JSON per widget
+
+
+class WidgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z0-9-]{1,40}$")
+    type: WidgetType
+    size: Literal["full", "half"] = "full"
+    title: str | None = Field(default=None, max_length=80)
+    options: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("options")
+    @classmethod
+    def _small(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(value)) > MAX_OPTIONS:
+            raise ValueError("widget options are too large")
+        return value
+
+
+class DashboardLayout(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # None: the default dashboard.
+    widgets: list[WidgetIn] | None = Field(default=None, max_length=MAX_WIDGETS)
+
+    @field_validator("widgets")
+    @classmethod
+    def _unique(cls, value: list[WidgetIn] | None) -> list[WidgetIn] | None:
+        if value is not None and len({w.id for w in value}) != len(value):
+            raise ValueError("widget ids must be unique")
+        return value
+
+
+@me_router.get("/dashboard", response_model=DashboardLayout)
+async def get_dashboard(principal: CurrentPrincipal) -> DashboardLayout:
+    """The caller's dashboard layout (``widgets: null`` = the default one)."""
+    stored = principal.user.dashboard
+    return DashboardLayout(widgets=[WidgetIn(**w) for w in stored] if stored else None)
+
+
+@me_router.put("/dashboard", response_model=DashboardLayout)
+async def put_dashboard(
+    body: DashboardLayout, principal: CurrentPrincipal, db: DbSession
+) -> DashboardLayout:
+    """Save (or, with ``widgets: null``, reset) the caller's dashboard layout."""
+    user = await db.get(User, principal.user.id)
+    if user is None:  # pragma: no cover - the session's user
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such user")
+    user.dashboard = [w.model_dump() for w in body.widgets] if body.widgets is not None else None
+    await db.flush()
+    return body

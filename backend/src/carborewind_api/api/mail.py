@@ -12,17 +12,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import desc, func, select
 
-from .. import audit, mail_traffic
+from .. import audit, mail_traffic, rdns
 from ..authz import Permission
 from ..db.models import (
     Account,
     AccountAction,
     Agent,
     AgentStatus,
+    LoginFailure,
     MailAlert,
     MailStat,
     Outcome,
@@ -243,6 +244,182 @@ async def overview(
         ],
         limits=LimitsIn(**mail_traffic.asdict(await mail_traffic.load_limits(db))),
         agents=agents,
+    )
+
+
+RECENT_BLOCK = timedelta(hours=1)
+
+
+class BlockedIp(BaseModel):
+    ip: str
+    ptr: str | None
+    domain: str | None
+    failed_mailbox: int
+    failed_smtp: int
+    suspended: int
+    last_suspended_at: datetime | None
+    recently_blocked: bool
+    first_seen: datetime
+    last_seen: datetime
+    accounts: list[str]
+
+
+class LoginSecurity(BaseModel):
+    period: str
+    since: datetime
+    totals: dict[str, int]
+    ips: list[BlockedIp]
+    reported: bool
+
+
+@router.get("/security", response_model=LoginSecurity)
+async def login_security(
+    principal: Admin,
+    db: DbSession,
+    period: Literal["1h", "24h", "7d", "30d"] = "24h",
+    only_blocked: bool = False,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> LoginSecurity:
+    """Client IPs with failed logins (webmail, IMAP, POP3, SMTP) and those Carbonio blocked
+    after repeated failures, most blocked first."""
+    now = datetime.now(UTC)
+    since = mail_traffic.hour_start(now) - timedelta(hours=PERIODS[period])
+    failed = func.sum(LoginFailure.failed_mailbox) + func.sum(LoginFailure.failed_smtp)
+    query = (
+        select(
+            LoginFailure.ip,
+            func.sum(LoginFailure.failed_mailbox).label("mailbox"),
+            func.sum(LoginFailure.failed_smtp).label("smtp"),
+            func.sum(LoginFailure.suspended).label("suspended"),
+            func.max(LoginFailure.last_suspended_at).label("last_suspended"),
+            func.min(LoginFailure.hour).label("first"),
+            func.max(LoginFailure.hour).label("last"),
+            func.jsonb_agg(LoginFailure.accounts).label("accounts"),
+        )
+        .where(LoginFailure.hour >= since)
+        .group_by(LoginFailure.ip)
+        .order_by(desc("suspended"), desc(failed), LoginFailure.ip)
+        .limit(limit)
+    )
+    if only_blocked:
+        query = query.having(func.sum(LoginFailure.suspended) > 0)
+    rows = (await db.execute(query)).all()
+    totals = (
+        await db.execute(
+            select(
+                func.count(func.distinct(LoginFailure.ip)),
+                func.coalesce(func.sum(LoginFailure.failed_mailbox + LoginFailure.failed_smtp), 0),
+                func.count(func.distinct(LoginFailure.ip)).filter(LoginFailure.suspended > 0),
+            ).where(LoginFailure.hour >= since)
+        )
+    ).one()
+    names = await rdns.resolve(r.ip for r in rows)
+    reported = await db.scalar(select(func.count()).select_from(LoginFailure)) or 0
+
+    def accounts(nested: Any) -> list[str]:
+        seen: list[str] = []
+        for group in nested or []:
+            for a in group or []:
+                if a not in seen:
+                    seen.append(a)
+        return seen[:20]
+
+    return LoginSecurity(
+        period=period,
+        since=since,
+        totals={"ips": int(totals[0]), "failed": int(totals[1]), "blocked": int(totals[2])},
+        ips=[
+            BlockedIp(
+                ip=r.ip,
+                ptr=names.get(r.ip),
+                domain=rdns.organisation(names.get(r.ip)),
+                failed_mailbox=int(r.mailbox or 0),
+                failed_smtp=int(r.smtp or 0),
+                suspended=int(r.suspended or 0),
+                last_suspended_at=r.last_suspended,
+                recently_blocked=bool(r.last_suspended and r.last_suspended >= now - RECENT_BLOCK),
+                first_seen=r.first,
+                last_seen=r.last + timedelta(hours=1),
+                accounts=accounts(r.accounts),
+            )
+            for r in rows
+        ],
+        reported=reported > 0,
+    )
+
+
+class SpamSourceIp(BaseModel):
+    ip: str
+    ptr: str | None
+    count: int
+
+
+class SpamSource(BaseModel):
+    domain: str | None
+    count: int
+    ips: list[SpamSourceIp]
+    sender_domains: list[str]
+
+
+class SpamSources(BaseModel):
+    period: str
+    since: datetime
+    sources: list[SpamSource]
+    sender_domains: list[dict[str, Any]]
+
+
+MAX_SPAM_IPS = 300
+
+
+@router.get("/spam-sources", response_model=SpamSources)
+async def spam_sources(
+    principal: Admin, db: DbSession, period: Literal["1h", "24h", "7d", "30d"] = "24h"
+) -> SpamSources:
+    """Where the spam received comes from: the client IPs grouped by the domain of their
+    reverse DNS name, and the domains of the sender addresses. A spam is counted for each
+    IP its sender was seen with during the hour."""
+    now = datetime.now(UTC)
+    since = mail_traffic.hour_start(now) - timedelta(hours=PERIODS[period])
+    rows = await db.execute(
+        select(SpamSender.sender, SpamSender.count, SpamSender.ips)
+        .where(SpamSender.hour >= since)
+        .limit(50_000)
+    )
+    per_ip: dict[str, int] = {}
+    ip_senders: dict[str, dict[str, int]] = {}
+    sender_domains: dict[str, int] = {}
+    for sender, count, ips in rows:
+        sender_domain = sender.rpartition("@")[2].lower() if "@" in sender else "<>"
+        sender_domains[sender_domain] = sender_domains.get(sender_domain, 0) + count
+        for ip in ips or []:
+            per_ip[ip] = per_ip.get(ip, 0) + count
+            domains = ip_senders.setdefault(ip, {})
+            domains[sender_domain] = domains.get(sender_domain, 0) + count
+    top = sorted(per_ip, key=lambda ip: (-per_ip[ip], ip))[:MAX_SPAM_IPS]
+    names = await rdns.resolve(top)
+    groups: dict[str | None, SpamSource] = {}
+    for ip in top:
+        ptr = names.get(ip)
+        domain = rdns.organisation(ptr)
+        group = groups.setdefault(
+            domain, SpamSource(domain=domain, count=0, ips=[], sender_domains=[])
+        )
+        group.count += per_ip[ip]
+        group.ips.append(SpamSourceIp(ip=ip, ptr=ptr, count=per_ip[ip]))
+        for d in sorted(ip_senders[ip], key=lambda d: -ip_senders[ip][d]):
+            if d not in group.sender_domains and len(group.sender_domains) < 10:
+                group.sender_domains.append(d)
+    sources = sorted(groups.values(), key=lambda g: (-g.count, g.domain or "~"))[:100]
+    for g in sources:
+        g.ips = g.ips[:20]
+    return SpamSources(
+        period=period,
+        since=since,
+        sources=sources,
+        sender_domains=[
+            {"domain": d, "count": n}
+            for d, n in sorted(sender_domains.items(), key=lambda kv: (-kv[1], kv[0]))[:50]
+        ],
     )
 
 

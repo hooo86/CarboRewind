@@ -726,4 +726,23 @@ CREATE INDEX ix_saved_views_page ON saved_views (page);
 
 UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
 
+-- Running upgrade 0017 -> 0018
+
+ALTER TABLE users ADD COLUMN dashboard JSONB;
+
+CREATE TABLE login_failures (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    ip VARCHAR(64) NOT NULL,
+    failed_mailbox INTEGER DEFAULT 0 NOT NULL,
+    failed_smtp INTEGER DEFAULT 0 NOT NULL,
+    suspended INTEGER DEFAULT 0 NOT NULL,
+    last_suspended_at TIMESTAMP WITH TIME ZONE,
+    accounts JSONB DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT pk_login_failures PRIMARY KEY (hour, ip)
+);
+
+CREATE INDEX ix_login_failures_hour ON login_failures (hour);
+
+UPDATE alembic_version SET version_num='0018' WHERE alembic_version.version_num = '0017';
+
 COMMIT;

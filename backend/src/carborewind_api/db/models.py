@@ -214,6 +214,8 @@ class User(Base):
     # SHA-256 of the unused one-time recovery codes.
     recovery_codes: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Personal dashboard layout (widgets, their order, size and options); NULL = default.
+    dashboard: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
 
     roles: Mapped[list[RoleAssignment]] = relationship(
@@ -853,6 +855,23 @@ class SpamSender(Base):
     ips: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
 
     __table_args__ = (Index("ix_spam_senders_hour", "hour"),)
+
+
+class LoginFailure(Base):
+    """Failed logins and suspensions by Carbonio's invalid login filter, per UTC hour and
+    client IP (from mailbox.log and the SASL lines of the MTA log)."""
+
+    __tablename__ = "login_failures"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    ip: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failed_mailbox: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    failed_smtp: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    suspended: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accounts: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    __table_args__ = (Index("ix_login_failures_hour", "hour"),)
 
 
 class MailAlert(Base):

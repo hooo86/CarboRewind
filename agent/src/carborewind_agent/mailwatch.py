@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .api_client import AgentApi, ApiError
+from .authlog import AuthAggregator
 from .carbonio import CarbonioClient, SoapFaultError
 from .maillog import Aggregator, LogReader, first_existing, load_state, save_state
 
@@ -33,6 +34,7 @@ class MailMonitor:
         interval: float = 60.0,
         refresh_every: int = 10,
         protected: set[str] | None = None,
+        mailbox_log: Path | None = None,
     ) -> None:
         self._api = api
         self._carbonio = carbonio
@@ -47,7 +49,32 @@ class MailMonitor:
         self.agg = Aggregator()
         path = first_existing(log_paths) or log_paths[0]
         self.reader = LogReader(path)
-        load_state(state_file, self.reader, self.agg)
+        # Failed logins and IPs blocked by Carbonio (mailbox log + SASL lines of the MTA log).
+        self.auth = AuthAggregator()
+        self.mailbox_reader = LogReader(mailbox_log) if mailbox_log else None
+        self._mailbox_denied = False
+        extra = load_state(state_file, self.reader, self.agg)
+        if self.mailbox_reader is not None:
+            self.mailbox_reader.restore(extra.get("mailbox_reader") or {})
+        self.auth.restore(extra.get("auth") or {})
+        self.auth.dirty = set(extra.get("auth_dirty") or [])
+
+    def _read_mailbox(self) -> list[str]:
+        if self.mailbox_reader is None:
+            return []
+        try:
+            lines = self.mailbox_reader.read_new()
+        except PermissionError:
+            if not self._mailbox_denied:
+                log.warning(
+                    "cannot read %s (add the carborewind user to the zextras group): "
+                    "failed logins and blocked IPs are not reported",
+                    self.mailbox_reader.path,
+                )
+            self._mailbox_denied = True
+            return []
+        self._mailbox_denied = False
+        return lines
 
     def refresh_addresses(self) -> None:
         local: dict[str, str] = {}
@@ -72,11 +99,27 @@ class MailMonitor:
         lines = self.reader.read_new() if path is not None else []
         for line in lines:
             self.agg.feed(line, now)
+            self.auth.feed_mta(line, now)
+        for line in self._read_mailbox():
+            self.auth.feed_mailbox(line)
         self.agg.prune(now)
-        answer = self._api.mail_stats(self.agg.payload(), str(path) if path else None)
+        self.auth.prune(now)
+        answer = self._api.mail_stats(
+            self.agg.payload(), str(path) if path else None, self.auth.payload()
+        )
         self.agg.dirty.clear()
+        self.auth.dirty.clear()
         self._state_file.parent.mkdir(parents=True, exist_ok=True)
-        save_state(self._state_file, self.reader, self.agg)
+        save_state(
+            self._state_file,
+            self.reader,
+            self.agg,
+            {
+                "mailbox_reader": self.mailbox_reader.state() if self.mailbox_reader else {},
+                "auth": self.auth.to_json(),
+                "auth_dirty": sorted(self.auth.dirty),
+            },
+        )
         for action in answer.get("actions", []):
             self.apply(action)
         return {"lines": len(lines), "actions": len(answer.get("actions", []))}

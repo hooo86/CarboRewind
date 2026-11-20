@@ -453,11 +453,26 @@ class MailHourIn(BaseModel):
         return {k.lower()[:320]: v for k, v in value.items()}
 
 
+class LoginCountsIn(BaseModel):
+    failed_mailbox: int = Field(default=0, ge=0)
+    failed_smtp: int = Field(default=0, ge=0)
+    suspended: int = Field(default=0, ge=0)
+    last_suspended: datetime | None = None
+    accounts: list[str] = Field(default_factory=list, max_length=10)
+
+
+class LoginHourIn(BaseModel):
+    hour: datetime
+    ips: dict[str, LoginCountsIn] = Field(default_factory=dict, max_length=5000)
+
+
 class MailStatsIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hours: list[MailHourIn] = Field(default_factory=list, max_length=72)
     log: str | None = Field(default=None, max_length=4096)
+    # Failed logins and IPs blocked by Carbonio (agents from this version on).
+    security: list[LoginHourIn] = Field(default_factory=list, max_length=72)
 
 
 class ServiceIn(BaseModel):
@@ -493,6 +508,8 @@ async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> d
     now = datetime.now(UTC)
     hours = [h.model_dump(mode="json") for h in body.hours]
     senders = await mail_traffic.record(db, hours)
+    if body.security:
+        await mail_traffic.record_logins(db, [h.model_dump(mode="json") for h in body.security])
     await mail_traffic.evaluate(db, senders, now)
     agent.storage = {
         **(agent.storage or {}),

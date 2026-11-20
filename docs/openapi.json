@@ -2098,6 +2098,96 @@
         "title": "BlacklistSettingsIn",
         "type": "object"
       },
+      "BlockedIp": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "failed_mailbox": {
+            "title": "Failed Mailbox",
+            "type": "integer"
+          },
+          "failed_smtp": {
+            "title": "Failed Smtp",
+            "type": "integer"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "title": "First Seen",
+            "type": "string"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "title": "Last Seen",
+            "type": "string"
+          },
+          "last_suspended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Suspended At"
+          },
+          "ptr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptr"
+          },
+          "recently_blocked": {
+            "title": "Recently Blocked",
+            "type": "boolean"
+          },
+          "suspended": {
+            "title": "Suspended",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ip",
+          "ptr",
+          "domain",
+          "failed_mailbox",
+          "failed_smtp",
+          "suspended",
+          "last_suspended_at",
+          "recently_blocked",
+          "first_seen",
+          "last_seen",
+          "accounts"
+        ],
+        "title": "BlockedIp",
+        "type": "object"
+      },
       "BulkBackupOut": {
         "properties": {
           "queued": {
@@ -2450,6 +2540,28 @@
           "last_agent_heartbeat"
         ],
         "title": "Dashboard",
+        "type": "object"
+      },
+      "DashboardLayout": {
+        "additionalProperties": false,
+        "properties": {
+          "widgets": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WidgetIn"
+                },
+                "maxItems": 24,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widgets"
+          }
+        },
+        "title": "DashboardLayout",
         "type": "object"
       },
       "DomainOut": {
@@ -3413,6 +3525,72 @@
         "title": "LockIn",
         "type": "object"
       },
+      "LoginCountsIn": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Accounts",
+            "type": "array"
+          },
+          "failed_mailbox": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed Mailbox",
+            "type": "integer"
+          },
+          "failed_smtp": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed Smtp",
+            "type": "integer"
+          },
+          "last_suspended": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Suspended"
+          },
+          "suspended": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Suspended",
+            "type": "integer"
+          }
+        },
+        "title": "LoginCountsIn",
+        "type": "object"
+      },
+      "LoginHourIn": {
+        "properties": {
+          "hour": {
+            "format": "date-time",
+            "title": "Hour",
+            "type": "string"
+          },
+          "ips": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LoginCountsIn"
+            },
+            "maxProperties": 5000,
+            "title": "Ips",
+            "type": "object"
+          }
+        },
+        "required": [
+          "hour"
+        ],
+        "title": "LoginHourIn",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3446,6 +3624,46 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoginSecurity": {
+        "properties": {
+          "ips": {
+            "items": {
+              "$ref": "#/components/schemas/BlockedIp"
+            },
+            "title": "Ips",
+            "type": "array"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "reported": {
+            "title": "Reported",
+            "type": "boolean"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Totals",
+            "type": "object"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "totals",
+          "ips",
+          "reported"
+        ],
+        "title": "LoginSecurity",
         "type": "object"
       },
       "MailHourIn": {
@@ -3520,6 +3738,14 @@
               }
             ],
             "title": "Log"
+          },
+          "security": {
+            "items": {
+              "$ref": "#/components/schemas/LoginHourIn"
+            },
+            "maxItems": 72,
+            "title": "Security",
+            "type": "array"
           }
         },
         "title": "MailStatsIn",
@@ -6694,6 +6920,113 @@
         "title": "SourceOut",
         "type": "object"
       },
+      "SpamSource": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "ips": {
+            "items": {
+              "$ref": "#/components/schemas/SpamSourceIp"
+            },
+            "title": "Ips",
+            "type": "array"
+          },
+          "sender_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sender Domains",
+            "type": "array"
+          }
+        },
+        "required": [
+          "domain",
+          "count",
+          "ips",
+          "sender_domains"
+        ],
+        "title": "SpamSource",
+        "type": "object"
+      },
+      "SpamSourceIp": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "ip": {
+            "title": "Ip",
+            "type": "string"
+          },
+          "ptr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ptr"
+          }
+        },
+        "required": [
+          "ip",
+          "ptr",
+          "count"
+        ],
+        "title": "SpamSourceIp",
+        "type": "object"
+      },
+      "SpamSources": {
+        "properties": {
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "sender_domains": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Sender Domains",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SpamSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period",
+          "since",
+          "sources",
+          "sender_domains"
+        ],
+        "title": "SpamSources",
+        "type": "object"
+      },
       "StartRequest": {
         "additionalProperties": false,
         "properties": {
@@ -7642,6 +7975,62 @@
           "created_at"
         ],
         "title": "ViewOut",
+        "type": "object"
+      },
+      "WidgetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-z0-9-]{1,40}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": true,
+            "title": "Options",
+            "type": "object"
+          },
+          "size": {
+            "default": "full",
+            "enum": [
+              "full",
+              "half"
+            ],
+            "title": "Size",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "enum": [
+              "kpis",
+              "storage",
+              "manual_backup",
+              "jobs",
+              "policies",
+              "mail_top",
+              "spam_sources",
+              "blocked_ips"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "WidgetIn",
         "type": "object"
       },
       "carborewind_api__api__archives__PolicyOut": {
@@ -12333,6 +12722,190 @@
         "summary": "Overview",
         "tags": [
           "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/security": {
+      "get": {
+        "description": "Client IPs with failed logins (webmail, IMAP, POP3, SMTP) and those Carbonio blocked\nafter repeated failures, most blocked first.",
+        "operationId": "login_security_api_mail_security_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_blocked",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Blocked",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginSecurity"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login Security",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/spam-sources": {
+      "get": {
+        "description": "Where the spam received comes from: the client IPs grouped by the domain of their\nreverse DNS name, and the domains of the sender addresses. A spam is counted for each\nIP its sender was seen with during the hour.",
+        "operationId": "spam_sources_api_mail_spam_sources_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "24h",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpamSources"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Spam Sources",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/me/dashboard": {
+      "get": {
+        "description": "The caller's dashboard layout (``widgets: null`` = the default one).",
+        "operationId": "get_dashboard_api_me_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Dashboard",
+        "tags": [
+          "views"
+        ]
+      },
+      "put": {
+        "description": "Save (or, with ``widgets: null``, reset) the caller's dashboard layout.",
+        "operationId": "put_dashboard_api_me_dashboard_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardLayout"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayout"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Dashboard",
+        "tags": [
+          "views"
         ]
       }
     },

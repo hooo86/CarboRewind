@@ -154,6 +154,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         settings.mail_logs,
         settings.mail_state_file,
         protected={settings.carbonio_admin_name},
+        mailbox_log=Path("/opt/zextras/log/mailbox.log"),
     )
     monitor.enabled = settings.mail_monitor
     threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()

@@ -169,6 +169,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(archives_api.router)
     app.include_router(logs_api.router)
     app.include_router(views_api.router)
+    app.include_router(views_api.me_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics(request: Request) -> Response:

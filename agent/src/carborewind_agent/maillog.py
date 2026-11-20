@@ -240,11 +240,14 @@ def first_existing(paths: list[Path]) -> Path | None:
     return next((p for p in paths if p.exists()), None)
 
 
-def save_state(path: Path, reader: LogReader, agg: Aggregator) -> None:
+def save_state(
+    path: Path, reader: LogReader, agg: Aggregator, extra: dict[str, Any] | None = None
+) -> None:
     data = {
         "reader": reader.state(),
         "buckets": {h: b.to_json() for h, b in agg.buckets.items()},
         "dirty": sorted(agg.dirty),
+        "extra": extra or {},
     }
     tmp = path.with_name(f".{path.name}.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -253,11 +256,14 @@ def save_state(path: Path, reader: LogReader, agg: Aggregator) -> None:
     os.replace(tmp, path)
 
 
-def load_state(path: Path, reader: LogReader, agg: Aggregator) -> None:
+def load_state(path: Path, reader: LogReader, agg: Aggregator) -> dict[str, Any]:
+    """Restores the reader and counters; returns the ``extra`` state saved with them."""
     try:
         data = json.loads(path.read_text())
     except (OSError, ValueError):
-        return
+        return {}
     reader.restore(data.get("reader") or {})
     agg.buckets = {h: Bucket.from_json(b) for h, b in (data.get("buckets") or {}).items()}
     agg.dirty = set(data.get("dirty") or [])
+    extra = data.get("extra")
+    return extra if isinstance(extra, dict) else {}

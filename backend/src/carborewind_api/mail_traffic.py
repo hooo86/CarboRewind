@@ -35,6 +35,7 @@ from .db.models import (
     AccountStatus,
     ActorType,
     AppSetting,
+    LoginFailure,
     MailAlert,
     MailStat,
     Outcome,
@@ -344,6 +345,40 @@ async def pending_actions(db: AsyncSession) -> list[dict[str, Any]]:
     ]
 
 
+async def record_logins(db: AsyncSession, hours: list[dict[str, Any]]) -> None:
+    """Upsert the failed logins / suspensions per hour and IP (absolute counters)."""
+    for h in hours:
+        hour = hour_start(datetime.fromisoformat(h["hour"]))
+        rows = []
+        for ip, c in (h.get("ips") or {}).items():
+            last = c.get("last_suspended")
+            rows.append(
+                {
+                    "hour": hour,
+                    "ip": str(ip)[:64],
+                    "failed_mailbox": int(c.get("failed_mailbox", 0)),
+                    "failed_smtp": int(c.get("failed_smtp", 0)),
+                    "suspended": int(c.get("suspended", 0)),
+                    "last_suspended_at": datetime.fromisoformat(last) if last else None,
+                    "accounts": [str(a)[:320] for a in c.get("accounts", [])][:10],
+                }
+            )
+        for start in range(0, len(rows), 2000):
+            stmt = insert(LoginFailure).values(rows[start : start + 2000])
+            await db.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=["hour", "ip"],
+                    set_={
+                        "failed_mailbox": stmt.excluded.failed_mailbox,
+                        "failed_smtp": stmt.excluded.failed_smtp,
+                        "suspended": stmt.excluded.suspended,
+                        "last_suspended_at": stmt.excluded.last_suspended_at,
+                        "accounts": stmt.excluded.accounts,
+                    },
+                )
+            )
+
+
 async def prune(db: AsyncSession, now: datetime) -> None:
     """Counters older than KEEP_DAYS are dropped (run by the scheduler)."""
     from sqlalchemy import delete
@@ -351,3 +386,4 @@ async def prune(db: AsyncSession, now: datetime) -> None:
     horizon = now - timedelta(days=KEEP_DAYS)
     await db.execute(delete(MailStat).where(MailStat.hour < horizon))
     await db.execute(delete(SpamSender).where(SpamSender.hour < horizon))
+    await db.execute(delete(LoginFailure).where(LoginFailure.hour < horizon))

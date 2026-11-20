@@ -167,9 +167,18 @@ class AgentApi:
     def storage_status(self, storage: dict[str, Any]) -> None:
         self._post("/storage-status", storage)
 
-    def mail_stats(self, hours: list[dict[str, Any]], log_path: str | None) -> dict[str, Any]:
-        """Hourly mail counters (absolute values); the answer lists account actions."""
-        result: dict[str, Any] = self._post("/mail-stats", {"hours": hours, "log": log_path}).json()
+    def mail_stats(
+        self,
+        hours: list[dict[str, Any]],
+        log_path: str | None,
+        security: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Hourly mail counters (absolute values), and failed logins / blocked IPs per hour;
+        the answer lists account actions."""
+        body: dict[str, Any] = {"hours": hours, "log": log_path}
+        if security:
+            body["security"] = security
+        result: dict[str, Any] = self._post("/mail-stats", body).json()
         return result
 
     def mail_action_done(self, action_id: str, error: str | None) -> None:
