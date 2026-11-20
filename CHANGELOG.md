@@ -6,6 +6,12 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Sauvegardes programmées : planification **par jour de la semaine** (mode par défaut) —
+  pour chaque jour, complète, incrémentale ou aucune, à une heure choisie (par ex. complète
+  le vendredi, incrémentale les autres jours). Affichée « complète : vendredi · incrémentale :
+  lundi, mardi… — 02:00 ».
+
+### Added
 - Alerte **« Adresse IP bloquée par Carbonio »** (e-mail et Telegram, activée par défaut) à
   chaque nouveau blocage après des connexions échouées, avec les comptes visés ; bandeau sur le
   tableau de bord tant qu'une adresse est bloquée.

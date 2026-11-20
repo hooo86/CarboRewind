@@ -18,7 +18,12 @@ import {
   page,
   user,
 } from "../test/fakeApi";
-import { buildSchedule, readSchedule } from "./PoliciesPage";
+import {
+  buildPlan,
+  buildSchedule,
+  readPlan,
+  readSchedule,
+} from "./PoliciesPage";
 
 const OTHER_DOMAIN = "d0000000-0000-0000-0000-000000000002";
 const domains = page([
@@ -139,6 +144,9 @@ describe("policies page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Nuit" },
+    });
+    fireEvent.change(screen.getByLabelText("Frequency"), {
+      target: { value: "daily" },
     });
     fireEvent.change(screen.getByLabelText("Time"), {
       target: { value: "02:15" },
@@ -280,11 +288,89 @@ describe("policies page", () => {
     );
   });
 
+  it("plans full and incremental backups day by day", async () => {
+    const { created } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Semaine" },
+    });
+    // Default plan: incremental every day, full on Friday, at 01:00.
+    expect(screen.getByLabelText("Frequency")).toHaveValue("plan");
+    expect(screen.queryByLabelText("Backup type")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Monday"), {
+      target: { value: "none" },
+    });
+    fireEvent.change(screen.getByLabelText("Sunday"), {
+      target: { value: "full" },
+    });
+    fireEvent.change(screen.getByLabelText("Time"), {
+      target: { value: "22:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(created()).toBeDefined());
+    expect(created()).toMatchObject({
+      schedule: "30 22 * * 2,3,4,6",
+      backup_type: "incremental",
+      full_schedule: "30 22 * * 0,5",
+    });
+  });
+
+  it("refuses a plan without any backup day", async () => {
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    for (const day of [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ])
+      fireEvent.change(screen.getByLabelText(day), {
+        target: { value: "none" },
+      });
+    expect(
+      screen.getByText("Choose at least one day with a backup."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("shows a planned policy and reopens it as a plan", async () => {
+    open(user("super_admin"), [
+      policy({ schedule: "0 2 * * 0,1,2,3,4,6", full_schedule: "0 2 * * 5" }),
+    ]);
+    expect(
+      await screen.findByText(
+        "full : Friday · incremental : Monday, Tuesday, Wednesday, Thursday, Saturday, Sunday — 02:00",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit policy / }));
+    expect(screen.getByLabelText("Frequency")).toHaveValue("plan");
+    expect(screen.getByLabelText("Friday")).toHaveValue("full");
+    expect(screen.getByLabelText("Monday")).toHaveValue("incremental");
+  });
+
+  it("reads and builds week plans", () => {
+    expect(readPlan("0 1 1-5 * *", "incremental", null)).toBeNull();
+    expect(readPlan("0 1 * * 1", "incremental", "0 2 * * 5")).toBeNull(); // other time
+    const plan = readPlan("0 1 * * *", "full", null);
+    expect(plan?.days[3]).toBe("full");
+    expect(plan && buildPlan(plan)).toEqual({
+      schedule: "0 1 * * *",
+      backup_type: "full",
+      full_schedule: "",
+    });
+  });
+
   it("adds a weekly full backup to a nightly incremental", async () => {
     const { created } = open();
     fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Mixte" },
+    });
+    fireEvent.change(screen.getByLabelText("Frequency"), {
+      target: { value: "daily" },
     });
     fireEvent.change(screen.getByLabelText("Full"), {
       target: { value: "weekly" },

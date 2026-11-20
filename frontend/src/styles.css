@@ -2186,3 +2186,35 @@ button.icon-btn[aria-pressed="true"] {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---- week plan of a backup policy */
+.week-plan {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.day-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-transform: capitalize;
+}
+.day-plan.full {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.day-plan.none {
+  opacity: 0.65;
+}
+.day-plan select {
+  text-transform: none;
+}
+@media (max-width: 900px) {
+  .week-plan {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

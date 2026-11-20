@@ -1338,6 +1338,7 @@ export const resources = {
         when: "Planification",
         frequency: "Fréquence",
         presets: {
+          plan: "Par jour de la semaine (complète / incrémentale)",
           daily: "Chaque jour",
           weekly: "Chaque semaine",
           custom: "Expression cron",
@@ -1382,6 +1383,10 @@ export const resources = {
         enableTitle: "Réactiver la politique {{name}}",
         confirmDelete:
           "Supprimer la politique « {{name}} » ? Les sauvegardes existantes sont conservées.",
+        planHint:
+          "Choisissez pour chaque jour une sauvegarde complète, incrémentale (seulement ce qui a changé) ou aucune. Une complète par semaine au moins est conseillée.",
+        planEmpty: "Choisissez au moins un jour avec une sauvegarde.",
+        noBackup: "Aucune",
         full: "Sauvegarde complète en plus",
         fullHint:
           "Par exemple : incrémentale chaque nuit et complète le dimanche. Quand les deux tombent au même moment, seule la complète est lancée.",
@@ -2859,6 +2864,7 @@ export const resources = {
         when: "Schedule",
         frequency: "Frequency",
         presets: {
+          plan: "By day of the week (full / incremental)",
           daily: "Every day",
           weekly: "Every week",
           custom: "Cron expression",
@@ -2902,6 +2908,10 @@ export const resources = {
         disableTitle: "Pause policy {{name}}",
         enableTitle: "Resume policy {{name}}",
         confirmDelete: "Delete policy “{{name}}”? Existing backups are kept.",
+        planHint:
+          "Choose for each day a full backup, an incremental one (only what changed) or none. At least one full backup a week is advised.",
+        planEmpty: "Choose at least one day with a backup.",
+        noBackup: "None",
         full: "Additional full backup",
         fullHint:
           "For instance: incremental every night and full on Sundays. When both fall at once, only the full backup runs.",

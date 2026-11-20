@@ -25,7 +25,7 @@ import {
 import { IconButton } from "../components/IconButton";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
 
-type Preset = "daily" | "weekly" | "custom";
+type Preset = "plan" | "daily" | "weekly" | "custom";
 const DAYS = [1, 2, 3, 4, 5, 6, 0];
 
 function browserZone(): string {
@@ -107,10 +107,110 @@ function fullLabel(
   return t("policies.fullCron", { cron });
 }
 
+type DayPlan = "full" | "incremental" | "none";
+export type WeekPlan = { time: string; days: Record<number, DayPlan> };
+const CRON_DAYS = /^(\d{1,2}) (\d{1,2}) \* \* (\*|[0-7](?:,[0-7])*)$/;
+
+function cronDays(field: string): number[] {
+  return field === "*"
+    ? [0, 1, 2, 3, 4, 5, 6]
+    : [...new Set(field.split(",").map((d) => Number(d) % 7))];
+}
+
+/** A policy as a week plan (each day: full, incremental or nothing, at one time), or
+ * null when its schedules do not fit that shape (other time, day of month, cron…). */
+export function readPlan(
+  schedule: string,
+  backupType: BackupType,
+  fullSchedule: string | null | undefined,
+): WeekPlan | null {
+  const main = CRON_DAYS.exec(schedule.trim());
+  if (!main) return null;
+  const days: Record<number, DayPlan> = {};
+  for (const d of DAYS) days[d] = "none";
+  for (const d of cronDays(main[3] ?? "*")) days[d] = backupType;
+  if (fullSchedule) {
+    const full = CRON_DAYS.exec(fullSchedule.trim());
+    if (!full || full[1] !== main[1] || full[2] !== main[2]) return null;
+    for (const d of cronDays(full[3] ?? "*")) days[d] = "full";
+  }
+  return {
+    time: `${main[2]?.padStart(2, "0")}:${main[1]?.padStart(2, "0")}`,
+    days,
+  };
+}
+
+/** Week plan -> schedule (incremental days), backup type and full schedule (full days). */
+export function buildPlan(
+  plan: WeekPlan,
+): { schedule: string; backup_type: BackupType; full_schedule: string } | null {
+  const [h = "1", m = "0"] = plan.time.split(":");
+  const pick = (kind: DayPlan) =>
+    [0, 1, 2, 3, 4, 5, 6].filter((d) => plan.days[d] === kind);
+  const cron = (days: number[]) =>
+    `${Number(m)} ${Number(h)} * * ${days.length === 7 ? "*" : days.join(",")}`;
+  const incremental = pick("incremental");
+  const full = pick("full");
+  if (incremental.length)
+    return {
+      schedule: cron(incremental),
+      backup_type: "incremental",
+      full_schedule: full.length ? cron(full) : "",
+    };
+  if (full.length)
+    return { schedule: cron(full), backup_type: "full", full_schedule: "" };
+  return null;
+}
+
+/** True when a plan shows the policy better than the daily / weekly presets. */
+function isPlan(p: {
+  schedule: string;
+  backup_type: BackupType;
+  full_schedule?: string | null;
+}): boolean {
+  const plan = readPlan(p.schedule, p.backup_type, p.full_schedule);
+  return (
+    plan !== null &&
+    (!!p.full_schedule || /,/.test(p.schedule.trim().split(" ")[4] ?? ""))
+  );
+}
+
+function planLabel(
+  plan: WeekPlan,
+  t: (k: string, o?: Record<string, unknown>) => string,
+): string {
+  const names = (kind: DayPlan) =>
+    DAYS.filter((d) => plan.days[d] === kind)
+      .map((d) => t(`days.${d}`))
+      .join(", ");
+  const parts = (["full", "incremental"] as const)
+    .filter((kind) => names(kind))
+    .map((kind) => `${t(`backupType.${kind}`)} : ${names(kind)}`);
+  return `${parts.join(" · ")} — ${plan.time}`;
+}
+
+/** Default plan of a new policy: incremental every night, full on Fridays. */
+const DEFAULT_PLAN: WeekPlan = {
+  time: "01:00",
+  days: {
+    0: "incremental",
+    1: "incremental",
+    2: "incremental",
+    3: "incremental",
+    4: "incremental",
+    5: "full",
+    6: "incremental",
+  },
+};
+
 function scheduleLabel(
   p: Policy,
   t: (k: string, o?: Record<string, unknown>) => string,
 ): string {
+  if (isPlan(p)) {
+    const plan = readPlan(p.schedule, p.backup_type, p.full_schedule);
+    if (plan) return planLabel(plan, t);
+  }
   const s = readSchedule(p.schedule);
   if (s.preset === "daily") return t("policies.everyDay", { time: s.time });
   if (s.preset === "weekly")
@@ -191,7 +291,15 @@ function PolicyForm({
         };
   const [form, setForm] = useState<PolicyInput>(start);
   const parsed = readSchedule(start.schedule);
-  const [preset, setPreset] = useState<Preset>(parsed.preset);
+  const [preset, setPreset] = useState<Preset>(
+    !initial || isPlan(start) ? "plan" : parsed.preset,
+  );
+  const [plan, setPlan] = useState<WeekPlan>(
+    (initial &&
+      readPlan(start.schedule, start.backup_type, start.full_schedule)) ||
+      DEFAULT_PLAN,
+  );
+  const built = preset === "plan" ? buildPlan(plan) : null;
   const [time, setTime] = useState(parsed.time);
   const [day, setDay] = useState(parsed.day);
   const [custom, setCustom] = useState(start.schedule);
@@ -253,6 +361,7 @@ function PolicyForm({
         fullDom,
         fullCustom,
       ),
+      ...(built ?? {}),
     };
     if (form.target_type !== "accounts") delete body.account_ids;
     try {
@@ -412,6 +521,7 @@ function PolicyForm({
               value={preset}
               onChange={(e) => setPreset(e.target.value as Preset)}
             >
+              <option value="plan">{t("policies.presets.plan")}</option>
               <option value="daily">{t("policies.presets.daily")}</option>
               <option value="weekly">{t("policies.presets.weekly")}</option>
               <option value="custom">{t("policies.presets.custom")}</option>
@@ -432,7 +542,17 @@ function PolicyForm({
               </select>
             </label>
           )}
-          {preset !== "custom" ? (
+          {preset === "plan" ? (
+            <label>
+              {t("policies.time")}
+              <input
+                type="time"
+                required
+                value={plan.time}
+                onChange={(e) => setPlan({ ...plan, time: e.target.value })}
+              />
+            </label>
+          ) : preset !== "custom" ? (
             <label>
               {t("policies.time")}
               <input
@@ -462,91 +582,137 @@ function PolicyForm({
               onChange={(e) => set("timezone", e.target.value)}
             />
           </label>
-          <label>
-            {t("policies.backupType")}
-            <select
-              value={form.backup_type}
-              onChange={(e) => set("backup_type", e.target.value as BackupType)}
-            >
-              <option value="incremental">{t("backupType.incremental")}</option>
-              <option value="full">{t("backupType.full")}</option>
-            </select>
-          </label>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>{t("policies.full")}</legend>
-        <p className="hint">{t("policies.fullHint")}</p>
-        <div className="row">
-          <label>
-            {t("policies.fullMode")}
-            <select
-              value={fullMode}
-              onChange={(e) => setFullMode(e.target.value as FullMode)}
-            >
-              <option value="none">{t("policies.fullModes.none")}</option>
-              <option value="weekly">{t("policies.fullModes.weekly")}</option>
-              <option value="monthly">{t("policies.fullModes.monthly")}</option>
-              <option value="custom">{t("policies.fullModes.custom")}</option>
-            </select>
-          </label>
-          {fullMode === "weekly" && (
+          {preset !== "plan" && (
             <label>
-              {t("policies.day")}
+              {t("policies.backupType")}
               <select
-                value={fullDay}
-                onChange={(e) => setFullDay(Number(e.target.value))}
+                value={form.backup_type}
+                onChange={(e) =>
+                  set("backup_type", e.target.value as BackupType)
+                }
               >
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {t(`days.${d}`)}
-                  </option>
-                ))}
+                <option value="incremental">
+                  {t("backupType.incremental")}
+                </option>
+                <option value="full">{t("backupType.full")}</option>
               </select>
             </label>
           )}
-          {fullMode === "monthly" && (
-            <label>
-              {t("policies.dayOfMonth")}
-              <input
-                type="number"
-                min={1}
-                max={28}
-                value={fullDom}
-                onChange={(e) =>
-                  setFullDom(
-                    Math.min(28, Math.max(1, Number(e.target.value) || 1)),
-                  )
-                }
-              />
-            </label>
-          )}
-          {(fullMode === "weekly" || fullMode === "monthly") && (
-            <label>
-              {t("policies.time")}
-              <input
-                type="time"
-                required
-                value={fullTime}
-                onChange={(e) => setFullTime(e.target.value)}
-              />
-            </label>
-          )}
-          {fullMode === "custom" && (
-            <label className="grow">
-              {t("policies.cron")}
-              <input
-                required
-                value={fullCustom}
-                placeholder="0 2 * * 0"
-                onChange={(e) => setFullCustom(e.target.value)}
-              />
-              <span className="hint">{t("policies.cronHint")}</span>
-            </label>
-          )}
         </div>
+        {preset === "plan" && (
+          <>
+            <p className="hint">{t("policies.planHint")}</p>
+            <div
+              className="week-plan"
+              role="group"
+              aria-label={t("policies.presets.plan")}
+            >
+              {DAYS.map((d) => (
+                <label key={d} className={`day-plan ${plan.days[d] ?? "none"}`}>
+                  {t(`days.${d}`)}
+                  <select
+                    value={plan.days[d] ?? "none"}
+                    onChange={(e) =>
+                      setPlan({
+                        ...plan,
+                        days: { ...plan.days, [d]: e.target.value as DayPlan },
+                      })
+                    }
+                  >
+                    <option value="full">{t("backupType.full")}</option>
+                    <option value="incremental">
+                      {t("backupType.incremental")}
+                    </option>
+                    <option value="none">{t("policies.noBackup")}</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+            {!built && (
+              <p role="alert" className="alert warn small">
+                {t("policies.planEmpty")}
+              </p>
+            )}
+          </>
+        )}
       </fieldset>
+
+      {preset !== "plan" && (
+        <fieldset>
+          <legend>{t("policies.full")}</legend>
+          <p className="hint">{t("policies.fullHint")}</p>
+          <div className="row">
+            <label>
+              {t("policies.fullMode")}
+              <select
+                value={fullMode}
+                onChange={(e) => setFullMode(e.target.value as FullMode)}
+              >
+                <option value="none">{t("policies.fullModes.none")}</option>
+                <option value="weekly">{t("policies.fullModes.weekly")}</option>
+                <option value="monthly">
+                  {t("policies.fullModes.monthly")}
+                </option>
+                <option value="custom">{t("policies.fullModes.custom")}</option>
+              </select>
+            </label>
+            {fullMode === "weekly" && (
+              <label>
+                {t("policies.day")}
+                <select
+                  value={fullDay}
+                  onChange={(e) => setFullDay(Number(e.target.value))}
+                >
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`days.${d}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {fullMode === "monthly" && (
+              <label>
+                {t("policies.dayOfMonth")}
+                <input
+                  type="number"
+                  min={1}
+                  max={28}
+                  value={fullDom}
+                  onChange={(e) =>
+                    setFullDom(
+                      Math.min(28, Math.max(1, Number(e.target.value) || 1)),
+                    )
+                  }
+                />
+              </label>
+            )}
+            {(fullMode === "weekly" || fullMode === "monthly") && (
+              <label>
+                {t("policies.time")}
+                <input
+                  type="time"
+                  required
+                  value={fullTime}
+                  onChange={(e) => setFullTime(e.target.value)}
+                />
+              </label>
+            )}
+            {fullMode === "custom" && (
+              <label className="grow">
+                {t("policies.cron")}
+                <input
+                  required
+                  value={fullCustom}
+                  placeholder="0 2 * * 0"
+                  onChange={(e) => setFullCustom(e.target.value)}
+                />
+                <span className="hint">{t("policies.cronHint")}</span>
+              </label>
+            )}
+          </div>
+        </fieldset>
+      )}
 
       <fieldset>
         <legend>{t("policies.retention")}</legend>
@@ -585,6 +751,7 @@ function PolicyForm({
           type="submit"
           disabled={
             busy ||
+            (preset === "plan" && !built) ||
             (form.target_type === "accounts"
               ? !form.account_ids?.length
               : form.target_type !== "global" && !form.target_id)
@@ -894,7 +1061,7 @@ export function PoliciesPage() {
                         <span className="muted">
                           {t(`backupType.${p.backup_type}`)} · {p.timezone}
                         </span>
-                        {p.full_schedule && (
+                        {p.full_schedule && !isPlan(p) && (
                           <>
                             <br />
                             <span className="small">
