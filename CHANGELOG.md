@@ -55,6 +55,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
 
 ### Fixed
+- Page Sauvegardes en erreur (HTTP 500) dès qu'une exécution lisait plus de 2 Go : les
+  volumes sont additionnés en entiers 64 bits. Une erreur sans détail affiche désormais son
+  code HTTP au lieu d'un message vide.
+- Widget « IP bloquées » : affiche par défaut toutes les adresses en échec, et signale les
+  échecs sans blocage quand il est limité aux IP bloquées.
 - Une boîte ne peut plus être sauvegardée deux fois en même temps : une nouvelle demande est
   refusée tant qu'une sauvegarde de la boîte est en attente ou en cours (index unique en base,
   migration 0016 qui annule les doublons déjà en file).

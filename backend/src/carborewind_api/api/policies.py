@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import BigInteger, delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import audit
@@ -275,9 +275,9 @@ async def _runs(db: DbSession, policy_id: uuid.UUID, limit: int, offset: int) ->
             func.count().filter(pending),
             func.count().filter(Job.status == JobStatus.CANCELLED),
             func.max(Job.finished_at),
-            func.coalesce(func.sum(Job.progress["read_bytes"].as_integer()), 0),
-            func.coalesce(func.sum(Job.progress["new_bytes"].as_integer()), 0),
-            func.coalesce(func.sum(Job.progress["size_bytes"].as_integer()), 0),
+            func.coalesce(func.sum(Job.progress["read_bytes"].astext.cast(BigInteger)), 0),
+            func.coalesce(func.sum(Job.progress["new_bytes"].astext.cast(BigInteger)), 0),
+            func.coalesce(func.sum(Job.progress["size_bytes"].astext.cast(BigInteger)), 0),
         )
         .where(*where)
         .group_by(Job.created_at, backup_type)

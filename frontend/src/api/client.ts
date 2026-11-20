@@ -75,10 +75,12 @@ export async function request<T>(
     unauthorizedListeners.forEach((listener) => listener());
   }
   if (!response.ok) {
-    let detail = response.statusText;
+    // HTTP/2 has no reason phrase: fall back on the status code.
+    let detail = response.statusText || `HTTP ${response.status}`;
     try {
       const payload = (await response.json()) as { detail?: unknown };
-      if (typeof payload.detail === "string") detail = payload.detail;
+      if (typeof payload.detail === "string" && payload.detail)
+        detail = payload.detail;
     } catch {
       /* non-JSON error body */
     }

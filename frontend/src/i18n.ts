@@ -262,6 +262,11 @@ export const resources = {
         blocked_other: "bloquée {{count}} fois",
         notBlocked: "non bloquée",
         noBlock: "Aucune adresse IP bloquée sur la période.",
+        failedNotBlocked_one:
+          "{{count}} adresse a échoué à se connecter sans être bloquée.",
+        failedNotBlocked_other:
+          "{{count}} adresses ont échoué à se connecter sans être bloquées.",
+        seeAll: "Les voir",
         trusted: "de confiance",
         until: "jusqu'à ~{{time}}",
         unblock: "Débloquer",
@@ -1792,6 +1797,11 @@ export const resources = {
         blocked_other: "blocked {{count}} times",
         notBlocked: "not blocked",
         noBlock: "No IP address blocked in the period.",
+        failedNotBlocked_one:
+          "{{count}} address failed to log in without being blocked.",
+        failedNotBlocked_other:
+          "{{count}} addresses failed to log in without being blocked.",
+        seeAll: "See them",
         trusted: "trusted",
         until: "until ~{{time}}",
         unblock: "Unblock",

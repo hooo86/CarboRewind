@@ -169,7 +169,7 @@ def test_policy_history_and_figures(api: TestClient, engine: Engine) -> None:
     at = datetime(2026, 11, 17, 1, tzinfo=UTC)
     with Session(engine) as s, s.begin():
         for account, status, read in (
-            (a, JobStatus.SUCCEEDED, 100),
+            (a, JobStatus.SUCCEEDED, 100 + 5 * 1024**3),
             (b, JobStatus.SUCCEEDED, 50),
             (c, JobStatus.FAILED, 0),
         ):
@@ -202,7 +202,8 @@ def test_policy_history_and_figures(api: TestClient, engine: Engine) -> None:
     run = runs["items"][0]
     assert run["status"] == "partial" and run["trigger"] == "schedule"
     assert (run["accounts"], run["succeeded"], run["failed"]) == (3, 2, 1)
-    assert run["read_bytes"] == 150 and run["new_bytes"] == 75
+    assert run["read_bytes"] == 150 + 5 * 1024**3  # beyond 32-bit integers
+    assert run["new_bytes"] == 75 + 5 * 1024**3 // 2
     policy = next(p for p in api.get("/api/policies", headers=h).json() if p["id"] == pid)
     assert policy["account_count"] == 3
     assert policy["protected_bytes"] == 4000 and policy["stored_bytes"] == 3000

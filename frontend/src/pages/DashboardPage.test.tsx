@@ -197,6 +197,46 @@ const spam = {
 };
 
 describe("customizable dashboard", () => {
+  it("points to failed logins when the widget only shows blocked IPs", async () => {
+    open(user("super_admin"), {
+      "GET /api/me/dashboard": {
+        widgets: [
+          {
+            id: "b",
+            type: "blocked_ips",
+            size: "full",
+            options: { only_blocked: true },
+          },
+        ],
+      },
+      "GET /api/mail/security": {
+        ...security,
+        totals: { ips: 2, failed: 34, blocked: 0 },
+        ips: [],
+        log_status: "ok",
+      },
+    });
+    expect(
+      await screen.findByText(
+        /2 addresses failed to log in without being blocked/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See them" })).toHaveAttribute(
+      "href",
+      "/mail",
+    );
+  });
+
+  it("shows the HTTP status when an error has no detail", async () => {
+    open(user("super_admin"), {
+      "GET /api/me/dashboard": {
+        widgets: [{ id: "p", type: "policies", size: "full", options: {} }],
+      },
+      "GET /api/policies": { status: 500, body: {} },
+    });
+    expect(await screen.findByText(/HTTP 500|status 500/)).toBeInTheDocument();
+  });
+
   it("shows the default widgets, with blocked IPs and spam origin for admins", async () => {
     open(user("super_admin"), {
       "GET /api/me/dashboard": { widgets: null },

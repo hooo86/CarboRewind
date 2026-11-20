@@ -372,13 +372,7 @@ export function defaultLayout(admin: boolean): Widget[] {
     w("kpis", "kpis"),
     w("storage", "storage"),
     ...(admin
-      ? [
-          w("blocked", "blocked_ips", "half", {
-            ...defaultOptions("blocked_ips"),
-            only_blocked: true,
-          }),
-          w("spam", "spam_sources", "half"),
-        ]
+      ? [w("blocked", "blocked_ips", "half"), w("spam", "spam_sources", "half")]
       : []),
     w("manual", "manual_backup"),
     w("jobs", "jobs"),

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { api } from "../api/endpoints";
@@ -125,7 +126,16 @@ export function BlockedIpsPanel({
             </p>
           )}
           {d.ips.length === 0 ? (
-            !onlyBlocked && <p className="muted">{t("loginSecurity.none")}</p>
+            onlyBlocked ? (
+              d.totals.ips > 0 && (
+                <p className="muted small">
+                  {t("loginSecurity.failedNotBlocked", { count: d.totals.ips })}{" "}
+                  <Link to="/mail">{t("loginSecurity.seeAll")}</Link>
+                </p>
+              )
+            ) : (
+              <p className="muted">{t("loginSecurity.none")}</p>
+            )
           ) : (
             <div className="table-wrap">
               <table>
