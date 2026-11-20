@@ -102,10 +102,23 @@ def test_failed_logins_and_blocked_ips(api: TestClient, engine: Engine) -> None:
     agent.post("/mail-stats", {"hours": [], "mailbox_log": {**log, "readable": True}})
     out = api.get("/api/mail/security", params={"period": "24h"}).json()
     assert out["log_status"] == "ok" and out["log_path"] == log["path"]
-    assert out["totals"] == {"ips": 2, "failed": 47, "blocked": 1} and out["reported"]
+    assert out["totals"] == {"ips": 2, "failed": 47, "blocked": 1, "blocked_now": 1}
+    assert out["reported"]
     first, second = out["ips"]
     assert first["ip"] == "203.0.113.9" and first["suspended"] == 1
-    assert first["recently_blocked"] is True
+    assert first["recently_blocked"] is True  # no settings yet: up to an hour
+    # Carbonio blocks for 2 minutes (+ 1 for the task that lifts blocks): over now.
+    lf = {"safe_ips": [], "max_failed": 5, "block_minutes": 2, "task_minutes": 1}
+    agent.post("/mail-stats", {"hours": [], "login_filter": lf})
+    over = api.get("/api/mail/security").json()
+    assert over["ips"][0]["recently_blocked"] is False and over["ips"][0]["blocked_until"] is None
+    assert over["totals"]["blocked_now"] == 0 and over["totals"]["blocked"] == 1
+    lf["block_minutes"] = 30
+    agent.post("/mail-stats", {"hours": [], "login_filter": lf})
+    still = api.get("/api/mail/security").json()["ips"][0]
+    assert still["recently_blocked"] is True
+    end = datetime.fromisoformat(still["blocked_until"])
+    assert abs((end - (now + timedelta(minutes=26))).total_seconds()) < 5
     assert (first["failed_mailbox"], first["failed_smtp"]) == (42, 3)
     assert first["ptr"] == "mail-1.mx.spammer.co.uk" and first["domain"] == "spammer.co.uk"
     assert first["accounts"] == ["ana@lnhc.dz", "contact@lnhc.dz"]

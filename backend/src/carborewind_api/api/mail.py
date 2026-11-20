@@ -249,7 +249,17 @@ async def overview(
     )
 
 
-RECENT_BLOCK = timedelta(hours=1)
+# Without Carbonio's settings (old agent): a block is assumed to last up to an hour.
+DEFAULT_BLOCK = timedelta(hours=1)
+
+
+def block_window(cfg: dict[str, Any] | None) -> timedelta:
+    """How long a block lasts: Carbonio's delay, plus the interval of the task that lifts
+    blocks (it runs every N minutes, so a block can outlast the delay by up to N)."""
+    minutes = (cfg or {}).get("block_minutes")
+    if not minutes:
+        return DEFAULT_BLOCK
+    return timedelta(minutes=int(minutes) + int((cfg or {}).get("task_minutes") or 0))
 
 
 class BlockedIp(BaseModel):
@@ -260,7 +270,9 @@ class BlockedIp(BaseModel):
     failed_smtp: int
     suspended: int
     last_suspended_at: datetime | None
+    # Still blocked now (last block + Carbonio's delay not over), and until when.
     recently_blocked: bool
+    blocked_until: datetime | None = None
     first_seen: datetime
     last_seen: datetime
     accounts: list[str]
@@ -356,7 +368,13 @@ async def login_security(
     ).one()
     names = await rdns.resolve(r.ip for r in rows)
     reported = await db.scalar(select(func.count()).select_from(LoginFailure)) or 0
-    safe = _networks((await _login_filter(db) or {}).get("safe_ips", []))
+    cfg = await _login_filter(db)
+    safe = _networks((cfg or {}).get("safe_ips", []))
+    window = block_window(cfg)
+
+    def until(last: datetime | None) -> datetime | None:
+        return last + window if last and last + window > now else None
+
     pending = {
         a.ip: a.action
         for a in await db.scalars(select(IpAction).where(IpAction.status == "pending"))
@@ -374,7 +392,12 @@ async def login_security(
     return LoginSecurity(
         period=period,
         since=since,
-        totals={"ips": int(totals[0]), "failed": int(totals[1]), "blocked": int(totals[2])},
+        totals={
+            "ips": int(totals[0]),
+            "failed": int(totals[1]),
+            "blocked": int(totals[2]),
+            "blocked_now": sum(1 for r in rows if until(r.last_suspended)),
+        },
         ips=[
             BlockedIp(
                 ip=r.ip,
@@ -384,7 +407,8 @@ async def login_security(
                 failed_smtp=int(r.smtp or 0),
                 suspended=int(r.suspended or 0),
                 last_suspended_at=r.last_suspended,
-                recently_blocked=bool(r.last_suspended and r.last_suspended >= now - RECENT_BLOCK),
+                recently_blocked=until(r.last_suspended) is not None,
+                blocked_until=until(r.last_suspended),
                 first_seen=r.first,
                 last_seen=r.last + timedelta(hours=1),
                 accounts=accounts(r.accounts),

@@ -932,6 +932,7 @@ export interface BlockedIp {
   suspended: number;
   last_suspended_at: string | null;
   recently_blocked: boolean;
+  blocked_until?: string | null;
   first_seen: string;
   last_seen: string;
   accounts: string[];
@@ -963,7 +964,12 @@ export interface LoginFilter {
 export interface LoginSecurity {
   period: MailPeriod;
   since: string;
-  totals: { ips: number; failed: number; blocked: number };
+  totals: {
+    ips: number;
+    failed: number;
+    blocked: number;
+    blocked_now?: number;
+  };
   ips: BlockedIp[];
   reported: boolean;
   log_status?: "ok" | "denied" | "missing" | "agent_outdated" | "not_reporting";

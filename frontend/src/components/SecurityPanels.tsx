@@ -12,15 +12,6 @@ import type {
 import { formatDate, formatRelative } from "../utils/format";
 import { LoadView, StatusBadge, errorMessage, useLoad } from "./common";
 
-/** Approximate end of a block: last suspension + Carbonio's blocking delay. */
-function blockedUntil(
-  last: string | null,
-  minutes: number | null | undefined,
-): Date | null {
-  if (!last || !minutes) return null;
-  return new Date(new Date(last).getTime() + minutes * 60_000);
-}
-
 /** Trust (never block again) or untrust one address; asks first. */
 function IpButton({
   ip,
@@ -77,12 +68,9 @@ export function BlockedIpsPanel({
     [period, onlyBlocked, limit],
     60000,
   );
-  const [filter] = useLoad<LoginFilter>(() => api.loginFilter(), [], 60000);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
-  const blockMinutes =
-    filter.state === "ready" ? filter.data.config?.block_minutes : null;
   const done =
     (ip: string, action: "trust" | "untrust") => (error: string | null) => {
       setNotice(
@@ -151,8 +139,8 @@ export function BlockedIpsPanel({
                 </thead>
                 <tbody>
                   {d.ips.map((ip) => {
-                    const until = ip.recently_blocked
-                      ? blockedUntil(ip.last_suspended_at, blockMinutes)
+                    const until = ip.blocked_until
+                      ? new Date(ip.blocked_until)
                       : null;
                     return (
                       <tr key={ip.ip}>

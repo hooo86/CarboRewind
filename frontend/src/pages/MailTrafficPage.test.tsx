@@ -362,6 +362,9 @@ describe("security and spam origin", () => {
           suspended: blocked ? 1 : 0,
           last_suspended_at: blocked ? new Date().toISOString() : null,
           recently_blocked: blocked,
+          blocked_until: blocked
+            ? new Date(Date.now() + 10 * 60_000).toISOString()
+            : null,
           first_seen: "2026-11-19T08:00:00Z",
           last_seen: "2026-11-19T11:00:00Z",
           accounts: [],
