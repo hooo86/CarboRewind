@@ -703,4 +703,27 @@ CREATE UNIQUE INDEX uq_jobs_one_backup_per_account ON jobs (account_id) WHERE ki
 
 UPDATE alembic_version SET version_num='0016' WHERE alembic_version.version_num = '0015';
 
+-- Running upgrade 0016 -> 0017
+
+ALTER TABLE policies ADD COLUMN full_schedule VARCHAR(128);
+
+ALTER TABLE policies ADD COLUMN full_last_run_at TIMESTAMP WITH TIME ZONE;
+
+CREATE TABLE saved_views (
+    id UUID NOT NULL,
+    owner_id UUID NOT NULL,
+    page VARCHAR(32) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    query VARCHAR(4000) NOT NULL,
+    shared BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_saved_views PRIMARY KEY (id),
+    CONSTRAINT fk_saved_views_owner_id_users FOREIGN KEY(owner_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_saved_views_owner_page_name UNIQUE (owner_id, page, name)
+);
+
+CREATE INDEX ix_saved_views_page ON saved_views (page);
+
+UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
+
 COMMIT;

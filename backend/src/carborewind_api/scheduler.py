@@ -35,6 +35,7 @@ from .db.models import (
     AccountStatus,
     ActorType,
     ArchivedMessage,
+    BackupType,
     Blob,
     FolderVersion,
     ItemVersion,
@@ -99,59 +100,97 @@ async def _busy_accounts(db: AsyncSession) -> set[uuid.UUID]:
     return {r for r in rows if r is not None}
 
 
+async def _due_slot(
+    schedule: str, since: datetime, now: datetime, tz: str, name: str, report: TickReport
+) -> datetime | None:
+    try:
+        slot = Cron.parse(schedule).last_slot(since, now, zone(tz))
+    except CronError as exc:  # validated by the API; a manual DB edit could still break it
+        report.errors.append(f"policy {name}: {exc}")
+        return None
+    return slot.astimezone(UTC) if slot is not None else None
+
+
+async def _queue_slot(
+    db: AsyncSession,
+    policy: Policy,
+    slot_utc: datetime,
+    backup_type: BackupType,
+    busy: set[uuid.UUID],
+    report: TickReport,
+    prefix: str = "policy",
+) -> None:
+    """Queue one backup per covered account that is not already being backed up."""
+    accounts = [a for a in await db.scalars(_accounts_of(policy)) if a not in busy]
+    queued = 0
+    if accounts:
+        rows = [
+            {
+                "kind": JobKind.BACKUP,
+                "status": JobStatus.QUEUED,
+                "account_id": account,
+                "policy_id": policy.id,
+                "priority": policy.priority,
+                "params": {"backup_type": backup_type.value},
+                "idempotency_key": f"{prefix}:{policy.id}:{slot_utc:%Y%m%dT%H%M}:{account}",
+            }
+            for account in accounts
+        ]
+        result = await db.execute(
+            insert(Job)
+            .values(rows)
+            # Same slot already queued, or a backup of the account already pending.
+            .on_conflict_do_nothing()
+            .returning(Job.id)
+        )
+        queued = len(result.all())
+        report.jobs_queued += queued
+        busy.update(accounts)
+    await audit.record(
+        db,
+        action="policy.run",
+        outcome=Outcome.SUCCESS,
+        actor_type=ActorType.SYSTEM,
+        actor_name="scheduler",
+        target_type="policy",
+        target_id=str(policy.id),
+        details={
+            "policy": policy.name,
+            "slot": slot_utc.isoformat(),
+            "type": backup_type.value,
+            "jobs": queued,
+        },
+    )
+
+
 async def enqueue_due_backups(db: AsyncSession, now: datetime, report: TickReport) -> None:
     busy = await _busy_accounts(db)
     policies = await db.scalars(
         select(Policy).where(Policy.enabled.is_(True)).order_by(Policy.priority, Policy.name)
     )
     for policy in policies:
-        try:
-            slot = Cron.parse(policy.schedule).last_slot(
-                policy.last_run_at or policy.created_at, now, zone(policy.timezone)
+        # The full backup first: when both schedules fall at once, it replaces the other.
+        if policy.full_schedule:
+            since = policy.full_last_run_at or policy.last_run_at or policy.created_at
+            full_slot = await _due_slot(
+                policy.full_schedule, since, now, policy.timezone, policy.name, report
             )
-        except CronError as exc:  # validated by the API; a manual DB edit could still break it
-            report.errors.append(f"policy {policy.name}: {exc}")
-            continue
-        if slot is None:
-            continue
-        slot_utc = slot.astimezone(UTC)
-        accounts = [a for a in await db.scalars(_accounts_of(policy)) if a not in busy]
-        if accounts:
-            rows = [
-                {
-                    "kind": JobKind.BACKUP,
-                    "status": JobStatus.QUEUED,
-                    "account_id": account,
-                    "policy_id": policy.id,
-                    "priority": policy.priority,
-                    "params": {"backup_type": policy.backup_type.value},
-                    "idempotency_key": f"policy:{policy.id}:{slot_utc:%Y%m%dT%H%M}:{account}",
-                }
-                for account in accounts
-            ]
-            result = await db.execute(
-                insert(Job)
-                .values(rows)
-                # Same slot already queued, or a backup of the account already pending.
-                .on_conflict_do_nothing()
-                .returning(Job.id)
-            )
-            queued = len(result.all())
-            report.jobs_queued += queued
-            busy.update(accounts)
-        else:
-            queued = 0
-        policy.last_run_at = slot_utc
-        await audit.record(
-            db,
-            action="policy.run",
-            outcome=Outcome.SUCCESS,
-            actor_type=ActorType.SYSTEM,
-            actor_name="scheduler",
-            target_type="policy",
-            target_id=str(policy.id),
-            details={"policy": policy.name, "slot": slot_utc.isoformat(), "jobs": queued},
+            if full_slot is not None:
+                await _queue_slot(
+                    db, policy, full_slot, BackupType.FULL, busy, report, "policy-full"
+                )
+                policy.full_last_run_at = full_slot
+        slot = await _due_slot(
+            policy.schedule,
+            policy.last_run_at or policy.created_at,
+            now,
+            policy.timezone,
+            policy.name,
+            report,
         )
+        if slot is not None:
+            await _queue_slot(db, policy, slot, policy.backup_type, busy, report)
+            policy.last_run_at = slot
 
 
 async def _rules_by_account(db: AsyncSession) -> dict[uuid.UUID, tuple[Retention, str] | None]:

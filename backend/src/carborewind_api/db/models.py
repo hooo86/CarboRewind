@@ -378,6 +378,10 @@ class Policy(Base):
     timezone: Mapped[str] = mapped_column(String(64), server_default=text("'UTC'"))
     # Last schedule slot already turned into jobs (missed slots are caught up once).
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Optional second schedule running full backups (e.g. incremental daily, full on
+    # Sundays). When both fall at once the full backup wins.
+    full_schedule: Mapped[str | None] = mapped_column(String(128))
+    full_last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -983,3 +987,23 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_notifications_pending", "status", "next_attempt_at"),)
+
+
+class SavedView(Base):
+    """A named search of a list page (filters, grouping, sort), personal or shared."""
+
+    __tablename__ = "saved_views"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    page: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(100))
+    # The page's URL query string (validated again by the list endpoint when applied).
+    query: Mapped[str] = mapped_column(String(4000))
+    shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "page", "name", name="uq_saved_views_owner_page_name"),
+        Index("ix_saved_views_page", "page"),
+    )

@@ -259,26 +259,9 @@ class AccountListItem(BaseModel):
     profile: dict[str, str] = PydanticField(default_factory=dict)
 
 
-@router.get("/api/accounts", response_model=Page[AccountListItem])
-async def list_all_accounts(
-    principal: Reader,
-    db: DbSession,
-    request: Request,
-    q: Annotated[
-        str | None, Query(max_length=320, description="Search address, name or alias")
-    ] = None,
-    f: Annotated[
-        list[str] | None, Query(max_length=50, description="Filters: field:operator:value")
-    ] = None,
-    sort: str = "email",
-    order: Literal["asc", "desc"] = "asc",
-    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> Page[AccountListItem]:
-    f = f or []
+def _conditions(principal: Principal, q: str | None, f: list[str]) -> list[ColumnElement[bool]]:
+    """WHERE clauses shared by the list and the groups: scope, search, filters."""
     now = datetime.now(UTC)
-    latest = latest_snapshots().subquery()
-    snap = Snapshot
     where: list[ColumnElement[bool]] = []
     scope = principal.access.domains(Permission.INVENTORY_READ)
     if scope is not None:
@@ -295,9 +278,31 @@ async def list_all_accounts(
                 func.lower(cast(Account.profile, Text)).like(pattern, escape="\\"),
             )
         )
-    where.extend(parse_filter(item, snap, now) for item in f)
+    where.extend(parse_filter(item, Snapshot, now) for item in f)
+    return where
+
+
+@router.get("/api/accounts", response_model=Page[AccountListItem])
+async def list_all_accounts(
+    principal: Reader,
+    db: DbSession,
+    request: Request,
+    q: Annotated[
+        str | None, Query(max_length=320, description="Search address, name or alias")
+    ] = None,
+    f: Annotated[
+        list[str] | None, Query(max_length=50, description="Filters: field:operator:value")
+    ] = None,
+    sort: str = "email",
+    order: Literal["asc", "desc"] = "asc",
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Page[AccountListItem]:
+    where = _conditions(principal, q, f or [])
     if sort not in FIELDS:
         raise _bad(f"cannot sort on {sort!r}")
+    snap = Snapshot
+    latest = latest_snapshots().subquery()
     sort_col = FIELDS[sort].expr(snap)
     ordering = sort_col.desc().nulls_last() if order == "desc" else sort_col.asc().nulls_last()
 
@@ -353,10 +358,83 @@ async def list_all_accounts(
     return Page(items=items, total=total or 0, limit=limit, offset=offset)
 
 
+# Fields the list can be grouped by (Odoo "Group by"); dates are grouped by month.
+GROUPABLE = [
+    "domain",
+    "status",
+    "cos",
+    "is_admin",
+    "has_policy",
+    "policy",
+    "last_backup_status",
+    "last_backup_type",
+    "last_backup_at",
+    "last_login_at",
+    "carbonio_created_at",
+    "company",
+    "department",
+    "title",
+    "city",
+    "state",
+    "country",
+]
+
+
+class AccountGroup(BaseModel):
+    value: str | None
+    count: int
+    used_bytes: int
+    stored_bytes: int
+
+
+@router.get("/api/accounts/groups", response_model=list[AccountGroup])
+async def account_groups(
+    principal: Reader,
+    db: DbSession,
+    group_by: Annotated[str, Query(max_length=64)],
+    q: Annotated[str | None, Query(max_length=320)] = None,
+    f: Annotated[list[str] | None, Query(max_length=50)] = None,
+) -> list[AccountGroup]:
+    """Accounts counted per value of one field, with the same search and filters as the
+    list. A date is grouped by month ("2026-03"); an empty value is ``null``."""
+    if group_by not in GROUPABLE:
+        raise _bad(f"cannot group by {group_by!r}")
+    field = FIELDS[group_by]
+    col = field.expr(Snapshot)
+    if field.type == "date":
+        key: ColumnElement[Any] = func.to_char(func.date_trunc("month", col), "YYYY-MM")
+    elif field.type == "text":
+        key = func.nullif(cast(col, Text), "")
+    else:
+        key = cast(col, Text)
+    latest = latest_snapshots().subquery()
+    query = (
+        select(
+            key.label("value"),
+            func.count(),
+            func.coalesce(func.sum(Account.used_bytes), 0),
+            func.coalesce(func.sum(Snapshot.size_bytes), 0),
+        )
+        .select_from(Account)
+        .join(Domain, Domain.id == Account.domain_id)
+        .outerjoin(latest, latest.c.account_id == Account.id)
+        .outerjoin(Snapshot, and_(Snapshot.account_id == Account.id, Snapshot.seq == latest.c.seq))
+        .where(*_conditions(principal, q, f or []))
+        .group_by(key)
+        .order_by(key.asc().nulls_last())
+        .limit(500)
+    )
+    return [
+        AccountGroup(value=v, count=n, used_bytes=int(used), stored_bytes=int(stored))
+        for v, n, used, stored in await db.execute(query)
+    ]
+
+
 class Facets(BaseModel):
     domains: list[dict[str, Any]]
     cos: list[str]
     fields: dict[str, FieldType]
+    groupable: list[str] = GROUPABLE
 
 
 @router.get("/api/accounts/facets", response_model=Facets)

@@ -11,9 +11,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .. import audit
@@ -22,15 +22,22 @@ from ..db.models import (
     Account,
     BackupType,
     Domain,
+    Job,
+    JobKind,
+    JobStatus,
     Outcome,
     Policy,
     PolicyAccount,
+    Snapshot,
+    SnapshotStatus,
     TargetType,
 )
 from ..scheduler import _accounts_of
 from ..scheduling import Cron, CronError, Retention, zone
+from .accounts import latest_snapshots
 from .backups import BulkBackupOut, queue_backups
 from .deps import DbSession, Principal, client_ip, deny, require
+from .schemas import Page
 
 router = APIRouter(prefix="/api/policies", tags=["policies"])
 
@@ -57,6 +64,13 @@ class PolicyFields(BaseModel):
     retention: RetentionIn = Field(default_factory=RetentionIn)
     priority: int = Field(default=100, ge=0, le=1000)
     enabled: bool = True
+    # Optional second schedule of full backups (e.g. "0 2 * * 0": Sundays 02:00).
+    full_schedule: str | None = Field(default=None, max_length=128)
+
+    @field_validator("full_schedule")
+    @classmethod
+    def _full_cron(cls, value: str | None) -> str | None:
+        return PolicyFields._cron(value) if value and value.strip() else None
 
     @field_validator("schedule")
     @classmethod
@@ -98,6 +112,15 @@ class PolicyPatch(BaseModel):
     priority: int | None = Field(default=None, ge=0, le=1000)
     enabled: bool | None = None
     account_ids: list[uuid.UUID] | None = Field(default=None, max_length=MAX_SELECTION)
+    # "" removes the full-backup schedule.
+    full_schedule: str | None = Field(default=None, max_length=128)
+
+    @field_validator("full_schedule")
+    @classmethod
+    def _full_cron(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return value if value is None else ""
+        return PolicyFields._cron(value)
 
     @field_validator("schedule")
     @classmethod
@@ -108,6 +131,23 @@ class PolicyPatch(BaseModel):
     @classmethod
     def _zone(cls, value: str | None) -> str | None:
         return None if value is None else PolicyFields._zone(value)
+
+
+class PolicyRunOut(BaseModel):
+    """One execution of a policy: the jobs queued together (one per account)."""
+
+    started_at: datetime
+    finished_at: datetime | None
+    backup_type: str
+    trigger: Literal["schedule", "manual"]
+    status: Literal["running", "succeeded", "partial", "failed", "cancelled"]
+    accounts: int
+    succeeded: int
+    failed: int
+    pending: int
+    read_bytes: int
+    new_bytes: int
+    size_bytes: int
 
 
 class PolicyOut(BaseModel):
@@ -125,7 +165,15 @@ class PolicyOut(BaseModel):
     enabled: bool
     last_run_at: datetime | None
     next_run_at: datetime | None
+    full_schedule: str | None = None
+    next_full_run_at: datetime | None = None
     created_at: datetime
+    # Figures over the accounts the policy covers.
+    account_count: int = 0
+    protected_bytes: int = 0
+    stored_bytes: int = 0
+    snapshot_count: int = 0
+    last_run: PolicyRunOut | None = None
 
 
 async def _target_domain(
@@ -173,13 +221,106 @@ def _may_manage_all(principal: Principal, perm: Permission, domains: set[uuid.UU
     return bool(domains) and all(principal.access.allows(perm, d) for d in domains or ())
 
 
+def _next(cron: str, since: datetime | None, tz: str) -> datetime | None:
+    now = datetime.now(UTC)
+    nxt = Cron.parse(cron).next_slot(max(now, since or now), zone(tz))
+    return nxt.astimezone(UTC) if nxt else None
+
+
+async def _stats(db: DbSession, p: Policy) -> dict[str, int]:
+    """Accounts covered, size of their latest backups, data written by kept backups."""
+    covered = _accounts_of(p).subquery()
+    latest = latest_snapshots().where(Snapshot.account_id.in_(select(covered.c.id))).subquery()
+    protected = await db.scalar(
+        select(func.coalesce(func.sum(Snapshot.size_bytes), 0)).join(
+            latest,
+            (latest.c.account_id == Snapshot.account_id) & (latest.c.seq == Snapshot.seq),
+        )
+    )
+    stored, count = (
+        await db.execute(
+            select(func.coalesce(func.sum(Snapshot.new_bytes), 0), func.count()).where(
+                Snapshot.account_id.in_(select(covered.c.id)),
+                Snapshot.status != SnapshotStatus.EXPIRED,
+            )
+        )
+    ).one()
+    accounts = await db.scalar(select(func.count()).select_from(covered))
+    return {
+        "account_count": int(accounts or 0),
+        "protected_bytes": int(protected or 0),
+        "stored_bytes": int(stored or 0),
+        "snapshot_count": int(count or 0),
+    }
+
+
+async def _runs(db: DbSession, policy_id: uuid.UUID, limit: int, offset: int) -> Page[PolicyRunOut]:
+    """Executions, newest first: jobs of one slot (or one "run now") share created_at."""
+    pending = Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])
+    backup_type = Job.params["backup_type"].astext
+    where = (Job.policy_id == policy_id, Job.kind == JobKind.BACKUP)
+    total = await db.scalar(
+        select(func.count()).select_from(
+            select(Job.created_at, backup_type).where(*where).distinct().subquery()
+        )
+    )
+    rows = await db.execute(
+        select(
+            Job.created_at,
+            backup_type,
+            func.bool_or(Job.params.has_key("manual")),
+            func.count(),
+            func.count().filter(Job.status == JobStatus.SUCCEEDED),
+            func.count().filter(Job.status == JobStatus.FAILED),
+            func.count().filter(pending),
+            func.count().filter(Job.status == JobStatus.CANCELLED),
+            func.max(Job.finished_at),
+            func.coalesce(func.sum(Job.progress["read_bytes"].as_integer()), 0),
+            func.coalesce(func.sum(Job.progress["new_bytes"].as_integer()), 0),
+            func.coalesce(func.sum(Job.progress["size_bytes"].as_integer()), 0),
+        )
+        .where(*where)
+        .group_by(Job.created_at, backup_type)
+        .order_by(Job.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    items = []
+    for created, btype, manual, n, ok, ko, waiting, cancelled, finished, read, new, size in rows:
+        status_: Literal["running", "succeeded", "partial", "failed", "cancelled"]
+        if waiting:
+            status_ = "running"
+        elif ko and ok:
+            status_ = "partial"
+        elif ko:
+            status_ = "failed"
+        elif cancelled and not ok:
+            status_ = "cancelled"
+        else:
+            status_ = "succeeded"
+        items.append(
+            PolicyRunOut(
+                started_at=created,
+                finished_at=None if waiting else finished,
+                backup_type=btype or "incremental",
+                trigger="manual" if manual else "schedule",
+                status=status_,
+                accounts=n,
+                succeeded=ok,
+                failed=ko,
+                pending=waiting,
+                read_bytes=int(read),
+                new_bytes=int(new),
+                size_bytes=int(size),
+            )
+        )
+    return Page(items=items, total=int(total or 0), limit=limit, offset=offset)
+
+
 async def _out(db: DbSession, p: Policy) -> PolicyOut:
     _, name = await _target_domain(db, p.target_type.value, p.target_id)
     selection = await _selection(db, p.id) if p.target_type is TargetType.ACCOUNTS else []
-    now = datetime.now(UTC)
-    nxt = None
-    if p.enabled:
-        nxt = Cron.parse(p.schedule).next_slot(max(now, p.last_run_at or now), zone(p.timezone))
+    last = await _runs(db, p.id, 1, 0)
     return PolicyOut(
         id=p.id,
         name=p.name,
@@ -194,8 +335,16 @@ async def _out(db: DbSession, p: Policy) -> PolicyOut:
         priority=p.priority,
         enabled=p.enabled,
         last_run_at=p.last_run_at,
-        next_run_at=nxt.astimezone(UTC) if nxt else None,
+        next_run_at=_next(p.schedule, p.last_run_at, p.timezone) if p.enabled else None,
+        full_schedule=p.full_schedule,
+        next_full_run_at=(
+            _next(p.full_schedule, p.full_last_run_at or p.last_run_at, p.timezone)
+            if p.enabled and p.full_schedule
+            else None
+        ),
         created_at=p.created_at,
+        last_run=last.items[0] if last.items else None,
+        **await _stats(db, p),
     )
 
 
@@ -275,6 +424,8 @@ async def create_policy(
         priority=body.priority,
         enabled=body.enabled,
         last_run_at=datetime.now(UTC),  # no catch-up of slots before the policy existed
+        full_schedule=body.full_schedule,
+        full_last_run_at=datetime.now(UTC) if body.full_schedule else None,
     )
     db.add(policy)
     try:
@@ -311,6 +462,9 @@ async def update_policy(
 ) -> PolicyOut:
     policy = await _editable(db, principal, request, policy_id)
     changes = body.model_dump(exclude_unset=True, exclude_none=True)
+    if "full_schedule" in changes:
+        changes["full_schedule"] = changes["full_schedule"] or None
+        policy.full_last_run_at = datetime.now(UTC)  # no catch-up of earlier slots
     selection = changes.pop("account_ids", None)
     if selection is not None:
         selection = sorted(set(selection))
@@ -348,6 +502,22 @@ async def delete_policy(
     policy = await _editable(db, principal, request, policy_id)
     await _audit(db, principal, request, "policy.delete", policy)
     await db.delete(policy)
+
+
+@router.get("/{policy_id}/runs", response_model=Page[PolicyRunOut])
+async def policy_runs(
+    policy_id: uuid.UUID,
+    principal: Reader,
+    db: DbSession,
+    request: Request,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> Page[PolicyRunOut]:
+    """Execution history of a policy, newest first."""
+    p = await db.get(Policy, policy_id)
+    if p is None or not await _allowed(db, principal, Permission.BACKUPS_READ, p):
+        raise await deny(db, principal, request, Permission.BACKUPS_READ, policy=str(policy_id))
+    return await _runs(db, policy_id, limit, offset)
 
 
 class RunRequest(BaseModel):

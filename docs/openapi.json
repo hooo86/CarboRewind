@@ -64,6 +64,41 @@
         "title": "AccountDetail",
         "type": "object"
       },
+      "AccountGroup": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "stored_bytes": {
+            "title": "Stored Bytes",
+            "type": "integer"
+          },
+          "used_bytes": {
+            "title": "Used Bytes",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "count",
+          "used_bytes",
+          "stored_bytes"
+        ],
+        "title": "AccountGroup",
+        "type": "object"
+      },
       "AccountIn": {
         "properties": {
           "aliases": {
@@ -2535,6 +2570,32 @@
             },
             "title": "Fields",
             "type": "object"
+          },
+          "groupable": {
+            "default": [
+              "domain",
+              "status",
+              "cos",
+              "is_admin",
+              "has_policy",
+              "policy",
+              "last_backup_status",
+              "last_backup_type",
+              "last_backup_at",
+              "last_login_at",
+              "carbonio_created_at",
+              "company",
+              "department",
+              "title",
+              "city",
+              "state",
+              "country"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Groupable",
+            "type": "array"
           }
         },
         "required": [
@@ -4720,6 +4781,37 @@
         "title": "Page[JobOut]",
         "type": "object"
       },
+      "Page_PolicyRunOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyRunOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "Page[PolicyRunOut]",
+        "type": "object"
+      },
       "Page_RunJobOut_": {
         "properties": {
           "items": {
@@ -5054,6 +5146,18 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "full_schedule": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Schedule"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
@@ -5112,6 +5216,95 @@
           "target_type"
         ],
         "title": "PolicyIn",
+        "type": "object"
+      },
+      "PolicyRunOut": {
+        "description": "One execution of a policy: the jobs queued together (one per account).",
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "backup_type": {
+            "title": "Backup Type",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "new_bytes": {
+            "title": "New Bytes",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "read_bytes": {
+            "title": "Read Bytes",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "succeeded",
+              "partial",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "trigger": {
+            "enum": [
+              "schedule",
+              "manual"
+            ],
+            "title": "Trigger",
+            "type": "string"
+          }
+        },
+        "required": [
+          "started_at",
+          "finished_at",
+          "backup_type",
+          "trigger",
+          "status",
+          "accounts",
+          "succeeded",
+          "failed",
+          "pending",
+          "read_bytes",
+          "new_bytes",
+          "size_bytes"
+        ],
+        "title": "PolicyRunOut",
         "type": "object"
       },
       "PreviousSnapshot": {
@@ -7365,6 +7558,92 @@
         "title": "VerifyResultIn",
         "type": "object"
       },
+      "ViewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "page": {
+            "enum": [
+              "accounts",
+              "jobs"
+            ],
+            "title": "Page",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 4000,
+            "title": "Query",
+            "type": "string"
+          },
+          "shared": {
+            "default": false,
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "page",
+          "name",
+          "query"
+        ],
+        "title": "ViewIn",
+        "type": "object"
+      },
+      "ViewOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mine": {
+            "title": "Mine",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "page": {
+            "title": "Page",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "page",
+          "name",
+          "query",
+          "shared",
+          "owner",
+          "mine",
+          "created_at"
+        ],
+        "title": "ViewOut",
+        "type": "object"
+      },
       "carborewind_api__api__archives__PolicyOut": {
         "properties": {
           "account_ids": {
@@ -7922,6 +8201,11 @@
       },
       "carborewind_api__api__policies__PolicyOut": {
         "properties": {
+          "account_count": {
+            "default": 0,
+            "title": "Account Count",
+            "type": "integer"
+          },
           "account_ids": {
             "items": {
               "format": "uuid",
@@ -7942,10 +8226,31 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "full_schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Schedule"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyRunOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "last_run_at": {
             "anyOf": [
@@ -7963,6 +8268,18 @@
             "title": "Name",
             "type": "string"
           },
+          "next_full_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Full Run At"
+          },
           "next_run_at": {
             "anyOf": [
               {
@@ -7979,12 +8296,27 @@
             "title": "Priority",
             "type": "integer"
           },
+          "protected_bytes": {
+            "default": 0,
+            "title": "Protected Bytes",
+            "type": "integer"
+          },
           "retention": {
             "$ref": "#/components/schemas/RetentionIn"
           },
           "schedule": {
             "title": "Schedule",
             "type": "string"
+          },
+          "snapshot_count": {
+            "default": 0,
+            "title": "Snapshot Count",
+            "type": "integer"
+          },
+          "stored_bytes": {
+            "default": 0,
+            "title": "Stored Bytes",
+            "type": "integer"
           },
           "target_id": {
             "anyOf": [
@@ -8075,6 +8407,18 @@
               }
             ],
             "title": "Enabled"
+          },
+          "full_schedule": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Schedule"
           },
           "name": {
             "anyOf": [
@@ -8287,6 +8631,91 @@
           }
         },
         "summary": "Account Facets",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/accounts/groups": {
+      "get": {
+        "description": "Accounts counted per value of one field, with the same search and filters as the\nlist. A date is grouped by month (\"2026-03\"); an empty value is ``null``.",
+        "operationId": "account_groups_api_accounts_groups_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "title": "Group By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "f",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "F"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountGroup"
+                  },
+                  "title": "Response Account Groups Api Accounts Groups Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Groups",
         "tags": [
           "accounts"
         ]
@@ -13167,6 +13596,73 @@
         ]
       }
     },
+    "/api/policies/{policy_id}/runs": {
+      "get": {
+        "description": "Execution history of a policy, newest first.",
+        "operationId": "policy_runs_api_policies__policy_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PolicyRunOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Policy Runs",
+        "tags": [
+          "policies"
+        ]
+      }
+    },
     "/api/restores": {
       "post": {
         "operationId": "start_restore_api_restores_post",
@@ -13973,6 +14469,132 @@
         "summary": "Revoke Role",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/views": {
+      "get": {
+        "description": "The caller's views of a page, then the views others shared.",
+        "operationId": "list_views_api_views_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "enum": [
+                "accounts",
+                "jobs"
+              ],
+              "title": "Page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ViewOut"
+                  },
+                  "title": "Response List Views Api Views Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Views",
+        "tags": [
+          "views"
+        ]
+      },
+      "post": {
+        "operationId": "create_view_api_views_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ViewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create View",
+        "tags": [
+          "views"
+        ]
+      }
+    },
+    "/api/views/{view_id}": {
+      "delete": {
+        "operationId": "delete_view_api_views__view_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "view_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "View Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete View",
+        "tags": [
+          "views"
         ]
       }
     },
