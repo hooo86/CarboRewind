@@ -42,6 +42,7 @@ export const EVENTS = [
   "blacklisted",
   "blacklist_cleared",
   "restore_test_failed",
+  "ip_blocked",
 ];
 
 type Form = Omit<

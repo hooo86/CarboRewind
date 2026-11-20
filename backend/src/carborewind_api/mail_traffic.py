@@ -356,11 +356,28 @@ async def pending_ip_actions(db: AsyncSession) -> list[dict[str, Any]]:
     return [{"id": str(a.id), "action": a.action, "ip": a.ip} for a in rows]
 
 
-async def record_logins(db: AsyncSession, hours: list[dict[str, Any]]) -> None:
-    """Upsert the failed logins / suspensions per hour and IP (absolute counters)."""
+# Blocks older than this when first reported (e.g. the first read of an old log) are not
+# alerted: the alert is about what happens now.
+ALERT_RECENT = timedelta(hours=2)
+
+
+async def record_logins(
+    db: AsyncSession, hours: list[dict[str, Any]], now: datetime | None = None
+) -> None:
+    """Upsert the failed logins / suspensions per hour and IP (absolute counters), and
+    alert (``ip_blocked``) on each new block by Carbonio."""
+    now = now or datetime.now(UTC)
     for h in hours:
         hour = hour_start(datetime.fromisoformat(h["hour"]))
-        rows = []
+        known = {
+            ip: last
+            for ip, last in await db.execute(
+                select(LoginFailure.ip, LoginFailure.last_suspended_at).where(
+                    LoginFailure.hour == hour
+                )
+            )
+        }
+        rows: list[dict[str, Any]] = []
         for ip, c in (h.get("ips") or {}).items():
             last = c.get("last_suspended")
             rows.append(
@@ -374,6 +391,19 @@ async def record_logins(db: AsyncSession, hours: list[dict[str, Any]]) -> None:
                     "accounts": [str(a)[:320] for a in c.get("accounts", [])][:10],
                 }
             )
+        for row in rows:
+            last = row["last_suspended_at"]
+            before = known.get(row["ip"])
+            if last and (before is None or last > before) and last >= now - ALERT_RECENT:
+                await notify(
+                    db,
+                    "ip_blocked",
+                    dedup_key=f"ip_blocked:{row['ip']}:{last.isoformat()}",
+                    ip=row["ip"],
+                    at=last.strftime("%Y-%m-%d %H:%M UTC"),
+                    failed=row["failed_mailbox"] + row["failed_smtp"],
+                    accounts=", ".join(row["accounts"]) or "?",
+                )
         for start in range(0, len(rows), 2000):
             stmt = insert(LoginFailure).values(rows[start : start + 2000])
             await db.execute(

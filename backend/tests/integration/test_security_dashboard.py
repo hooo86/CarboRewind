@@ -10,13 +10,22 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, update
+from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
 from carborewind_api import rdns
 from carborewind_api.config import Settings
-from carborewind_api.db.models import Agent, AgentStatus, IpAction, LoginFailure, SpamSender
+from carborewind_api.db.models import (
+    Agent,
+    AgentStatus,
+    AppSetting,
+    IpAction,
+    LoginFailure,
+    Notification,
+    SpamSender,
+)
 from carborewind_api.main import create_app
+from carborewind_api.notifications import SmtpConfig
 from carborewind_api.pki import init_ca
 
 from .test_mail_traffic import hour
@@ -51,6 +60,8 @@ def api(
     with Session(engine) as s, s.begin():
         s.execute(delete(LoginFailure))
         s.execute(delete(IpAction))
+        s.execute(delete(Notification).where(Notification.event == "ip_blocked"))
+        s.execute(delete(AppSetting).where(AppSetting.key == "smtp"))
         s.execute(delete(SpamSender))
     with TestClient(create_app(settings), base_url="https://testserver") as client:
         yield client
@@ -271,3 +282,52 @@ def test_trust_and_untrust_ips(api: TestClient, engine: Engine) -> None:
     api.post("/api/mail/login-filter/trust", json={"ip": "10.1.0.0/16"}, headers=h)
     pending = agent.post("/mail-stats", {"hours": []}).json()["ip_actions"]
     assert [(p["action"], p["ip"]) for p in pending] == [("trust", "10.1.0.0/16")]
+
+
+def test_alert_on_new_blocks(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    with Session(engine) as s, s.begin():
+        s.execute(delete(Notification))
+        s.merge(
+            AppSetting(
+                key="smtp",
+                value=SmtpConfig(
+                    enabled=True, host="smtp.test", sender="cr@example.com", recipients=["o@x.io"]
+                ).to_json(),
+            )
+        )
+    now = datetime.now(UTC)
+
+    def report(ip: str, last: datetime) -> None:
+        agent.post(
+            "/mail-stats",
+            {
+                "hours": [],
+                "security": [
+                    {
+                        "hour": last.replace(minute=0, second=0, microsecond=0).isoformat(),
+                        "ips": {
+                            ip: {
+                                "failed_mailbox": 11,
+                                "suspended": 1,
+                                "last_suspended": last.isoformat(),
+                                "accounts": ["ana@lnhc.dz"],
+                            }
+                        },
+                    }
+                ],
+            },
+        )
+
+    def alerts() -> list[Notification]:
+        with Session(engine) as s:
+            return list(s.scalars(select(Notification).where(Notification.event == "ip_blocked")))
+
+    report("203.0.113.9", now - timedelta(minutes=1))
+    report("203.0.113.9", now - timedelta(minutes=1))  # same block reported again
+    report("198.51.100.7", now - timedelta(hours=3))  # old block (first read of the log)
+    [alert] = alerts()
+    assert "203.0.113.9" in alert.subject and "ana@lnhc.dz" in alert.body
+    report("203.0.113.9", now)  # blocked again
+    assert len(alerts()) == 2

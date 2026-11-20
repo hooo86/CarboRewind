@@ -639,6 +639,7 @@ export const resources = {
           blacklisted: "Adresse du serveur en liste noire",
           blacklist_cleared: "Adresse retirée d'une liste noire",
           restore_test_failed: "Test de restauration automatique en échec",
+          ip_blocked: "Adresse IP bloquée par Carbonio (connexions échouées)",
         },
         digestHour: "Heure du résumé",
         saved: "Paramètres enregistrés.",
@@ -1376,6 +1377,9 @@ export const resources = {
         disable: "Suspendre",
         delete: "Supprimer",
         deleteTitle: "Supprimer la politique {{name}}",
+        editTitle: "Modifier la politique {{name}}",
+        disableTitle: "Suspendre la politique {{name}}",
+        enableTitle: "Réactiver la politique {{name}}",
         confirmDelete:
           "Supprimer la politique « {{name}} » ? Les sauvegardes existantes sont conservées.",
         full: "Sauvegarde complète en plus",
@@ -1438,6 +1442,11 @@ export const resources = {
         blacklisted:
           "Adresse(s) du serveur en liste noire : {{list}}. Des destinataires peuvent refuser vos messages.",
         seeAccounts: "Voir les comptes",
+        ipBlocked_one:
+          "Carbonio bloque en ce moment une adresse IP après des connexions échouées : {{list}}.",
+        ipBlocked_other:
+          "Carbonio bloque en ce moment {{count}} adresses IP après des connexions échouées : {{list}}.",
+        seeBlocked: "Voir les IP bloquées",
         createPolicy: "Créer une politique",
       },
       restore: {
@@ -2165,6 +2174,7 @@ export const resources = {
           blacklisted: "Server address blacklisted",
           blacklist_cleared: "Address removed from a blacklist",
           restore_test_failed: "Automatic restore test failed",
+          ip_blocked: "IP address blocked by Carbonio (failed logins)",
         },
         digestHour: "Digest hour",
         saved: "Settings saved.",
@@ -2888,6 +2898,9 @@ export const resources = {
         disable: "Pause",
         delete: "Delete",
         deleteTitle: "Delete policy {{name}}",
+        editTitle: "Edit policy {{name}}",
+        disableTitle: "Pause policy {{name}}",
+        enableTitle: "Resume policy {{name}}",
         confirmDelete: "Delete policy “{{name}}”? Existing backups are kept.",
         full: "Additional full backup",
         fullHint:
@@ -2950,6 +2963,11 @@ export const resources = {
         blacklisted:
           "Server address(es) blacklisted: {{list}}. Recipients may refuse your messages.",
         seeAccounts: "See accounts",
+        ipBlocked_one:
+          "Carbonio is blocking an IP address after failed logins: {{list}}.",
+        ipBlocked_other:
+          "Carbonio is blocking {{count}} IP addresses after failed logins: {{list}}.",
+        seeBlocked: "See the blocked IPs",
         createPolicy: "Create a policy",
       },
       restore: {

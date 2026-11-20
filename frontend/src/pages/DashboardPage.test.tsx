@@ -197,6 +197,32 @@ const spam = {
 };
 
 describe("customizable dashboard", () => {
+  it("warns while Carbonio blocks an IP", async () => {
+    open(user("super_admin"), {
+      "GET /api/me/dashboard": { widgets: [] },
+      "GET /api/mail/security": {
+        ...security,
+        ips: [
+          { ...security.ips[0], recently_blocked: true, trusted: false },
+          {
+            ...security.ips[0],
+            ip: "198.51.100.1",
+            recently_blocked: true,
+            trusted: true,
+          },
+        ],
+      },
+    });
+    expect(
+      await screen.findByText(
+        /Carbonio is blocking an IP address after failed logins: 203.0.113.9\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "See the blocked IPs" }),
+    ).toHaveAttribute("href", "/mail");
+  });
+
   it("points to failed logins when the widget only shows blocked IPs", async () => {
     open(user("super_admin"), {
       "GET /api/me/dashboard": {

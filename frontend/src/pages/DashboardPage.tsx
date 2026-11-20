@@ -10,6 +10,7 @@ import type {
   Domain,
   Job,
   JobStatus,
+  LoginSecurity,
   MailOverview,
   MailPeriod,
   Page,
@@ -757,6 +758,18 @@ export function DashboardPage() {
     15000,
   );
   const [policies] = useLoad<Policy[]>(() => api.policies(), []);
+  const [blocked] = useLoad<LoginSecurity | null>(
+    () =>
+      canManageSettings
+        ? api.mailSecurity("24h", true, 20)
+        : Promise.resolve(null),
+    [canManageSettings],
+    60000,
+  );
+  const blockedNow =
+    blocked.state === "ready" && blocked.data
+      ? blocked.data.ips.filter((ip) => ip.recently_blocked && !ip.trusted)
+      : [];
   const [saved, setSaved] = useState<Widget[] | null | undefined>(undefined);
   const [draft, setDraft] = useState<Widget[] | null>(null);
   const [adding, setAdding] = useState<WidgetType>("jobs");
@@ -852,6 +865,15 @@ export function DashboardPage() {
             list: stats.data.blacklisted?.join(", "),
           })}{" "}
           <Link to="/monitoring">{t("alerts.seeMonitoring")}</Link>
+        </p>
+      )}
+      {blockedNow.length > 0 && (
+        <p role="alert" className="alert error">
+          {t("alerts.ipBlocked", {
+            count: blockedNow.length,
+            list: blockedNow.map((ip) => ip.ip).join(", "),
+          })}{" "}
+          <Link to="/mail">{t("alerts.seeBlocked")}</Link>
         </p>
       )}
       {policies.state === "ready" && !policies.data.some((p) => p.enabled) && (

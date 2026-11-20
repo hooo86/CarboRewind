@@ -6,6 +6,13 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Alerte **« Adresse IP bloquée par Carbonio »** (e-mail et Telegram, activée par défaut) à
+  chaque nouveau blocage après des connexions échouées, avec les comptes visés ; bandeau sur le
+  tableau de bord tant qu'une adresse est bloquée.
+- Sauvegardes programmées : boutons d'action en icônes (historique, exécuter, modifier,
+  suspendre / réactiver, supprimer), libellé au survol.
+
+### Added
 - IP bloquées : bouton **Débloquer** (l'agent ajoute l'adresse aux adresses de confiance de
   Carbonio, `zimbraHttpThrottleSafeIPs` : elle n'est plus jamais bloquée), « Retirer la
   confiance », liste des adresses de confiance avec ajout d'une adresse ou d'un réseau, règle

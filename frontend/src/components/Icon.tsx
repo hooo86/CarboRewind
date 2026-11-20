@@ -16,6 +16,12 @@ const PATHS: Record<string, string> = {
   logout: "M9 21H5V3h4M16 17l5-5-5-5M21 12H9",
   logs: "M4 4h16v16H4zM8 9h8M8 13h8M8 17h5",
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4.4 3.6-8 8-8s8 3.6 8 8",
+  history: "M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7v5l3 2",
+  play: "M7 4l13 8-13 8z",
+  pause: "M7 4h4v16H7zM13 4h4v16h-4z",
+  edit: "M4 20h4L19 9l-4-4L4 16zM14 6l4 4",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
+  resume: "M5 12a7 7 0 1 0 2-5M5 4v4h4M10 9l5 3-5 3z",
 };
 
 export type IconName = keyof typeof PATHS;

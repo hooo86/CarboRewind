@@ -230,7 +230,7 @@ describe("policies page", () => {
     const row = (await screen.findByText("Nightly")).closest(
       "tr",
     ) as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(row).getByRole("button", { name: /^Edit policy / }));
     expect(screen.getByLabelText("Scope")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Time"), {
       target: { value: "03:00" },
@@ -239,7 +239,9 @@ describe("policies page", () => {
     await waitFor(() => expect(patched()?.schedule).toBe("0 3 * * *"));
     expect(patched()).not.toHaveProperty("target_type");
 
-    fireEvent.click(within(row).getByRole("button", { name: "Pause" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Pause policy / }),
+    );
     await waitFor(() => expect(patched()).toEqual({ enabled: false }));
     fireEvent.click(
       within(row).getByRole("button", { name: "Delete policy Nightly" }),
@@ -268,7 +270,9 @@ describe("policies page", () => {
     const row = (await screen.findByText("Nightly")).closest(
       "tr",
     ) as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Pause" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Pause policy / }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("forbidden");
     vi.mocked(window.confirm).mockReturnValue(false);
     fireEvent.click(
@@ -366,7 +370,7 @@ describe("policies page", () => {
       "tr",
     ) as HTMLElement;
     expect(
-      within(own).getByRole("button", { name: "Edit" }),
+      within(own).getByRole("button", { name: /^Edit policy / }),
     ).toBeInTheDocument();
     const other = screen.getByText("Other").closest("tr") as HTMLElement;
     // Only the history: no run, edit, suspend or delete.

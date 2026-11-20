@@ -69,6 +69,7 @@ EVENTS = (
     "blacklisted",
     "blacklist_cleared",
     "restore_test_failed",
+    "ip_blocked",
 )
 # Events sent to Telegram by default: the ones someone must act on now.
 URGENT_EVENTS = {
@@ -82,6 +83,7 @@ URGENT_EVENTS = {
     "mail_queue",
     "blacklisted",
     "restore_test_failed",
+    "ip_blocked",
 }
 TELEGRAM_KEY = "telegram"
 TELEGRAM_API = "https://api.telegram.org"
@@ -302,6 +304,14 @@ TEXTS: dict[str, dict[str, str]] = {
             "la cause (boîte compromise, envoi massif : voir Trafic mail), corrigez-la puis "
             "demandez le retrait sur le site de la liste.\n"
         ),
+        "ip_blocked": "[CarboRewind] Adresse IP bloquée par Carbonio : {ip}",
+        "ip_blocked_body": (
+            "Carbonio a bloqué l'adresse {ip} le {at} après des connexions échouées répétées "
+            "({failed} échec(s) dans l'heure ; comptes visés : {accounts}).\nSi c'est une "
+            "attaque, rien à faire : le blocage se lève seul à la fin du délai. Si c'est une "
+            "adresse légitime (réseau de l'entreprise), débloquez-la dans CarboRewind : Trafic "
+            "mail → Connexions échouées et IP bloquées.\n"
+        ),
         "blacklist_cleared": "[CarboRewind] Adresse {ip} retirée de {zone}",
         "blacklist_cleared_body": "L'adresse {ip} n'apparaît plus dans la liste noire {zone}.\n",
         "service_down": "[CarboRewind] Service Carbonio arrêté : {service}",
@@ -416,6 +426,14 @@ TEXTS: dict[str, dict[str, str]] = {
             "Some recipients may refuse your messages. Find the cause (compromised mailbox, "
             "mass mailing: see Mail traffic), fix it, then ask for removal on the list's "
             "site.\n"
+        ),
+        "ip_blocked": "[CarboRewind] IP address blocked by Carbonio: {ip}",
+        "ip_blocked_body": (
+            "Carbonio blocked the address {ip} at {at} after repeated failed logins "
+            "({failed} failure(s) in the hour; targeted accounts: {accounts}).\nIf it is an "
+            "attack, nothing to do: the block ends with its delay. If it is a legitimate "
+            "address (company network), unblock it in CarboRewind: Mail traffic → Failed "
+            "logins and blocked IPs.\n"
         ),
         "blacklist_cleared": "[CarboRewind] Address {ip} removed from {zone}",
         "blacklist_cleared_body": "The address {ip} is no longer listed in {zone}.\n",

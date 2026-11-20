@@ -22,6 +22,7 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
+import { IconButton } from "../components/IconButton";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
 
 type Preset = "daily" | "weekly" | "custom";
@@ -961,60 +962,60 @@ export function PoliciesPage() {
                         />
                       </td>
                       <td>
-                        <span className="actions wrap-actions">
-                          <button
-                            type="button"
-                            className="small secondary"
-                            aria-label={t("policies.historyOf", {
-                              name: p.name,
-                            })}
+                        <span className="actions icon-actions">
+                          <IconButton
+                            icon="history"
+                            label={t("policies.history")}
+                            title={t("policies.historyOf", { name: p.name })}
+                            pressed={history?.id === p.id}
                             onClick={() =>
                               setHistory(history?.id === p.id ? null : p)
                             }
-                          >
-                            {t("policies.history")}
-                          </button>
+                          />
+                          {owns(p, domainList) && (
+                            <>
+                              <IconButton
+                                icon="play"
+                                tone="primary"
+                                label={t("policies.run")}
+                                title={t("policies.runTitle", { name: p.name })}
+                                onClick={() => void runNow(p)}
+                              />
+                              <IconButton
+                                icon="edit"
+                                label={t("policies.editShort")}
+                                title={t("policies.editTitle", {
+                                  name: p.name,
+                                })}
+                                onClick={() => setEditing(p)}
+                              />
+                              <IconButton
+                                icon={p.enabled ? "pause" : "resume"}
+                                label={
+                                  p.enabled
+                                    ? t("policies.disable")
+                                    : t("policies.enable")
+                                }
+                                title={t(
+                                  p.enabled
+                                    ? "policies.disableTitle"
+                                    : "policies.enableTitle",
+                                  { name: p.name },
+                                )}
+                                onClick={() => void toggle(p)}
+                              />
+                              <IconButton
+                                icon="trash"
+                                tone="danger"
+                                label={t("policies.delete")}
+                                title={t("policies.deleteTitle", {
+                                  name: p.name,
+                                })}
+                                onClick={() => void remove(p)}
+                              />
+                            </>
+                          )}
                         </span>
-                        {owns(p, domainList) && (
-                          <span className="actions wrap-actions">
-                            <button
-                              type="button"
-                              className="small"
-                              aria-label={t("policies.runTitle", {
-                                name: p.name,
-                              })}
-                              onClick={() => void runNow(p)}
-                            >
-                              {t("policies.run")}
-                            </button>
-                            <button
-                              type="button"
-                              className="small secondary"
-                              onClick={() => setEditing(p)}
-                            >
-                              {t("policies.editShort")}
-                            </button>
-                            <button
-                              type="button"
-                              className="small secondary"
-                              onClick={() => void toggle(p)}
-                            >
-                              {p.enabled
-                                ? t("policies.disable")
-                                : t("policies.enable")}
-                            </button>
-                            <button
-                              type="button"
-                              className="small secondary"
-                              aria-label={t("policies.deleteTitle", {
-                                name: p.name,
-                              })}
-                              onClick={() => void remove(p)}
-                            >
-                              {t("policies.delete")}
-                            </button>
-                          </span>
-                        )}
                       </td>
                     </tr>
                   ))}
