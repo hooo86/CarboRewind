@@ -68,13 +68,32 @@ def test_counts_failures_and_suspensions_per_ip() -> None:
     assert attacker["last_suspended"] == "2026-11-19T10:07:30+00:00"
     assert attacker["accounts"] == ["ana@lnhc.dz"]  # oip wins over the proxy's ip
     assert ips["198.51.100.7"]["accounts"] == ["ben@lnhc.dz"]
+    assert attacker["last_failed"] == "2026-11-19T10:08:00+00:00"  # the SMTP one, later
     assert ips["2001:db8::5"] == {
         "failed_mailbox": 0,
         "failed_smtp": 1,
         "suspended": 0,
         "last_suspended": None,
+        "last_failed": "2026-11-19T10:09:00+00:00",
         "accounts": ["carl@lnhc.dz"],
     }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Access to IP 198.51.100.20 suspended, for repeated failed login.",
+        "Suspending IP address 198.51.100.20 due to too many failed login attempts",
+        "IP 198.51.100.20 has been suspended for 5 minutes",
+        "suspended access to IP 198.51.100.20",
+    ],
+)
+def test_suspension_variants(text: str) -> None:
+    agg = AuthAggregator(tz=UTC)
+    agg.feed_mailbox(f"2026-11-19 10:07:30,500 INFO  [qtp1-30] [] misc - {text}")
+    assert agg.hours[HOUR]["198.51.100.20"].suspended == 1
+    agg.feed_mailbox("2026-11-19 10:07:31,000 INFO  [x] [] misc - account suspended for x@y")
+    assert list(agg.hours[HOUR]) == ["198.51.100.20"]
 
 
 def test_bounds_prune_and_state() -> None:

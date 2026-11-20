@@ -62,6 +62,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
 
 ### Fixed
+- IP bloquées : « Dernier échec » affichait une heure future (fin de l'heure en cours) ;
+  l'agent envoie maintenant l'heure exacte du dernier échec (migration 0020). Bouton « Toujours
+  autoriser » / « Débloquer » pour chaque adresse, y compris dans le widget. Reconnaissance des
+  lignes de blocage plus tolérante (variantes du message de Carbonio).
 - Page Sauvegardes en erreur (HTTP 500) dès qu'une exécution lisait plus de 2 Go : les
   volumes sont additionnés en entiers 64 bits. Une erreur sans détail affiche désormais son
   code HTTP au lieu d'un message vide.

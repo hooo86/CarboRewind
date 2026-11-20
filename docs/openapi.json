@@ -3651,6 +3651,18 @@
             "title": "Failed Smtp",
             "type": "integer"
           },
+          "last_failed": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failed"
+          },
           "last_suspended": {
             "anyOf": [
               {

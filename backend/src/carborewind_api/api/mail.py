@@ -345,6 +345,7 @@ async def login_security(
             func.sum(LoginFailure.failed_smtp).label("smtp"),
             func.sum(LoginFailure.suspended).label("suspended"),
             func.max(LoginFailure.last_suspended_at).label("last_suspended"),
+            func.max(LoginFailure.last_failed_at).label("last_failed"),
             func.min(LoginFailure.hour).label("first"),
             func.max(LoginFailure.hour).label("last"),
             func.jsonb_agg(LoginFailure.accounts).label("accounts"),
@@ -410,7 +411,9 @@ async def login_security(
                 recently_blocked=until(r.last_suspended) is not None,
                 blocked_until=until(r.last_suspended),
                 first_seen=r.first,
-                last_seen=r.last + timedelta(hours=1),
+                # Exact time from agents that report it, else the end of the hour (not
+                # in the future: the hour may still be running).
+                last_seen=r.last_failed or min(r.last + timedelta(hours=1), now),
                 accounts=accounts(r.accounts),
                 trusted=_covered(r.ip, safe),
                 pending=pending.get(r.ip),

@@ -869,6 +869,7 @@ class LoginFailure(Base):
     failed_smtp: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     suspended: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     last_suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     accounts: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
 
     __table_args__ = (Index("ix_login_failures_hour", "hour"),)

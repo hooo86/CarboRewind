@@ -459,6 +459,7 @@ class LoginCountsIn(BaseModel):
     failed_smtp: int = Field(default=0, ge=0)
     suspended: int = Field(default=0, ge=0)
     last_suspended: datetime | None = None
+    last_failed: datetime | None = None
     accounts: list[str] = Field(default_factory=list, max_length=10)
 
 

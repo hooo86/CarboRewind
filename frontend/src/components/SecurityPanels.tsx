@@ -235,18 +235,16 @@ export function BlockedIpsPanel({
                               onDone={done(ip.ip, "untrust")}
                             />
                           ) : (
-                            (ip.suspended > 0 || !compact) && (
-                              <IpButton
-                                ip={ip.ip}
-                                action="trust"
-                                label={
-                                  ip.suspended > 0
-                                    ? t("loginSecurity.unblock")
-                                    : t("loginSecurity.allow")
-                                }
-                                onDone={done(ip.ip, "trust")}
-                              />
-                            )
+                            <IpButton
+                              ip={ip.ip}
+                              action="trust"
+                              label={
+                                ip.suspended > 0
+                                  ? t("loginSecurity.unblock")
+                                  : t("loginSecurity.allow")
+                              }
+                              onDone={done(ip.ip, "trust")}
+                            />
                           )}
                         </td>
                       </tr>

@@ -764,4 +764,10 @@ CREATE TABLE ip_actions (
 
 UPDATE alembic_version SET version_num='0019' WHERE alembic_version.version_num = '0018';
 
+-- Running upgrade 0019 -> 0020
+
+ALTER TABLE login_failures ADD COLUMN last_failed_at TIMESTAMP WITH TIME ZONE;
+
+UPDATE alembic_version SET version_num='0020' WHERE alembic_version.version_num = '0019';
+
 COMMIT;

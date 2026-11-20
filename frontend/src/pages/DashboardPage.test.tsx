@@ -274,6 +274,9 @@ describe("customizable dashboard", () => {
     });
     expect(await within(blocked).findByText("203.0.113.9")).toBeInTheDocument();
     expect(within(blocked).getByText("blocked")).toBeInTheDocument();
+    expect(
+      within(blocked).getByRole("button", { name: "Unblock 203.0.113.9" }),
+    ).toBeInTheDocument(); // the action exists in the half-width widget too
     const origin = screen.getByRole("region", { name: "Spam origin" });
     expect(
       await within(origin).findByText("spammer.co.uk"),

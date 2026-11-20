@@ -380,6 +380,7 @@ async def record_logins(
         rows: list[dict[str, Any]] = []
         for ip, c in (h.get("ips") or {}).items():
             last = c.get("last_suspended")
+            last_failed = c.get("last_failed")
             rows.append(
                 {
                     "hour": hour,
@@ -388,6 +389,9 @@ async def record_logins(
                     "failed_smtp": int(c.get("failed_smtp", 0)),
                     "suspended": int(c.get("suspended", 0)),
                     "last_suspended_at": datetime.fromisoformat(last) if last else None,
+                    "last_failed_at": (
+                        datetime.fromisoformat(last_failed) if last_failed else None
+                    ),
                     "accounts": [str(a)[:320] for a in c.get("accounts", [])][:10],
                 }
             )
@@ -414,6 +418,7 @@ async def record_logins(
                         "failed_smtp": stmt.excluded.failed_smtp,
                         "suspended": stmt.excluded.suspended,
                         "last_suspended_at": stmt.excluded.last_suspended_at,
+                        "last_failed_at": stmt.excluded.last_failed_at,
                         "accounts": stmt.excluded.accounts,
                     },
                 )

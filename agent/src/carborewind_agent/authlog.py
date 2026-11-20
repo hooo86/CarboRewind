@@ -28,7 +28,14 @@ from typing import Any
 from .maillog import hour_of, parse_time
 
 _MAILBOX_TIME = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})")
-_SUSPENDED = re.compile(r"Access to IP ([0-9A-Fa-f.:]+) suspended", re.IGNORECASE)
+# "Access to IP 203.0.113.9 suspended, for repeated failed login." and close variants
+# ("Suspending IP address 203.0.113.9 …", "IP 203.0.113.9 has been suspended …").
+_SUSPENDED = re.compile(
+    r"(?:IP|address)\s+(?:address\s+)?([0-9A-Fa-f]{1,4}[0-9A-Fa-f.:]*[0-9A-Fa-f])\b[^\n]*?suspend"
+    r"|suspend\w*\s+(?:access\s+(?:to|from)\s+)?(?:IP|address)\s+(?:address\s+)?"
+    r"([0-9A-Fa-f]{1,4}[0-9A-Fa-f.:]*[0-9A-Fa-f])\b",
+    re.IGNORECASE,
+)
 _AUTH_FAILED = re.compile(r"authentication failed for \[?([^\]\s,]+)\]?", re.IGNORECASE)
 _CONTEXT_IP = re.compile(r"[\[;]oip=([0-9A-Fa-f.:]+)")
 _CONTEXT_FALLBACK = re.compile(r"[\[;]ip=([0-9A-Fa-f.:]+)")
@@ -67,6 +74,7 @@ class IpCounts:
     failed_smtp: int = 0
     suspended: int = 0
     last_suspended: str | None = None
+    last_failed: str | None = None
     accounts: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict[str, Any]:
@@ -75,6 +83,7 @@ class IpCounts:
             "failed_smtp": self.failed_smtp,
             "suspended": self.suspended,
             "last_suspended": self.last_suspended,
+            "last_failed": self.last_failed,
             "accounts": self.accounts,
         }
 
@@ -85,6 +94,7 @@ class IpCounts:
             failed_smtp=int(data.get("failed_smtp", 0)),
             suspended=int(data.get("suspended", 0)),
             last_suspended=data.get("last_suspended"),
+            last_failed=data.get("last_failed"),
             accounts=list(data.get("accounts", []))[:MAX_ACCOUNTS],
         )
 
@@ -112,13 +122,14 @@ class AuthAggregator:
 
     def feed_mailbox(self, line: str) -> None:
         """One line of mailbox.log."""
-        if "suspended" not in line and "authentication failed" not in line:
+        lowered = line.lower()
+        if "suspend" not in lowered and "authentication failed" not in lowered:
             return
         stamp = mailbox_time(line, self.tz)
         if stamp is None:
             return
-        if (m := _SUSPENDED.search(line)) is not None:
-            ip = _valid_ip(m.group(1))
+        if "suspend" in lowered and (m := _SUSPENDED.search(line)) is not None:
+            ip = _valid_ip(m.group(1) or m.group(2))
             counts = self._counts(stamp, ip) if ip else None
             if counts is not None:
                 counts.suspended += 1
@@ -131,6 +142,7 @@ class AuthAggregator:
         counts = self._counts(stamp, ip) if ip else None
         if counts is not None:
             counts.failed_mailbox += 1
+            counts.last_failed = max(counts.last_failed or "", stamp.isoformat())
             self._account(counts, m.group(1))
 
     def feed_mta(self, line: str, now: datetime | None = None) -> None:
@@ -147,6 +159,7 @@ class AuthAggregator:
         counts = self._counts(stamp, ip)
         if counts is not None:
             counts.failed_smtp += 1
+            counts.last_failed = max(counts.last_failed or "", stamp.isoformat())
             user = _SASL_USER.search(line)
             self._account(counts, user.group(1) if user else None)
 
