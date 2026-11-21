@@ -218,6 +218,8 @@ class BlacklistSettingsIn(BaseModel):
             clean = name.strip().strip(".").lower()
             if not re.fullmatch(r"([a-z0-9-]{1,63}\.)+[a-z]{2,63}", clean):
                 raise ValueError(f"invalid list zone {name!r}")
+            if clean in blacklist.DEAD_ZONES:
+                raise ValueError(f"{clean}: list shut down ({blacklist.DEAD_ZONES[clean]})")
             out.append(clean)
         return list(dict.fromkeys(out))
 

@@ -153,3 +153,24 @@ def test_listing_and_removal_are_notified(api: TestClient, engine: Engine, migra
 
     domain_admin = login(api, engine, Role.DOMAIN_ADMIN)
     assert api.get("/api/monitoring/blacklist", headers=domain_admin).status_code == 403
+
+
+def test_shut_down_lists_are_dropped() -> None:
+    saved = {"zones": ["zen.spamhaus.org", "ix.dnsbl.manitu.net", "dnsbl.sorbs.net"]}
+    cfg = blacklist.BlacklistSettings.from_json(saved)
+    assert cfg.zones == ["zen.spamhaus.org", "bl.mailspike.net"]
+    kept = blacklist.BlacklistSettings.from_json(
+        {"zones": ["bl.mailspike.net", "ix.dnsbl.manitu.net"]}
+    )
+    assert kept.zones == ["bl.mailspike.net"]
+    assert "ix.dnsbl.manitu.net" not in blacklist.DEFAULT_ZONES
+
+
+def test_a_shut_down_list_cannot_be_saved(api: TestClient, engine: Engine, migrated: str) -> None:
+    h = login(api, engine)
+    r = api.put(
+        "/api/monitoring/blacklist",
+        json={"enabled": True, "ips": ["203.0.113.5"], "zones": ["ix.dnsbl.manitu.net"]},
+        headers=h,
+    )
+    assert r.status_code == 422 and "shut down" in r.text

@@ -37,9 +37,18 @@ DEFAULT_ZONES = [
     "bl.spamcop.net",
     "b.barracudacentral.org",
     "psbl.surriel.com",
-    "ix.dnsbl.manitu.net",
+    "bl.mailspike.net",
     "dnsbl-1.uceprotect.net",
 ]
+# Lists that stopped answering for good: never queried, removed from saved settings. A dead
+# list may later answer "listed" for every address (wildcard), so it must not be kept.
+DEAD_ZONES = {
+    "ix.dnsbl.manitu.net": "NiX Spam, fermée le 16 janvier 2025",
+    "dnsbl.sorbs.net": "SORBS, fermée en juin 2024",
+    "dnsbl.njabl.org": "NJABL, fermée en 2013",
+}
+# Live list proposed in place of a dead one that was in the saved settings.
+REPLACEMENT = "bl.mailspike.net"
 TIMEOUT = 5.0
 PARALLEL = 10
 
@@ -60,6 +69,10 @@ class BlacklistSettings:
         for key, value in (data or {}).items():
             if hasattr(out, key):
                 setattr(out, key, value)
+        dead = [z for z in out.zones if z in DEAD_ZONES]
+        if dead:
+            live = [z for z in out.zones if z not in DEAD_ZONES]
+            out.zones = live if REPLACEMENT in live else [*live, REPLACEMENT]
         return out
 
 

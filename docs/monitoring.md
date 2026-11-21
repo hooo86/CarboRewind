@@ -55,7 +55,11 @@ sudo su - zextras -c "postqueue -f"
 **Paramètres → Listes noires** : les adresses IP publiques du serveur de messagerie sont
 vérifiées toutes les N minutes (60 par défaut, 15 au minimum) et à la demande, dans les listes
 choisies (par défaut zen.spamhaus.org, bl.spamcop.net, b.barracudacentral.org,
-psbl.surriel.com, ix.dnsbl.manitu.net, dnsbl-1.uceprotect.net).
+psbl.surriel.com, bl.mailspike.net, dnsbl-1.uceprotect.net).
+* Les listes fermées ne sont plus interrogées et sont retirées des réglages déjà enregistrés
+  (remplacées par bl.mailspike.net) : ix.dnsbl.manitu.net (NiX Spam, fermée le 16 janvier
+  2025), dnsbl.sorbs.net (SORBS, juin 2024), dnsbl.njabl.org. Une liste fermée peut se mettre à
+  répondre « listée » pour toutes les adresses ; l'enregistrer est refusé.
 
 * Requête DNS standard : adresse inversée + zone de la liste (IPv4 et IPv6). Réponse en
   `127.0.0.0/8` = listée ; nom inexistant = non listée.
