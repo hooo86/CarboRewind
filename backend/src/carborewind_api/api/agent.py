@@ -499,9 +499,10 @@ class ServiceIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     ok: bool | None
-    source: Literal["carbonio", "port"]
+    source: Literal["carbonio", "port", "mta", "guard"]
     port: int | None = Field(default=None, ge=1, le=65535)
     checked: int | None = None
+    detail: str | None = Field(default=None, max_length=300)
 
 
 class ServicesIn(BaseModel):

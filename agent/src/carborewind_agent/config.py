@@ -61,8 +61,18 @@ class AgentSettings(BaseSettings):
     # server. Ports probed on this host; an empty map disables the probes.
     service_monitor: bool = True
     service_ports: dict[str, int] = Field(
-        default_factory=lambda: {"mta": 25, "amavis": 10024, "lmtp": 7025, "ldap": 389}
+        default_factory=lambda: {
+            "mta": 25,
+            "submission": 587,
+            "smtps": 465,
+            "amavis": 10024,
+            "amavis_return": 10025,
+            "lmtp": 7025,
+            "ldap": 389,
+        }
     )
+    # Status file written by the optional Postfix guard (root script restoring master.cf).
+    postfix_guard_status: Path = Path("/var/lib/postfix-guard/status.json")
     # Copy 02: mirror of the repository on a second share (set by `storage apply`).
     replica_path: Path | None = None
     # Hand-off with the root helper applying the storage settings of the interface.

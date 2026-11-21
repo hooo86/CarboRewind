@@ -100,6 +100,18 @@ async def save_settings(db: AsyncSession, cfg: MonitoringSettings) -> None:
 SERVICES_STALE = timedelta(minutes=5)
 QUEUE_ALERT_EVERY_HOURS = 3
 
+# Readable names, in alerts, for the checks that are not Carbonio services.
+CHECK_LABELS = {
+    "mta:antivirus": "circuit antivirus de Postfix (envoi bloqué : vérifier master.cf)",
+    "mta:milter": "milter de Postfix injoignable (messages refusés)",
+    "mta:policy": "serveur de politique cbpolicyd injoignable (envois refusés)",
+    "guard:master.cf": "garde de master.cf : circuit antivirus absent",
+}
+
+
+def check_label(name: str) -> str:
+    return CHECK_LABELS.get(name, name)
+
 
 async def record_services(
     db: AsyncSession, agent: Agent, report: dict[str, Any], now: datetime
@@ -135,7 +147,7 @@ async def record_services(
                     db,
                     "service_down",
                     dedup_key=f"service_down:{agent.id}:{name}:{cur['since']}",
-                    service=name,
+                    service=check_label(name),
                     agent=agent.name,
                     since=cur["since"],
                 )
@@ -145,7 +157,7 @@ async def record_services(
                     db,
                     "service_up",
                     dedup_key=f"service_up:{agent.id}:{name}:{cur['since']}",
-                    service=name,
+                    service=check_label(name),
                     agent=agent.name,
                     since=cur["since"],
                 )

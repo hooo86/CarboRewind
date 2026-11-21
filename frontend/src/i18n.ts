@@ -855,6 +855,16 @@ export const resources = {
         queue_one: "file d'attente : {{count}} message ({{detail}})",
         queue_other: "file d'attente : {{count}} messages ({{detail}})",
         port: "port {{name}} ({{port}})",
+        check: {
+          mta_antivirus: "Postfix : circuit antivirus",
+          mta_milter: "Postfix : milter",
+          mta_policy: "Postfix : serveur de politique",
+          guard_master_cf: "Garde master.cf",
+        },
+        checkOk: "OK",
+        checkBad: "en panne",
+        postfixAlert:
+          "Envoi des e-mails en panne ({{list}}) : les messages restent dans la file d'attente. Vérifiez master.cf (circuit amavis) ou lancez la garde Postfix, puis « postqueue -f ».",
         running: "en marche",
         stopped: "arrêté",
         unknown: "inconnu",
@@ -2424,6 +2434,16 @@ export const resources = {
         queue_one: "queue: {{count}} message ({{detail}})",
         queue_other: "queue: {{count}} messages ({{detail}})",
         port: "port {{name}} ({{port}})",
+        check: {
+          mta_antivirus: "Postfix: antivirus circuit",
+          mta_milter: "Postfix: milter",
+          mta_policy: "Postfix: policy server",
+          guard_master_cf: "master.cf guard",
+        },
+        checkOk: "OK",
+        checkBad: "failing",
+        postfixAlert:
+          "Mail delivery is failing ({{list}}): messages stay in the queue. Check master.cf (amavis circuit) or run the Postfix guard, then “postqueue -f”.",
         running: "running",
         stopped: "stopped",
         unknown: "unknown",

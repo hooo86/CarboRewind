@@ -23,6 +23,12 @@ from .db.models import AppSetting
 
 KEY = "agent_tuning"
 
+# Probed on the Carbonio host. 587/465: submission; 10025: Amavis hands mail back to
+# Postfix (missing when an upgrade restored the stock master.cf).
+NEW_PORTS = {"submission": 587, "smtps": 465, "amavis_return": 10025}
+DEFAULT_PORTS = {"mta": 25, **NEW_PORTS, "amavis": 10024, "lmtp": 7025, "ldap": 389}
+PORTS_DEFAULTS = 2
+
 
 @dataclass
 class AgentTuning:
@@ -34,10 +40,10 @@ class AgentTuning:
     min_free_percent_local: float = 15.0
     min_free_gb_network: float = 2.0
     service_monitor: bool = True
-    service_ports: dict[str, int] = field(
-        default_factory=lambda: {"mta": 25, "amavis": 10024, "lmtp": 7025, "ldap": 389}
-    )
+    service_ports: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PORTS))
     mail_monitor: bool = True
+    # Version of the default port list the saved settings already include (see from_json).
+    ports_defaults: int = PORTS_DEFAULTS
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> AgentTuning:
@@ -45,6 +51,11 @@ class AgentTuning:
         for key, value in (data or {}).items():
             if hasattr(out, key):
                 setattr(out, key, value)
+        if data and int(data.get("ports_defaults", 1)) < PORTS_DEFAULTS:
+            # Settings saved before the Postfix ports were added: add them once (a port
+            # the administrator removes afterwards stays removed).
+            out.service_ports = {**NEW_PORTS, **dict(out.service_ports)}
+            out.ports_defaults = PORTS_DEFAULTS
         return out
 
 

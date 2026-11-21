@@ -695,9 +695,10 @@ export interface MonitoringSettings {
 export interface ServiceState {
   name: string;
   ok: boolean | null;
-  source: "carbonio" | "port";
+  source: "carbonio" | "port" | "mta" | "guard";
   port?: number | null;
   since?: string | null;
+  detail?: string | null;
 }
 
 export interface ServicesView {

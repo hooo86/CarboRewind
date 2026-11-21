@@ -503,3 +503,74 @@ def test_agent_settings_from_the_interface(api: TestClient, engine: Engine) -> N
     assert any(x["revision"] == 1 for x in applied)
     viewer = login(api, engine, Role.DOMAIN_ADMIN)
     assert api.get("/api/settings/agent", headers=viewer).status_code == 403
+
+
+def test_postfix_checks_alert_with_readable_names(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+
+    def report(ok: bool) -> None:
+        body = {
+            "services": [
+                {
+                    "name": "mta:antivirus",
+                    "ok": ok,
+                    "source": "mta",
+                    **({} if ok else {"detail": "status=deferred (mail transport unavailable)"}),
+                },
+                {"name": "guard:master.cf", "ok": True, "source": "guard", "detail": "amavis: 3"},
+            ],
+        }
+        assert agent.post("/services", body).status_code == 204
+
+    def subjects(event: str) -> set[str]:
+        with Session(engine) as s:
+            return {
+                n.subject
+                for n in s.scalars(select(Notification).where(Notification.event == event))
+                if "Postfix" in n.subject
+            }
+
+    report(True)
+    report(False)
+    report(False)
+    assert subjects("service_down") == {
+        "[CarboRewind] Service Carbonio arrêté : "
+        "circuit antivirus de Postfix (envoi bloqué : vérifier master.cf)"
+    }
+    ov = api.get("/api/monitoring/overview", headers=h).json()
+    mine = next(v for v in ov["services"] if v["down"] == ["mta:antivirus"])
+    first = mine["services"][0]
+    assert first["source"] == "mta" and "transport unavailable" in first["detail"]
+    report(True)
+    assert len(subjects("service_up")) == 1
+    bad = {"services": [{"name": "x", "ok": True, "source": "shell"}]}
+    assert agent.post("/services", bad).status_code == 422
+
+
+def test_saved_agent_settings_gain_the_postfix_ports(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    with Session(engine) as s, s.begin():
+        s.execute(delete(AppSetting).where(AppSetting.key == "agent_tuning"))
+        s.add(
+            AppSetting(
+                key="agent_tuning",
+                value={"revision": 4, "service_ports": {"mta": 25, "ldap": 389}},
+            )
+        )
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["service_ports"] == {
+        "submission": 587,
+        "smtps": 465,
+        "amavis_return": 10025,
+        "mta": 25,
+        "ldap": 389,
+    }
+    shown = api.get("/api/settings/agent", headers=h).json()
+    assert "ports_defaults" not in shown and shown["service_ports"]["amavis_return"] == 10025
+    body = {k: v for k, v in shown.items() if k not in ("revision", "agents")}
+    body["service_ports"] = {"mta": 25}  # the administrator removes them: they stay removed
+    assert api.put("/api/settings/agent", json=body, headers=h).status_code == 200
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["service_ports"] == {"mta": 25}

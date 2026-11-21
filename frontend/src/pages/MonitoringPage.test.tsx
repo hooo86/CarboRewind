@@ -262,8 +262,20 @@ describe("monitoring page", () => {
               { name: "port:amavis", ok: false, source: "port", port: 10024 },
               { name: "mta", ok: true, source: "carbonio" },
               { name: "stats", ok: null, source: "carbonio" },
+              {
+                name: "mta:antivirus",
+                ok: false,
+                source: "mta",
+                detail: "status=deferred (mail transport unavailable)",
+              },
+              {
+                name: "guard:master.cf",
+                ok: true,
+                source: "guard",
+                detail: "amavis: 3 · dpkg-divert: oui",
+              },
             ],
-            down: ["amavis", "port:amavis"],
+            down: ["amavis", "port:amavis", "mta:antivirus"],
             queue: { deferred: 340, active: 2 },
             queue_total: 342,
             errors: [],
@@ -286,6 +298,21 @@ describe("monitoring page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("mta — running")).toBeInTheDocument();
     expect(screen.getByText("stats — unknown")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Mail delivery is failing \(Postfix: antivirus circuit\)/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Postfix: antivirus circuit — failing"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("status=deferred (mail transport unavailable)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("master.cf guard — OK")).toBeInTheDocument();
+    expect(
+      screen.getByText("amavis: 3 · dpkg-divert: oui"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("queue: 342 messages (deferred 340, active 2)"),
     ).toHaveClass("bad-text");

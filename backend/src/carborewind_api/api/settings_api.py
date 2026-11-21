@@ -649,6 +649,12 @@ class AgentTuningOut(AgentTuningIn):
     agents: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _tuning_out(cfg: agent_tuning.AgentTuning) -> dict[str, Any]:
+    data = asdict(cfg)
+    data.pop("ports_defaults", None)  # internal bookkeeping
+    return data
+
+
 @router.get("/agent", response_model=AgentTuningOut)
 async def get_agent_tuning(principal: Admin, db: DbSession) -> AgentTuningOut:
     cfg = await agent_tuning.load(db)
@@ -658,7 +664,7 @@ async def get_agent_tuning(principal: Admin, db: DbSession) -> AgentTuningOut:
             select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
         )
     ]
-    return AgentTuningOut(**asdict(cfg), agents=agents)
+    return AgentTuningOut(**_tuning_out(cfg), agents=agents)
 
 
 @router.put("/agent", response_model=AgentTuningOut)
@@ -679,7 +685,7 @@ async def put_agent_tuning(
         target_id="agent",
         details=body.model_dump(),
     )
-    return AgentTuningOut(**asdict(new), agents=[])
+    return AgentTuningOut(**_tuning_out(new), agents=[])
 
 
 # ------------------------------------------------------------------ Telegram

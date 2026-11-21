@@ -7,7 +7,9 @@ Every minute it reports to the server:
   :data:`STALE` (the stats service that records it may be down itself);
 * whether the essential local ports answer (MTA 25, Amavis 10024, LMTP 7025, LDAP 389):
   this works even when the admin API does not;
-* the size of the MTA queues (``GetMailQueueInfoRequest``), when Carbonio answers.
+* the size of the MTA queues (``GetMailQueueInfoRequest``), when Carbonio answers;
+* whether Postfix can actually deliver (:mod:`.mtahealth`: antivirus circuit, milter,
+  policy server, read from the MTA log; the Postfix guard's status when installed).
 
 The server decides when to alert (a service down on two reports in a row) and when the
 service is back.
@@ -24,6 +26,7 @@ from typing import Any
 
 from .api_client import AgentApi, ApiError
 from .carbonio import CarbonioClient, SoapFaultError
+from .mtahealth import MtaHealth
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +61,7 @@ def collect(
     *,
     now: float | None = None,
     probe: Any = port_open,
+    mta: MtaHealth | None = None,
 ) -> dict[str, Any]:
     """One report: ``{"checked_at", "services": [...], "queue": {...} | None, "errors"}``."""
     now = time.time() if now is None else now
@@ -87,6 +91,10 @@ def collect(
         services.append(
             {"name": f"port:{name}", "ok": bool(probe(port)), "source": "port", "port": port}
         )
+    if mta is not None:
+        extra, mta_errors = mta.collect(now)
+        services.extend(extra)
+        errors.extend(mta_errors)
     queue: dict[str, int] | None = None
     if servers:
         queue = {}
@@ -114,11 +122,13 @@ class ServiceMonitor:
         ports: dict[str, int],
         *,
         interval: float = 60.0,
+        mta: MtaHealth | None = None,
     ) -> None:
         self._api = api
         self._carbonio = carbonio
         self._ports = ports
         self._interval = interval
+        self._mta = mta
         self.enabled = True
 
     def configure(self, enabled: bool, ports: dict[str, int]) -> None:
@@ -127,7 +137,7 @@ class ServiceMonitor:
         self._ports = {str(k): int(v) for k, v in ports.items()}
 
     def tick(self) -> dict[str, Any]:
-        report = collect(self._carbonio, self._ports)
+        report = collect(self._carbonio, self._ports, mta=self._mta)
         self._api.services(report)
         return report
 

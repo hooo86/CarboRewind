@@ -143,6 +143,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     throttle = Throttle.from_mbps(settings.max_bandwidth_mbps, settings.max_load_per_cpu)
     server_ca = Path(args.server_ca) if args.server_ca else settings.api_ca_file
     from .mailwatch import MailMonitor
+    from .mtahealth import MtaHealth
     from .servicewatch import ServiceMonitor
 
     stop_mail = threading.Event()
@@ -159,7 +160,10 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     monitor.enabled = settings.mail_monitor
     threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
     services = ServiceMonitor(
-        AgentApi(settings, server_ca=server_ca), carbonio, settings.service_ports
+        AgentApi(settings, server_ca=server_ca),
+        carbonio,
+        settings.service_ports,
+        mta=MtaHealth(settings.mail_logs, settings.postfix_guard_status),
     )
     services.enabled = settings.service_monitor
     threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()

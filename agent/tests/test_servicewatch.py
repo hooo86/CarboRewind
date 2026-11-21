@@ -114,3 +114,117 @@ def test_port_open_tries_the_server_name(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(sw.socket, "create_connection", connect)
     assert port_open(389)
     assert tried == ["127.0.0.1", "mail.example.test"]
+
+
+# ------------------------------------------------------------------ Postfix health
+
+DEFERRED = (
+    "Nov 21 05:56:22 mail postfix/qmgr[341568]: warning: connect to transport "
+    "private/smtp-amavis: Connection refused\n"
+    "Nov 21 05:56:22 mail postfix/error[343515]: 6AE741413C3: to=<zextras@lnhc.dz>, "
+    "relay=none, delay=6381, dsn=4.3.0, status=deferred (mail transport unavailable)\n"
+)
+TO_AMAVIS = (
+    "Nov 21 06:07:28 mail postfix/smtp[361070]: 3F64F141722: to=<a@lnhc.dz>, "
+    "relay=127.0.0.1[127.0.0.1]:10024, delay=0.4, dsn=2.0.0, status=sent "
+    "(250 2.0.0 from MTA(smtp:[127.0.0.1]:10025): 250 2.0.0 Ok: queued as 1A2B)\n"
+)
+MILTER = (
+    "Nov 21 05:52:55 mail postfix/smtpd[319638]: warning: connect to Milter service "
+    "inet:127.0.0.1:7026: Connection refused\n"
+)
+
+
+def _mta(tmp_path: Path, text: str = "") -> tuple[Any, Path]:
+    from carborewind_agent.mtahealth import MtaHealth
+
+    log = tmp_path / "carbonio.log"
+    log.write_text(text)
+    return MtaHealth([tmp_path / "missing.log", log], tmp_path / "guard.json"), log
+
+
+def _by(services: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {s["name"]: s for s in services}
+
+
+def test_mta_health_detects_the_broken_antivirus_circuit(tmp_path: Path) -> None:
+    mta, log = _mta(tmp_path, DEFERRED + MILTER)
+    services, errors = mta.collect(NOW)
+    by = _by(services)
+    assert errors == []
+    assert by["mta:antivirus"]["ok"] is False and by["mta:antivirus"]["source"] == "mta"
+    assert "mail transport unavailable" in by["mta:antivirus"]["detail"]
+    assert by["mta:milter"]["ok"] is False and by["mta:policy"]["ok"] is True
+    # nothing new: still down within the window
+    assert _by(mta.collect(NOW + 60)[0])["mta:antivirus"]["ok"] is False
+    # a message handed to Amavis again: back up at once
+    with log.open("a") as fh:
+        fh.write(TO_AMAVIS)
+    by = _by(mta.collect(NOW + 120)[0])
+    assert by["mta:antivirus"]["ok"] is True and "detail" not in by["mta:antivirus"]
+    # the milter error fades out after the window without new failures
+    assert _by(mta.collect(NOW + 60 + 11 * 60)[0])["mta:milter"]["ok"] is True
+
+
+def test_mta_health_follows_rotation_and_reads_only_new_lines(tmp_path: Path) -> None:
+    mta, log = _mta(tmp_path, DEFERRED)
+    assert _by(mta.collect(NOW)[0])["mta:antivirus"]["ok"] is False
+    log.unlink()
+    log.write_text(TO_AMAVIS)  # rotated: new file read from its start
+    assert _by(mta.collect(NOW + 60)[0])["mta:antivirus"]["ok"] is True
+
+
+def test_mta_health_reports_an_unreadable_log(tmp_path: Path) -> None:
+    from carborewind_agent.mtahealth import MtaHealth
+
+    services, errors = MtaHealth([tmp_path / "none.log"], tmp_path / "g.json").collect(NOW)
+    assert services == [] and errors == ["MTA log not found"]
+
+
+def test_mta_health_reads_the_guard_status(tmp_path: Path) -> None:
+    import json
+
+    mta, _ = _mta(tmp_path)
+    guard = tmp_path / "guard.json"
+    guard.write_text(
+        json.dumps(
+            {
+                "checked_at": NOW - 120,
+                "circuit": 3,
+                "diverted": True,
+                "last_repair": "2026-11-21 05:17",
+                "vendor_pending": True,
+            }
+        )
+    )
+    g = _by(mta.collect(NOW)[0])["guard:master.cf"]
+    assert g["ok"] is True and g["source"] == "guard"
+    assert "dpkg-divert: oui" in g["detail"] and "à comparer" in g["detail"]
+    guard.write_text(json.dumps({"checked_at": NOW - 60, "circuit": 0}))
+    assert _by(mta.collect(NOW)[0])["guard:master.cf"]["ok"] is False
+    guard.write_text(json.dumps({"checked_at": NOW - 3600, "circuit": 0}))  # stale
+    assert _by(mta.collect(NOW)[0])["guard:master.cf"]["ok"] is None
+
+
+def test_collect_merges_the_postfix_checks(
+    tmp_path: Path, client: CarbonioClient, fake: FakeCarbonio
+) -> None:
+    fake.services = {"mta": (True, NOW)}
+    mta, _ = _mta(tmp_path, DEFERRED)
+    report = collect(client, {}, now=NOW, mta=mta)
+    by = _by(report["services"])
+    assert by["mta"]["ok"] is True and by["mta:antivirus"]["ok"] is False
+
+
+def test_mta_health_first_read_starts_on_a_whole_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import carborewind_agent.mtahealth as mh
+
+    monkeypatch.setattr(mh, "FIRST_READ", len(TO_AMAVIS) + 10)
+    mta, log = _mta(tmp_path, "x" * 500 + "\n" + DEFERRED + TO_AMAVIS)
+    by = _by(mta.collect(NOW)[0])
+    assert by["mta:antivirus"]["ok"] is True  # only the recent past, cut on a line break
+    with log.open("a") as fh:
+        fh.write(DEFERRED)
+    assert _by(mta.collect(NOW + 60)[0])["mta:antivirus"]["ok"] is False

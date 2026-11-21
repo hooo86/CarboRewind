@@ -6,6 +6,23 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Supervision → **envoi des e-mails par Postfix** : en plus des services et des ports, l'agent
+  vérifie que Postfix peut réellement distribuer (lu dans le journal du MTA, sans droit
+  supplémentaire) :
+  - **circuit antivirus** (Postfix → Amavis → Postfix) : en panne sur « connect to transport
+    private/smtp-amavis… refused » ou « mail transport unavailable » — le cas d'une mise à jour
+    de Carbonio qui remet le `master.cf` d'origine —, rétabli dès qu'un message repasse par
+    Amavis ;
+  - **milter** et **serveur de politique** (cbpolicyd, 10031) injoignables ;
+  - **garde master.cf** : état du script de garde quand il est installé (lignes amavis,
+    `dpkg-divert` en place, dernière réparation automatique, nouveau `master.cf` livré par une
+    mise à jour à comparer) ;
+  - ports surveillés par défaut : 587, 465 et 10025 en plus (ajoutés une fois aux réglages
+    déjà enregistrés) ;
+  - alerte e-mail / Telegram avec un libellé clair (« circuit antivirus de Postfix (envoi
+    bloqué : vérifier master.cf) ») et bandeau dédié dans la page Supervision.
+
+### Added
 - Fiche d'un compte → **Gestion de la boîte** (super-administrateurs) :
   - **Débloquer le compte** quand il est verrouillé (y compris « lockout » après trop de mots de
     passe erronés : le compteur d'échecs est remis à zéro) ;

@@ -368,11 +368,29 @@ export function MonitoringPage() {
           );
           const views = d.services ?? [];
           const down = views.flatMap((v) => (v.stale ? [] : v.down));
+          const isCheck = (n: string) => /^(mta|guard):/.test(n);
+          const downServices = down.filter((n) => !isCheck(n));
+          const downChecks = down.filter(isCheck);
           return (
             <>
-              {down.length > 0 && (
+              {downChecks.length > 0 && (
                 <p role="alert" className="alert error">
-                  {t("monitoring.servicesDownAlert", { list: down.join(", ") })}
+                  {t("monitoring.postfixAlert", {
+                    list: downChecks
+                      .map((n) =>
+                        t(`monitoring.check.${n.replace(/[:.]/g, "_")}`, {
+                          defaultValue: n,
+                        }),
+                      )
+                      .join(", "),
+                  })}
+                </p>
+              )}
+              {downServices.length > 0 && (
+                <p role="alert" className="alert error">
+                  {t("monitoring.servicesDownAlert", {
+                    list: downServices.join(", "),
+                  })}
                 </p>
               )}
               <section className="tiles" aria-label={t("monitoring.health")}>
@@ -482,14 +500,34 @@ export function MonitoringPage() {
                                     name: svc.name.replace(/^port:/, ""),
                                     port: svc.port,
                                   })
-                                : svc.name}
+                                : svc.source === "mta" || svc.source === "guard"
+                                  ? t(
+                                      `monitoring.check.${svc.name.replace(/[:.]/g, "_")}`,
+                                      {
+                                        defaultValue: svc.name,
+                                      },
+                                    )
+                                  : svc.name}
                               {" — "}
-                              {svc.ok === false
-                                ? t("monitoring.stopped")
-                                : svc.ok
-                                  ? t("monitoring.running")
-                                  : t("monitoring.unknown")}
+                              {svc.source === "mta" || svc.source === "guard"
+                                ? svc.ok === false
+                                  ? t("monitoring.checkBad")
+                                  : svc.ok
+                                    ? t("monitoring.checkOk")
+                                    : t("monitoring.unknown")
+                                : svc.ok === false
+                                  ? t("monitoring.stopped")
+                                  : svc.ok
+                                    ? t("monitoring.running")
+                                    : t("monitoring.unknown")}
                             </span>
+                            {svc.detail &&
+                              (svc.ok === false || svc.source === "guard") && (
+                                <span className="muted small">
+                                  {" "}
+                                  {svc.detail}
+                                </span>
+                              )}
                           </li>
                         ))}
                       </ul>
