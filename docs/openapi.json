@@ -6821,6 +6821,18 @@
             ],
             "title": "Checked"
           },
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "name": {
             "maxLength": 255,
             "minLength": 1,
@@ -6854,7 +6866,9 @@
           "source": {
             "enum": [
               "carbonio",
-              "port"
+              "port",
+              "mta",
+              "guard"
             ],
             "title": "Source",
             "type": "string"
