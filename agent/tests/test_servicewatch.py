@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 import threading
+import time as _time
 from pathlib import Path
 from typing import Any
 
@@ -118,19 +119,29 @@ def test_port_open_tries_the_server_name(monkeypatch: pytest.MonkeyPatch) -> Non
 
 # ------------------------------------------------------------------ Postfix health
 
+
+def _ts(offset: float = 0) -> str:
+    """A syslog timestamp ``offset`` seconds after NOW (local time, as Postfix writes)."""
+    t = _time.localtime(NOW + offset)
+    month = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")[
+        t.tm_mon - 1
+    ]
+    return f"{month} {t.tm_mday:2d} {t.tm_hour:02d}:{t.tm_min:02d}:{t.tm_sec:02d}"
+
+
 DEFERRED = (
-    "Nov 21 05:56:22 mail postfix/qmgr[341568]: warning: connect to transport "
+    f"{_ts()} mail postfix/qmgr[341568]: warning: connect to transport "
     "private/smtp-amavis: Connection refused\n"
-    "Nov 21 05:56:22 mail postfix/error[343515]: 6AE741413C3: to=<zextras@lnhc.dz>, "
+    f"{_ts()} mail postfix/error[343515]: 6AE741413C3: to=<zextras@lnhc.dz>, "
     "relay=none, delay=6381, dsn=4.3.0, status=deferred (mail transport unavailable)\n"
 )
 TO_AMAVIS = (
-    "Nov 21 06:07:28 mail postfix/smtp[361070]: 3F64F141722: to=<a@lnhc.dz>, "
+    f"{_ts(100)} mail postfix/smtp[361070]: 3F64F141722: to=<a@lnhc.dz>, "
     "relay=127.0.0.1[127.0.0.1]:10024, delay=0.4, dsn=2.0.0, status=sent "
     "(250 2.0.0 from MTA(smtp:[127.0.0.1]:10025): 250 2.0.0 Ok: queued as 1A2B)\n"
 )
 MILTER = (
-    "Nov 21 05:52:55 mail postfix/smtpd[319638]: warning: connect to Milter service "
+    f"{_ts()} mail postfix/smtpd[319638]: warning: connect to Milter service "
     "inet:127.0.0.1:7026: Connection refused\n"
 )
 
@@ -226,5 +237,25 @@ def test_mta_health_first_read_starts_on_a_whole_line(
     by = _by(mta.collect(NOW)[0])
     assert by["mta:antivirus"]["ok"] is True  # only the recent past, cut on a line break
     with log.open("a") as fh:
-        fh.write(DEFERRED)
+        fh.write(DEFERRED.replace(_ts(), _ts(50)))
     assert _by(mta.collect(NOW + 60)[0])["mta:antivirus"]["ok"] is False
+
+
+def test_mta_health_ignores_old_errors_found_on_the_first_read(tmp_path: Path) -> None:
+    old = MILTER.replace(_ts(), _ts(-45 * 60))  # the milter was down 45 minutes ago
+    mta, log = _mta(tmp_path, old)
+    assert _by(mta.collect(NOW)[0])["mta:milter"]["ok"] is True
+    with log.open("a") as fh:
+        fh.write(MILTER.replace(_ts(), _ts(-30)))
+    assert _by(mta.collect(NOW)[0])["mta:milter"]["ok"] is False
+
+
+def test_line_time() -> None:
+    from carborewind_agent.mtahealth import line_time
+
+    assert line_time(f"{_ts(-60)} mail postfix/smtpd[1]: x", NOW) == NOW - 60
+    assert line_time(f"{_ts(3600)} mail x", NOW) == NOW  # never in the future
+    iso = _time.strftime("%Y-%m-%dT%H:%M:%S", _time.localtime(NOW - 120))
+    assert line_time(f"{iso}.123456+00:00 mail x", NOW) <= NOW
+    assert line_time(f"{iso} mail x", NOW) == NOW - 120
+    assert line_time("no timestamp here", NOW) == NOW

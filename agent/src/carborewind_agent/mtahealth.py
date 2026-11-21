@@ -26,6 +26,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,56 @@ CHECKS: tuple[tuple[str, re.Pattern[str], re.Pattern[str] | None], ...] = (
         None,
     ),
 )
+
+
+_SYSLOG = re.compile(r"^([A-Z][a-z]{2}) +(\d{1,2}) (\d{2}):(\d{2}):(\d{2}) ")
+_ISO = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?([+-]\d{2}:?\d{2}|Z)? "
+)
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1
+    )
+}
+
+
+def line_time(line: str, now: float) -> float:
+    """When a log line was written (local time for syslog lines, which carry no year);
+    ``now`` when the line has no recognisable timestamp. Never later than ``now``."""
+    m = _ISO.match(line)
+    if m:
+        text = line[: m.end() - 1].replace(" ", "T", 1)
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return now
+        ts = dt.timestamp()  # naive: local time
+        return min(ts, now)
+    m = _SYSLOG.match(line)
+    if not m or m.group(1) not in _MONTHS:
+        return now
+    year = time.localtime(now).tm_year
+    for y in (year, year - 1):  # "Dec 31" read on the 1st of January
+        try:
+            ts = time.mktime(
+                (
+                    y,
+                    _MONTHS[m.group(1)],
+                    int(m.group(2)),
+                    int(m.group(3)),
+                    int(m.group(4)),
+                    int(m.group(5)),
+                    0,
+                    0,
+                    -1,
+                )
+            )
+        except (OverflowError, ValueError):
+            return now
+        if ts <= now + 86400:
+            return min(ts, now)
+    return now
 
 
 @dataclass
@@ -124,17 +175,18 @@ class MtaHealth:
     def _scan(self, lines: list[str], now: float) -> None:
         for name, fail, ok in CHECKS:
             check = self._checks.setdefault(name, _Check())
-            last: str | None = None  # "fail" / "ok": the latest relevant line wins
             for line in lines:
                 if fail.search(line):
-                    last = "fail"
-                    check.detail = line.split(": ", 1)[-1][:200]
+                    # Dated by the log line itself: on the first pass, an error of an hour
+                    # ago must not count as a current outage.
+                    at = line_time(line, now)
+                    if check.last_fail is None or at >= check.last_fail:
+                        check.last_fail = at
+                        check.detail = line.split(": ", 1)[-1][:200]
                 elif ok is not None and ok.search(line):
-                    last = "ok"
-            if last == "fail":
-                check.last_fail = now
-            elif last == "ok":
-                check.last_ok = now
+                    at = line_time(line, now)
+                    if check.last_ok is None or at >= check.last_ok:
+                        check.last_ok = at
 
     def _guard(self, now: float) -> dict[str, Any] | None:
         try:
