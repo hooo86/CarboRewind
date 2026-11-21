@@ -15,6 +15,8 @@ import type {
   TelegramSettingsInput,
   BlacklistSettings,
   BlacklistStatus,
+  MailQueueActionInput,
+  MailQueueAgent,
   AgentTuning,
   AgentTuningInput,
   ArchivedMessage,
@@ -410,6 +412,9 @@ export const api = {
     request<BlacklistStatus>("PUT", "/api/monitoring/blacklist", body),
   checkBlacklist: () =>
     request<BlacklistStatus>("POST", "/api/monitoring/blacklist/check"),
+  mailQueue: () => request<MailQueueAgent[]>("GET", "/api/monitoring/queue"),
+  mailQueueAction: (body: MailQueueActionInput) =>
+    request<{ id: string }>("POST", "/api/monitoring/queue/actions", body),
   telegram: () => request<TelegramSettings>("GET", "/api/settings/telegram"),
   saveTelegram: (body: TelegramSettingsInput) =>
     request<TelegramSettings>("PUT", "/api/settings/telegram", body),

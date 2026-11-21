@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 
-from .. import audit, blacklist, monitoring, restore_test
+from .. import audit, blacklist, mail_queue, monitoring, restore_test
 from ..authz import Permission
 from ..db.models import Account, AccountStatus, Agent, AgentStatus, Job, JobStatus, Outcome
 from ..scheduling import Cron, CronError, zone
@@ -366,3 +366,73 @@ async def run_restore_test(principal: Admin, db: DbSession) -> RestoreTestOut:
     except restore_test.RestoreTestError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return await _restore_test_out(db)
+
+
+# ------------------------------------------------------------------ mail queue
+
+
+class QueueActionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: uuid.UUID
+    op: Literal["requeue", "hold", "release", "delete", "flush"]
+    queue: Literal["deferred", "hold", "active", "incoming"] | None = None
+    ids: list[str] = Field(default_factory=list, max_length=mail_queue.MAX_IDS)
+    server: str | None = Field(default=None, max_length=255)
+    # Deleting messages cannot be undone: the interface asks to type how many.
+    confirm: int | None = None
+
+    @field_validator("ids")
+    @classmethod
+    def _ids(cls, value: list[str]) -> list[str]:
+        for item in value:
+            if not re.fullmatch(r"[0-9A-Za-z]{5,32}", item):
+                raise ValueError(f"invalid queue id {item!r}")
+        return list(dict.fromkeys(value))
+
+
+@router.get("/queue")
+async def get_queue(principal: Admin, db: DbSession) -> list[dict[str, Any]]:
+    """Messages waiting in the MTA queues of each agent, pending and recent actions."""
+    agents = await db.scalars(
+        select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
+    )
+    return [mail_queue.view(a) for a in agents if a.services]
+
+
+@router.post("/queue/actions", status_code=status.HTTP_202_ACCEPTED)
+async def queue_action(
+    body: QueueActionIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    """Ask the agent to requeue / hold / release / delete messages, or flush the queue."""
+    agent = await db.get(Agent, body.agent_id, with_for_update=True)
+    if agent is None or agent.status != AgentStatus.ACTIVE:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "agent not found")
+    if body.op != "flush" and (not body.queue or not body.ids):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "queue and ids required")
+    if body.op == "delete" and body.confirm != len(body.ids):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "confirm the deletion with the number of messages",
+        )
+    action = mail_queue.request(
+        agent,
+        body.op,
+        None if body.op == "flush" else body.queue,
+        [] if body.op == "flush" else body.ids,
+        body.server,
+        principal.user.username,
+        datetime.now(UTC),
+    )
+    await audit.record(
+        db,
+        action=f"mail_queue.{body.op}",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="mail_queue",
+        target_id=body.queue or "all",
+        details={"agent": agent.name, "ids": action["ids"], "server": body.server},
+    )
+    return {"id": action["id"]}

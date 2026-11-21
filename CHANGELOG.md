@@ -6,6 +6,16 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- Supervision → **File d'attente des e-mails** (super-administrateurs) : nombre de messages par
+  file, liste des messages différés et en attente (« hold ») avec expéditeur, destinataires,
+  ancienneté et raison, résumé des raisons, actualisée toutes les 20 secondes. Actions :
+  **Renvoyer**, **Mettre en attente** / **Libérer**, **Supprimer** (confirmation en tapant le
+  nombre de messages) et **Tout renvoyer maintenant** (`postqueue -f`). Les actions passent
+  par l'agent au relevé suivant (moins d'une minute), sont tracées dans l'audit et leur
+  résultat s'affiche (« Dernières actions »). La file est lue même quand la liste des services
+  Carbonio est indisponible (par exemple `zimbraLogHostname` non configuré).
+
+### Added
 - Supervision → **envoi des e-mails par Postfix** : en plus des services et des ports, l'agent
   vérifie que Postfix peut réellement distribuer (lu dans le journal du MTA, sans droit
   supplémentaire) :

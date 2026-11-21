@@ -712,6 +712,57 @@ export interface ServicesView {
   errors: string[];
 }
 
+export type MailQueueOp = "requeue" | "hold" | "release" | "delete" | "flush";
+
+export interface MailQueueItem {
+  id: string;
+  from: string;
+  to: string;
+  time: number | null;
+  reason: string;
+  origip: string;
+}
+
+export interface MailQueueDetail {
+  server: string;
+  queue: string;
+  total: number;
+  items: MailQueueItem[];
+  reasons: { reason: string; count: number }[];
+}
+
+export interface MailQueueAction {
+  id: string;
+  op: MailQueueOp;
+  queue: string | null;
+  ids: string[];
+  by: string;
+  at: string;
+  sent_at?: string | null;
+  done_at?: string;
+  error?: string | null;
+}
+
+export interface MailQueueAgent {
+  agent_id: string;
+  agent: string;
+  checked_at: string | null;
+  queue: Record<string, number> | null;
+  queue_total: number | null;
+  details: MailQueueDetail[] | null;
+  pending: MailQueueAction[];
+  results: (MailQueueAction & { done_at: string })[];
+}
+
+export interface MailQueueActionInput {
+  agent_id: string;
+  op: MailQueueOp;
+  queue?: string;
+  ids?: string[];
+  server?: string;
+  confirm?: number;
+}
+
 export interface StorageSeries {
   agent: string;
   target: "primary" | "replica" | "server";

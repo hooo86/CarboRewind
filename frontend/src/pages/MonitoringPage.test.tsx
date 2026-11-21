@@ -330,4 +330,111 @@ describe("monitoring page", () => {
       ).toMatchObject({ mail_queue_alert: 50, service_down_reports: 2 }),
     );
   });
+
+  it("lists the queued messages and sends queue actions", async () => {
+    const queue = [
+      {
+        agent_id: "ag-1",
+        agent: "mx1-mail",
+        checked_at: iso(now),
+        queue: { deferred: 2, active: 0 },
+        queue_total: 2,
+        details: [
+          {
+            server: "mail.lnhc.dz",
+            queue: "deferred",
+            total: 2,
+            items: [
+              {
+                id: "6AE741413C3",
+                from: "zextras@lnhc.dz",
+                to: "a@example.com,b@example.com",
+                time: Math.round((now - 3600000) / 1000),
+                reason: "mail transport unavailable",
+                origip: "127.0.0.1",
+              },
+              {
+                id: "C0FAB141739",
+                from: "",
+                to: "c@example.com",
+                time: null,
+                reason: "mail transport unavailable",
+                origip: "",
+              },
+            ],
+            reasons: [{ reason: "mail transport unavailable", count: 2 }],
+          },
+        ],
+        pending: [],
+        results: [
+          {
+            id: "r1",
+            op: "flush",
+            queue: null,
+            ids: [],
+            by: "admin2",
+            at: iso(now),
+            done_at: iso(now),
+            error: null,
+          },
+        ],
+      },
+    ];
+    const calls = open(user("super_admin"), {
+      "GET /api/monitoring/queue": queue,
+      "POST /api/monitoring/queue/actions": { status: 202, body: { id: "q1" } },
+    });
+    expect(await screen.findByText("Mail queue")).toBeInTheDocument();
+    expect(screen.getByText("Deferred — 2 messages")).toBeInTheDocument();
+    expect(
+      screen.getByText("2 × mail transport unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("a@example.com, b@example.com"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("<>")).toBeInTheDocument();
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("Select 6AE741413C3"));
+    fireEvent.click(retry);
+    await screen.findByText(
+      "Action sent to the agent: applied within a minute.",
+    );
+    const sent = calls.filter((c) => c.url === "/api/monitoring/queue/actions");
+    expect(sent[0]?.body).toEqual({
+      agent_id: "ag-1",
+      op: "requeue",
+      queue: "deferred",
+      ids: ["6AE741413C3"],
+      server: "mail.lnhc.dz",
+    });
+
+    // deleting asks to type the number of messages
+    fireEvent.click(screen.getByLabelText("Select all"));
+    const prompt = vi.spyOn(window, "prompt").mockReturnValueOnce("1");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(
+      await screen.findByText(
+        "Deletion cancelled: the number typed does not match.",
+      ),
+    ).toBeInTheDocument();
+    prompt.mockReturnValueOnce("2");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.url === "/api/monitoring/queue/actions"),
+      ).toHaveLength(2),
+    );
+    const del = calls.filter(
+      (c) => c.url === "/api/monitoring/queue/actions",
+    )[1];
+    expect(del?.body).toMatchObject({ op: "delete", confirm: 2 });
+    fireEvent.click(screen.getByRole("button", { name: "Retry all now" }));
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.url === "/api/monitoring/queue/actions"),
+      ).toHaveLength(3),
+    );
+    prompt.mockRestore();
+  });
 });

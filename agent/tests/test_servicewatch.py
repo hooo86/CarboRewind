@@ -259,3 +259,75 @@ def test_line_time() -> None:
     assert line_time(f"{iso}.123456+00:00 mail x", NOW) <= NOW
     assert line_time(f"{iso} mail x", NOW) == NOW - 120
     assert line_time("no timestamp here", NOW) == NOW
+
+
+# ------------------------------------------------------------------ mail queue
+
+
+def _queued(n: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": f"6AE74141{i:03d}C",
+            "from": "zextras@lnhc.dz",
+            "to": "a@example.com,b@example.com",
+            "time": (NOW - 3600) * 1000,
+            "reason": "mail transport unavailable",
+            "origip": "127.0.0.1",
+        }
+        for i in range(n)
+    ]
+
+
+def test_collect_lists_the_deferred_messages(client: CarbonioClient, fake: FakeCarbonio) -> None:
+    fake.services = {"mta": (True, NOW)}
+    fake.queues = {"deferred": 3, "active": 0, "hold": 0}
+    fake.queue_items = {"deferred": _queued(3)}
+    report = collect(client, {}, now=NOW)
+    assert report["queue"]["deferred"] == 3
+    (detail,) = report["queue_items"]
+    assert detail["queue"] == "deferred" and detail["server"] == "mail.example.test"
+    assert detail["total"] == 3 and len(detail["items"]) == 3
+    first = detail["items"][0]
+    assert first["time"] == NOW - 3600 and first["to"] == "a@example.com,b@example.com"
+    assert detail["reasons"] == [{"reason": "mail transport unavailable", "count": 3}]
+
+
+def test_queue_is_read_even_without_the_service_list(
+    client: CarbonioClient, fake: FakeCarbonio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import carborewind_agent.servicewatch as sw
+
+    fake.services = {}  # GetServiceStatus empty (zimbraLogHostname not configured)
+    fake.queues = {"deferred": 1}
+    fake.queue_items = {"deferred": _queued(1)}
+    monkeypatch.setattr(sw, "_hosts", lambda: ["127.0.0.1", "mail.example.test"])
+    report = collect(client, {}, now=NOW)
+    assert report["queue"] == {"deferred": 1} and report["queue_items"][0]["total"] == 1
+
+
+def test_monitor_applies_the_queue_actions(
+    tmp_path: Path, client: CarbonioClient, fake: FakeCarbonio
+) -> None:
+    fake.services = {"mta": (True, NOW)}
+    fake.queues = {"deferred": 2}
+    fake.queue_items = {"deferred": _queued(2)}
+    api = FakeApi([])
+    first, second = fake.queue_items["deferred"][0]["id"], fake.queue_items["deferred"][1]["id"]
+    api.queue_actions = [
+        {"id": "q1", "op": "delete", "queue": "deferred", "ids": [first]},
+        {"id": "q2", "op": "flush", "server": "mail.example.test"},
+        {"id": "q3", "op": "requeue", "queue": "deferred", "ids": ["bad id!"]},
+        {"id": "q4", "op": "explode", "queue": "deferred", "ids": [second]},
+    ]
+    monitor = ServiceMonitor(AgentApi(_settings(tmp_path), http=api.client()), client, {})
+    report = monitor.tick()
+    done = {p.split("/")[2]: b["error"] for p, b in api.calls if p.startswith("/queue-actions/")}
+    assert done["q1"] is None and done["q2"] is None
+    assert done["q3"] == "invalid queue ids" and "unknown queue action" in done["q4"]
+    assert fake.queue_ops == [
+        ("deferred", "delete", first),
+        ("*", "flush", "mail.example.test"),
+    ]
+    # reported again at once, without the deleted message
+    assert api.paths().count("/services") == 2
+    assert report["queue_items"][0]["total"] == 1

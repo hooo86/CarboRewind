@@ -25,6 +25,7 @@ from .. import (
     agent_tuning,
     archiving,
     audit,
+    mail_queue,
     mail_traffic,
     monitoring,
     restore_test,
@@ -505,21 +506,55 @@ class ServiceIn(BaseModel):
     detail: str | None = Field(default=None, max_length=300)
 
 
+class QueueItemIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1, max_length=40)
+    sender: str = Field(default="", max_length=320, alias="from")
+    to: str = Field(default="", max_length=1000)
+    time: int | None = None
+    reason: str = Field(default="", max_length=500)
+    origip: str = Field(default="", max_length=64)
+
+
+class QueueReasonIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    reason: str = Field(default="", max_length=300)
+    count: int = Field(default=0, ge=0)
+
+
+class QueueDetailIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    server: str = Field(min_length=1, max_length=255)
+    queue: str = Field(min_length=1, max_length=20)
+    total: int = Field(default=0, ge=0)
+    items: list[QueueItemIn] = Field(default_factory=list, max_length=100)
+    reasons: list[QueueReasonIn] = Field(default_factory=list, max_length=20)
+
+
 class ServicesIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checked_at: datetime | None = None
     services: list[ServiceIn] = Field(default_factory=list, max_length=500)
     queue: dict[str, int] | None = Field(default=None, max_length=20)
+    queue_items: list[QueueDetailIn] | None = Field(default=None, max_length=10)
     errors: list[str] = Field(default_factory=list, max_length=20)
 
 
-@router.post("/services", status_code=status.HTTP_204_NO_CONTENT)
-async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> None:
-    """State of the Carbonio services and of the mail queue, every minute."""
-    report = body.model_dump(mode="json")
+@router.post("/services")
+async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> dict[str, Any]:
+    """State of the Carbonio services and of the mail queue, every minute; the answer
+    lists the queue actions asked in the interface."""
+    now = datetime.now(UTC)
+    report = body.model_dump(mode="json", by_alias=True)
     report["errors"] = [e[:300] for e in body.errors]
-    await monitoring.record_services(db, agent, report, datetime.now(UTC))
+    await monitoring.record_services(db, agent, report, now)
+    # Lock the row: an administrator may be adding a queue action at the same moment.
+    await db.refresh(agent, attribute_names=["storage"], with_for_update=True)
+    return {"queue_actions": mail_queue.deliver(agent, now)}
 
 
 @router.post("/mail-stats")
@@ -556,6 +591,14 @@ class ActionDoneIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     error: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/queue-actions/{action_id}/done", status_code=status.HTTP_204_NO_CONTENT)
+async def queue_action_done(
+    action_id: str, body: ActionDoneIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """The agent applied the queue action (or could not)."""
+    await mail_queue.done(db, agent, action_id, body.error, datetime.now(UTC))
 
 
 @router.post("/ip-actions/{action_id}/done", status_code=status.HTTP_204_NO_CONTENT)

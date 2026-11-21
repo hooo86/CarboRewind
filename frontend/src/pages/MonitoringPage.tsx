@@ -19,6 +19,7 @@ import {
   useLoad,
 } from "../components/common";
 import { BlacklistPanel } from "../components/Blacklist";
+import { MailQueuePanel } from "../components/MailQueue";
 import { RestoreTestPanel } from "../components/RestoreTests";
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
@@ -539,6 +540,7 @@ export function MonitoringPage() {
                 )}
               </section>
 
+              <MailQueuePanel />
               <BlacklistPanel />
               <RestoreTestPanel />
 

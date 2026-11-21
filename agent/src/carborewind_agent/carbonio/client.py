@@ -9,6 +9,7 @@ still to verify (🔎). Edition-specific code stays behind this class so that an
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -101,6 +102,10 @@ class _Token:
     value: str
     expires_at: float
 
+
+# Mail queue actions offered in the interface, and the shape of a Postfix queue id.
+QUEUE_OPS = frozenset({"requeue", "hold", "release", "delete"})
+QUEUE_ID = re.compile(r"[0-9A-Za-z]{5,32}")
 
 LOGIN_FILTER = {
     "zimbraInvalidLoginFilterMaxFailedLogin": "max_failed",
@@ -248,6 +253,79 @@ class CarbonioClient:
                     queue.get("n") or 0
                 )
         return out
+
+    def mail_queue_items(
+        self, server: str, queue: str, limit: int = 50, wait: int = 3
+    ) -> dict[str, Any]:
+        """Messages of one MTA queue (``GetMailQueueRequest``): ``{"total", "items",
+        "reasons"}``. ``scan`` asks Carbonio to rescan the queue; ``wait`` how many seconds
+        it may wait for that scan."""
+        resp = self._admin.invoke(
+            "GetMailQueue",
+            NS_ADMIN,
+            {
+                "server": {
+                    "name": server,
+                    "queue": {
+                        "name": queue,
+                        "scan": 1,
+                        "wait": wait,
+                        "query": {"limit": limit, "offset": 0},
+                    },
+                }
+            },
+            token=self._admin_auth(),
+        )
+        total, items, reasons = 0, [], []
+        for srv in resp.get("server", []):
+            for q in srv.get("queue", []):
+                total += int(q.get("total") or 0)
+                for qi in q.get("qi", []):
+                    items.append(
+                        {
+                            "id": str(qi.get("id", "")),
+                            "from": str(qi.get("from", ""))[:320],
+                            "to": str(qi.get("to", ""))[:1000],
+                            "time": int(qi.get("time") or 0) // 1000 or None,
+                            "reason": str(qi.get("reason", ""))[:500],
+                            "origip": str(qi.get("origip", ""))[:64],
+                        }
+                    )
+                for qs in q.get("qs", []):
+                    if qs.get("type") == "reason":
+                        reasons = [
+                            {"reason": str(x.get("t", ""))[:300], "count": int(x.get("n") or 0)}
+                            for x in qs.get("qsi", [])
+                        ][:10]
+        return {"total": total, "items": items[:limit], "reasons": reasons}
+
+    def mail_queue_action(self, server: str, queue: str, op: str, ids: list[str]) -> None:
+        """``requeue`` / ``hold`` / ``release`` / ``delete`` messages of a queue by id
+        (``MailQueueActionRequest``)."""
+        if op not in QUEUE_OPS:
+            raise ValueError(f"unknown queue action {op!r}")
+        if not ids or not all(QUEUE_ID.fullmatch(i) for i in ids):
+            raise ValueError("invalid queue ids")
+        self._admin.invoke(
+            "MailQueueAction",
+            NS_ADMIN,
+            {
+                "server": {
+                    "name": server,
+                    "queue": {
+                        "name": queue,
+                        "action": {"op": op, "by": "id", "_content": ",".join(ids)},
+                    },
+                }
+            },
+            token=self._admin_auth(),
+        )
+
+    def mail_queue_flush(self, server: str) -> None:
+        """Try every queued message again now (``MailQueueFlushRequest``, ``postqueue -f``)."""
+        self._admin.invoke(
+            "MailQueueFlush", NS_ADMIN, {"server": {"name": server}}, token=self._admin_auth()
+        )
 
     def mailbox_size(self, account_id: str) -> int:
         """Bytes used by one mailbox (``GetMailboxRequest``, exact, no cache)."""

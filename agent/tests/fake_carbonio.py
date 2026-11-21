@@ -111,6 +111,9 @@ class FakeCarbonio:
         self.services: dict[str, tuple[bool, int]] = {}
         self.upload_reply: str | None = None  # e.g. "401,'null'": the servlet refuses
         self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
+        # Messages per queue (GetMailQueue) and the queue actions received.
+        self.queue_items: dict[str, list[dict[str, Any]]] = {}
+        self.queue_ops: list[tuple[str, str, str]] = []
         # Global configuration (multi-valued attributes are lists).
         self.config: dict[str, list[str]] = {
             "zimbraHttpThrottleSafeIPs": ["192.168.8.0/24"],
@@ -299,6 +302,53 @@ class FakeCarbonio:
             raise _Fault("service.FAILURE", "queue info unavailable")
         queues = [{"name": k, "n": v} for k, v in self.queues.items()]
         return {"server": [{"name": body["server"]["name"], "queue": queues}]}
+
+    def _GetMailQueueRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        srv = body["server"]
+        name = srv["queue"]["name"]
+        items = self.queue_items.get(name, [])
+        reasons: dict[str, int] = {}
+        for qi in items:
+            reasons[qi.get("reason", "")] = reasons.get(qi.get("reason", ""), 0) + 1
+        return {
+            "server": [
+                {
+                    "name": srv["name"],
+                    "queue": [
+                        {
+                            "name": name,
+                            "total": len(items),
+                            "qi": items[: int(srv["queue"]["query"]["limit"])],
+                            "qs": [
+                                {
+                                    "type": "reason",
+                                    "qsi": [{"t": t, "n": n} for t, n in reasons.items()],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+    def _MailQueueActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        queue = body["server"]["queue"]
+        action = queue["action"]
+        ids = set(action["_content"].split(","))
+        self.queue_ops.append((queue["name"], action["op"], action["_content"]))
+        if action["op"] in ("delete", "requeue", "hold"):
+            kept = [m for m in self.queue_items.get(queue["name"], []) if m["id"] not in ids]
+            self.queue_items[queue["name"]] = kept
+            if self.queues is not None:
+                self.queues[queue["name"]] = len(kept)
+        return {}
+
+    def _MailQueueFlushRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        self.queue_ops.append(("*", "flush", body["server"]["name"]))
+        return {}
 
     def _DeleteAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)

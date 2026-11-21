@@ -191,6 +191,7 @@ async def record_services(
         ],
         "queue": raw_queue,
         "queue_total": total,
+        "queue_items": report.get("queue_items"),
         "errors": report.get("errors", [])[:5],
         "state": state,
     }

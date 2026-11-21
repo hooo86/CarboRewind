@@ -30,6 +30,7 @@ class FakeApi:
         self.jobs = jobs
         self.calls: list[tuple[str, Any]] = []
         self.config: dict[str, Any] | None = None
+        self.queue_actions: list[dict[str, Any]] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/agent")
@@ -37,6 +38,9 @@ class FakeApi:
         self.calls.append((path, body))
         if path == "/config":
             return httpx.Response(200, json=self.config) if self.config else httpx.Response(204)
+        if path == "/services" and self.queue_actions:
+            actions, self.queue_actions = self.queue_actions, []
+            return httpx.Response(200, json={"queue_actions": actions})
         if path == "/jobs/claim":
             return httpx.Response(200, json=self.jobs.pop(0)) if self.jobs else httpx.Response(204)
         if path == "/inventory":

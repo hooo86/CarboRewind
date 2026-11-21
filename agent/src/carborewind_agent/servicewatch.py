@@ -7,7 +7,10 @@ Every minute it reports to the server:
   :data:`STALE` (the stats service that records it may be down itself);
 * whether the essential local ports answer (MTA 25, Amavis 10024, LMTP 7025, LDAP 389):
   this works even when the admin API does not;
-* the size of the MTA queues (``GetMailQueueInfoRequest``), when Carbonio answers;
+* the size of the MTA queues (``GetMailQueueInfoRequest``), and the messages waiting in
+  the deferred and hold queues (``GetMailQueueRequest``: sender, recipients, reason);
+  the server answers with the queue actions asked in the interface (requeue, hold,
+  release, delete, flush), applied at once;
 * whether Postfix can actually deliver (:mod:`.mtahealth`: antivirus circuit, milter,
   policy server, read from the MTA log; the Postfix guard's status when installed).
 
@@ -31,6 +34,9 @@ from .mtahealth import MtaHealth
 log = logging.getLogger(__name__)
 
 STALE = 15 * 60  # seconds
+# Queues whose messages are listed in the interface (active / incoming drain on their own).
+DETAIL_QUEUES = ("deferred", "hold")
+QUEUE_ITEMS = 50
 
 
 def _hosts() -> list[str]:
@@ -95,23 +101,54 @@ def collect(
         extra, mta_errors = mta.collect(now)
         services.extend(extra)
         errors.extend(mta_errors)
-    queue: dict[str, int] | None = None
-    if servers:
-        queue = {}
-        for server in sorted(servers):
+    if not servers:
+        # The service list is unavailable (stats service down, zimbraLogHostname unset…):
+        # the queue still belongs to this host.
+        servers = set(_hosts()[1:2]) or {"localhost"}
+    totals: dict[str, int] = {}
+    failed = False
+    details: list[dict[str, Any]] = []
+    for server in sorted(servers):
+        try:
+            counts = carbonio.mail_queue(server)
+        except (SoapFaultError, OSError, ValueError) as exc:
+            errors.append(f"mail queue: {exc}")
+            failed = True
+            break
+        for name, count in counts.items():
+            totals[name] = totals.get(name, 0) + count
+        for name in DETAIL_QUEUES:
+            if not counts.get(name):
+                continue
             try:
-                for name, count in carbonio.mail_queue(server).items():
-                    queue[name] = queue.get(name, 0) + count
+                detail = carbonio.mail_queue_items(server, name, limit=QUEUE_ITEMS)
             except (SoapFaultError, OSError, ValueError) as exc:
-                errors.append(f"mail queue: {exc}")
-                queue = None
-                break
+                errors.append(f"mail queue {name}: {exc}")
+                continue
+            details.append({"server": server, "queue": name, **detail})
     return {
         "checked_at": datetime.fromtimestamp(now, tz=UTC).isoformat(),
         "services": services,
-        "queue": queue,
+        "queue": None if failed else totals,
+        "queue_items": details,
         "errors": errors[:5],
     }
+
+
+def apply_queue_action(carbonio: CarbonioClient, action: dict[str, Any]) -> str | None:
+    """Run one queue action asked in the interface; the error text, or None."""
+    op = str(action.get("op", ""))
+    server = str(action.get("server") or "") or (_hosts()[1:2] or ["localhost"])[0]
+    try:
+        if op == "flush":
+            carbonio.mail_queue_flush(server)
+        else:
+            ids = [str(i) for i in action.get("ids") or []]
+            carbonio.mail_queue_action(server, str(action.get("queue", "")), op, ids)
+    except (SoapFaultError, OSError, ValueError) as exc:
+        return str(exc)[:500]
+    log.warning("mail queue action %s on %s (%s)", op, server, action.get("queue"))
+    return None
 
 
 class ServiceMonitor:
@@ -138,7 +175,14 @@ class ServiceMonitor:
 
     def tick(self) -> dict[str, Any]:
         report = collect(self._carbonio, self._ports, mta=self._mta)
-        self._api.services(report)
+        answer = self._api.services(report) or {}
+        actions = answer.get("queue_actions") or []
+        for action in actions:
+            error = apply_queue_action(self._carbonio, action)
+            self._api.queue_action_done(str(action["id"]), error)
+        if actions:  # show the result at once rather than in a minute
+            report = collect(self._carbonio, self._ports, mta=self._mta)
+            self._api.services(report)
         return report
 
     def run(self, stop: threading.Event) -> None:

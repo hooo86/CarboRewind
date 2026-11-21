@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -419,7 +420,7 @@ def test_carbonio_services_and_mail_queue(api: TestClient, engine: Engine) -> No
             "queue": {"deferred": queue, "active": 0},
             "errors": [],
         }
-        assert agent.post("/services", body).status_code == 204
+        assert agent.post("/services", body).status_code == 200
 
     def events(name: str) -> list[Notification]:
         with Session(engine) as s:
@@ -521,7 +522,7 @@ def test_postfix_checks_alert_with_readable_names(api: TestClient, engine: Engin
                 {"name": "guard:master.cf", "ok": True, "source": "guard", "detail": "amavis: 3"},
             ],
         }
-        assert agent.post("/services", body).status_code == 204
+        assert agent.post("/services", body).status_code == 200
 
     def subjects(event: str) -> set[str]:
         with Session(engine) as s:
@@ -574,3 +575,89 @@ def test_saved_agent_settings_gain_the_postfix_ports(api: TestClient, engine: En
     assert api.put("/api/settings/agent", json=body, headers=h).status_code == 200
     cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
     assert cfg["service_ports"] == {"mta": 25}
+
+
+def test_mail_queue_messages_and_actions(api: TestClient, engine: Engine) -> None:
+    from carborewind_api.db.models import AuditEvent
+
+    h = login(api, engine)
+    agent = enroll(api, h)
+    items = [
+        {
+            "id": f"6AE74141{i}C3",
+            "from": "zextras@lnhc.dz",
+            "to": "a@example.com",
+            "time": 1_800_000_000,
+            "reason": "mail transport unavailable",
+            "origip": "127.0.0.1",
+        }
+        for i in range(3)
+    ]
+
+    def report() -> dict[str, Any]:
+        r = agent.post(
+            "/services",
+            {
+                "services": [{"name": "mta", "ok": True, "source": "carbonio"}],
+                "queue": {"deferred": 3, "active": 0},
+                "queue_items": [
+                    {
+                        "server": "mail.example.test",
+                        "queue": "deferred",
+                        "total": 3,
+                        "items": items,
+                        "reasons": [{"reason": "mail transport unavailable", "count": 3}],
+                    }
+                ],
+            },
+        )
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    assert report() == {"queue_actions": []}
+    (mine,) = [q for q in api.get("/api/monitoring/queue", headers=h).json() if q["details"]]
+    detail = mine["details"][0]
+    assert detail["total"] == 3 and detail["items"][0]["from"] == "zextras@lnhc.dz"
+    agent_id = mine["agent_id"]
+
+    url = "/api/monitoring/queue/actions"
+    first = items[0]["id"]
+    for bad in (
+        {"agent_id": agent_id, "op": "delete", "queue": "deferred", "ids": [first]},  # no confirm
+        {"agent_id": agent_id, "op": "requeue", "queue": "deferred", "ids": []},
+        {"agent_id": agent_id, "op": "requeue", "queue": "deferred", "ids": ["x; rm -rf"]},
+        {"agent_id": agent_id, "op": "shell", "queue": "deferred", "ids": [first]},
+    ):
+        assert api.post(url, json=bad, headers=h).status_code == 422, bad
+    body = {"agent_id": agent_id, "op": "delete", "queue": "deferred", "ids": [first], "confirm": 1}
+    r = api.post(url, json=body, headers=h)
+    assert r.status_code == 202, r.text
+    assert api.post(url, json={"agent_id": agent_id, "op": "flush"}, headers=h).status_code == 202
+    actions = report()["queue_actions"]
+    assert [a["op"] for a in actions] == ["delete", "flush"]
+    assert actions[0]["ids"] == [first] and actions[0]["queue"] == "deferred"
+    assert report()["queue_actions"] == []  # handed out once (again only after 5 minutes)
+    shown = next(
+        q for q in api.get("/api/monitoring/queue", headers=h).json() if q["agent_id"] == agent_id
+    )
+    assert len(shown["pending"]) == 2
+
+    assert agent.post(f"/queue-actions/{actions[0]['id']}/done", {"error": None}).status_code == 204
+    r = agent.post(f"/queue-actions/{actions[1]['id']}/done", {"error": "queue busy"})
+    assert r.status_code == 204
+    shown = next(
+        q for q in api.get("/api/monitoring/queue", headers=h).json() if q["agent_id"] == agent_id
+    )
+    assert shown["pending"] == []
+    assert [(x["op"], x["error"]) for x in shown["results"]] == [
+        ("flush", "queue busy"),
+        ("delete", None),
+    ]
+    with Session(engine) as s:
+        names = set(
+            s.scalars(select(AuditEvent.action).where(AuditEvent.action.like("mail_queue%")))
+        )
+    assert {"mail_queue.delete", "mail_queue.flush", "mail_queue.delete.done"} <= names
+    viewer = login(api, engine, Role.DOMAIN_ADMIN)
+    assert api.post(url, json=body, headers=viewer).status_code == 403
+    assert api.get("/api/monitoring/queue", headers=viewer).status_code == 403

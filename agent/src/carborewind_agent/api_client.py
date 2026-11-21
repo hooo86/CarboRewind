@@ -202,9 +202,17 @@ class AgentApi:
     def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/migrate-complete", payload)
 
-    def services(self, report: dict[str, Any]) -> None:
-        """State of the Carbonio services and of the mail queue."""
-        self._post("/services", report)
+    def services(self, report: dict[str, Any]) -> dict[str, Any]:
+        """State of the Carbonio services and of the mail queue; the answer lists the
+        queue actions to apply (empty with an older server)."""
+        response = self._post("/services", report)
+        if response.status_code == 204 or not response.content:
+            return {}
+        result: dict[str, Any] = response.json()
+        return result
+
+    def queue_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/queue-actions/{action_id}/done", {"error": error})
 
     def archive_stored(self, job_id: str, entries: list[dict[str, Any]]) -> None:
         """Index of archived messages, sent before any of them is deleted."""

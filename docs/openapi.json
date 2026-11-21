@@ -6003,6 +6003,193 @@
         "title": "PurgeResultIn",
         "type": "object"
       },
+      "QueueActionIn": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Ids",
+            "type": "array"
+          },
+          "op": {
+            "enum": [
+              "requeue",
+              "hold",
+              "release",
+              "delete",
+              "flush"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "queue": {
+            "anyOf": [
+              {
+                "enum": [
+                  "deferred",
+                  "hold",
+                  "active",
+                  "incoming"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          }
+        },
+        "required": [
+          "agent_id",
+          "op"
+        ],
+        "title": "QueueActionIn",
+        "type": "object"
+      },
+      "QueueDetailIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QueueItemIn"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "queue": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Queue",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/QueueReasonIn"
+            },
+            "maxItems": 20,
+            "title": "Reasons",
+            "type": "array"
+          },
+          "server": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Server",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "server",
+          "queue"
+        ],
+        "title": "QueueDetailIn",
+        "type": "object"
+      },
+      "QueueItemIn": {
+        "properties": {
+          "from": {
+            "default": "",
+            "maxLength": 320,
+            "title": "From",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "origip": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Origip",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time"
+          },
+          "to": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "QueueItemIn",
+        "type": "object"
+      },
+      "QueueReasonIn": {
+        "properties": {
+          "count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "QueueReasonIn",
+        "type": "object"
+      },
       "RecoveryCodesOut": {
         "properties": {
           "recovery_codes": {
@@ -6919,6 +7106,21 @@
               }
             ],
             "title": "Queue"
+          },
+          "queue_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QueueDetailIn"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Items"
           },
           "services": {
             "items": {
@@ -10560,9 +10762,55 @@
         ]
       }
     },
+    "/api/agent/queue-actions/{action_id}/done": {
+      "post": {
+        "description": "The agent applied the queue action (or could not).",
+        "operationId": "queue_action_done_api_agent_queue_actions__action_id__done_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionDoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue Action Done",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/services": {
       "post": {
-        "description": "State of the Carbonio services and of the mail queue, every minute.",
+        "description": "State of the Carbonio services and of the mail queue, every minute; the answer\nlists the queue actions asked in the interface.",
         "operationId": "services_api_agent_services_post",
         "requestBody": {
           "content": {
@@ -10575,7 +10823,16 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Services Api Agent Services Post",
+                  "type": "object"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -14363,6 +14620,77 @@
           }
         },
         "summary": "Overview",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/queue": {
+      "get": {
+        "description": "Messages waiting in the MTA queues of each agent, pending and recent actions.",
+        "operationId": "get_queue_api_monitoring_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Get Queue Api Monitoring Queue Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Queue",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/queue/actions": {
+      "post": {
+        "description": "Ask the agent to requeue / hold / release / delete messages, or flush the queue.",
+        "operationId": "queue_action_api_monitoring_queue_actions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueActionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Queue Action Api Monitoring Queue Actions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Queue Action",
         "tags": [
           "monitoring"
         ]
