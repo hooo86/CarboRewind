@@ -670,6 +670,12 @@ class CarbonioClient:
         )
         response.raise_for_status()
         parts = [p.strip().strip("'\"") for p in response.text.strip().split(",")]
+        if parts and parts[0] == "413":
+            raise SoapFaultError(
+                "client.UPLOAD_TOO_LARGE",
+                f"message of {len(data)} bytes over Carbonio's upload limit "
+                "(zimbraFileUploadMaxSize)",
+            )
         if len(parts) < 3 or parts[0] != "200" or not parts[2]:
             raise SoapFaultError(
                 "client.BAD_RESPONSE",

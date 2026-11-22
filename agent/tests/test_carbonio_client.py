@@ -186,6 +186,9 @@ def test_add_message_too_large_inline_goes_by_upload(
     fake.upload_reply = "401,'null'"
     with pytest.raises(SoapFaultError):
         client.add_message(alice.id, 2, big + b"z")
+    fake.upload_reply = "413,'null'"
+    with pytest.raises(SoapFaultError, match=r"UPLOAD_TOO_LARGE.*zimbraFileUploadMaxSize"):
+        client.add_message(alice.id, 2, big + b"v")
     # An HTTP error of the upload servlet is a per-message fault too.
     fake.upload_reply = None
     fake.fail_next = [500]
