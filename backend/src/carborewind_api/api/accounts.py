@@ -56,6 +56,8 @@ class AccountDetail(BaseModel):
     last_seen_at: datetime | None
     snapshot_count: int
     last_snapshot: SnapshotOut | None
+    quota_bytes: int | None = None  # None or 0: unlimited
+    used_bytes: int | None = None
 
 
 class Dashboard(BaseModel):
@@ -141,6 +143,8 @@ async def get_account(
         status=account.status,
         domain_id=account.domain_id,
         domain=domain.name if domain else "",
+        quota_bytes=account.quota_bytes,
+        used_bytes=account.used_bytes,
         last_seen_at=account.last_seen_at,
         snapshot_count=count or 0,
         last_snapshot=snapshot_out(last) if last else None,

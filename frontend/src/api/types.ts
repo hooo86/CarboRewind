@@ -98,6 +98,15 @@ export interface AccountDetail {
   last_seen_at: string | null;
   snapshot_count: number;
   last_snapshot: Snapshot | null;
+  quota_bytes?: number | null;
+  used_bytes?: number | null;
+}
+
+export interface QuotaResult {
+  queued: number;
+  unchanged: number;
+  skipped_deleted: number;
+  not_found: number;
 }
 
 export interface Job {

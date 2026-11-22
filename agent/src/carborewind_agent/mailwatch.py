@@ -169,6 +169,17 @@ class MailMonitor:
         status = STATUSES.get(kind)
         error = None
         protected = str(action.get("email", "")).lower() in self._protected
+        if kind == "quota":
+            try:
+                value = int(action["value"])
+                self._carbonio.set_quota(str(action["carbonio_id"]), value)
+                log.warning("account %s quota set to %s bytes", action.get("email"), value)
+            except (KeyError, TypeError, ValueError) as exc:
+                error = f"invalid quota: {exc}"[:500]
+            except SoapFaultError as exc:
+                error = f"{exc.code}: {exc}"[:500]
+            self._api.mail_action_done(str(action["id"]), error)
+            return
         if kind == "delete":
             if protected:
                 error = "protected account (used by CarboRewind itself): not deleted"

@@ -359,6 +359,22 @@ export const resources = {
         noPtr: "Sans nom inverse",
         senderDomains: "Domaines d'expéditeur",
       },
+      quota: {
+        title: "Modifier le quota",
+        help_one: "Nouveau quota pour le compte sélectionné.",
+        help_other: "Nouveau quota pour les {{count}} comptes sélectionnés.",
+        current: "Quota actuel : {{quota}}.",
+        size: "Quota (Go)",
+        unlimited: "illimité",
+        reason: "Motif (facultatif)",
+        apply_one: "Appliquer",
+        apply_other: "Appliquer aux {{count}} comptes",
+        cancel: "Annuler",
+        queued_one:
+          "Quota {{quota}} : {{count}} compte modifié par l'agent dans la minute ({{unchanged}} déjà à ce quota, {{deleted}} supprimé(s)).",
+        queued_other:
+          "Quota {{quota}} : {{count}} comptes modifiés par l'agent dans la minute ({{unchanged}} déjà à ce quota, {{deleted}} supprimé(s)).",
+      },
       mailbox: {
         title: "Gestion de la boîte",
         unlock: "Débloquer le compte",
@@ -2058,6 +2074,22 @@ export const resources = {
         senders: "Sender domains",
         noPtr: "No reverse name",
         senderDomains: "Sender domains",
+      },
+      quota: {
+        title: "Change quota",
+        help_one: "New quota for the selected account.",
+        help_other: "New quota for the {{count}} selected accounts.",
+        current: "Current quota: {{quota}}.",
+        size: "Quota (GB)",
+        unlimited: "unlimited",
+        reason: "Reason (optional)",
+        apply_one: "Apply",
+        apply_other: "Apply to {{count}} accounts",
+        cancel: "Cancel",
+        queued_one:
+          "Quota {{quota}}: {{count}} account changed by the agent within a minute ({{unchanged}} already at that quota, {{deleted}} deleted).",
+        queued_other:
+          "Quota {{quota}}: {{count}} accounts changed by the agent within a minute ({{unchanged}} already at that quota, {{deleted}} deleted).",
       },
       mailbox: {
         title: "Mailbox management",

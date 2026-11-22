@@ -373,6 +373,39 @@ describe("account list", () => {
     expect(screen.queryByText(/selected/)).toBeNull();
   });
 
+  it("changes the quota of several accounts", async () => {
+    const { calls } = open(user("super_admin"), [item(), ben], {
+      "POST /api/mail/accounts/quota": {
+        queued: 2,
+        unchanged: 0,
+        skipped_deleted: 0,
+        not_found: 0,
+      },
+    });
+    await screen.findByText("Ana Lopez");
+    fireEvent.click(screen.getByLabelText("Select page"));
+    fireEvent.click(screen.getByRole("button", { name: "Change quota" }));
+    const form = screen.getByRole("form", { name: "Change quota" });
+    const apply = within(form).getByRole("button", {
+      name: "Apply to 2 accounts",
+    });
+    expect(apply).toBeDisabled();
+    fireEvent.change(within(form).getByLabelText("Quota (GB)"), {
+      target: { value: "2.5" },
+    });
+    fireEvent.click(apply);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Quota 2.5 GB: 2 accounts changed by the agent within a minute",
+    );
+    const post = calls.find((c) => c.url === "/api/mail/accounts/quota");
+    expect(post?.body).toEqual({
+      account_ids: ["a1", ben.id],
+      quota_bytes: 2.5 * 1024 ** 3,
+      reason: null,
+    });
+    expect(screen.queryByRole("form", { name: "Change quota" })).toBeNull();
+  });
+
   it("reports bulk errors and hides actions outside the user's domains", async () => {
     open(user("domain_admin", DOMAIN_ID), [item(), cy], {
       "POST /api/backups/bulk": { status: 403, body: { detail: "forbidden" } },

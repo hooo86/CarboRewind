@@ -407,6 +407,17 @@ class CarbonioClient:
             "ModifyAccount", NS_ADMIN, {"id": account_id, "a": attrs}, token=self._admin_auth()
         )
 
+    def set_quota(self, account_id: str, quota_bytes: int) -> None:
+        """Set the mail quota of an account (``zimbraMailQuota``, bytes; 0 = unlimited)."""
+        if quota_bytes < 0:
+            raise ValueError("negative quota")
+        self._admin.invoke(
+            "ModifyAccount",
+            NS_ADMIN,
+            {"id": account_id, "a": [{"n": "zimbraMailQuota", "_content": str(int(quota_bytes))}]},
+            token=self._admin_auth(),
+        )
+
     def delete_account(self, account_id: str) -> None:
         """Delete the account and its mailbox from Carbonio (``DeleteAccountRequest``)."""
         self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_auth())

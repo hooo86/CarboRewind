@@ -741,6 +741,61 @@ async def delete_mailbox(
     return ActionOut(id=queued.id if queued else None, action="delete", queued=queued is not None)
 
 
+class QuotaIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_ids: list[uuid.UUID] = Field(min_length=1, max_length=2000)
+    quota_bytes: int = Field(ge=0, le=2**50)  # 0: unlimited
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class QuotaOut(BaseModel):
+    queued: int
+    unchanged: int  # already at that quota, or the same change already pending
+    skipped_deleted: int
+    not_found: int
+
+
+@router.post("/accounts/quota", response_model=QuotaOut)
+async def set_quota(body: QuotaIn, principal: Admin, db: DbSession, request: Request) -> QuotaOut:
+    """Set the mail quota of one or several accounts (the agent applies it within a minute)."""
+    ids = list(dict.fromkeys(body.account_ids))
+    accounts = list(await db.scalars(select(Account).where(Account.id.in_(ids))))
+    out = QuotaOut(queued=0, unchanged=0, skipped_deleted=0, not_found=len(ids) - len(accounts))
+    reason = body.reason or f"by {principal.user.username}"
+    for account in accounts:
+        if account.status == AccountStatus.DELETED:
+            out.skipped_deleted += 1
+            continue
+        if (account.quota_bytes or 0) == body.quota_bytes:
+            out.unchanged += 1
+            continue
+        queued = await mail_traffic.queue_action(
+            db, account.id, "quota", reason, user_id=principal.user.id, value=body.quota_bytes
+        )
+        if queued is None:
+            out.unchanged += 1
+            continue
+        out.queued += 1
+        await audit.record(
+            db,
+            action="account.quota_request",
+            outcome=Outcome.SUCCESS,
+            actor_id=str(principal.user.id),
+            actor_name=principal.user.username,
+            source_ip=client_ip(request),
+            target_type="account",
+            target_id=account.email,
+            domain_id=account.domain_id,
+            details={
+                "quota_bytes": body.quota_bytes,
+                "previous_bytes": account.quota_bytes,
+                "reason": body.reason,
+            },
+        )
+    return out
+
+
 @router.post("/accounts/{account_id}/{action}", response_model=ActionOut)
 async def account_action(
     account_id: uuid.UUID,

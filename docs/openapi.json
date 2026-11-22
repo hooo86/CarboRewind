@@ -43,12 +43,34 @@
               }
             ]
           },
+          "quota_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quota Bytes"
+          },
           "snapshot_count": {
             "title": "Snapshot Count",
             "type": "integer"
           },
           "status": {
             "$ref": "#/components/schemas/AccountStatus"
+          },
+          "used_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used Bytes"
           }
         },
         "required": [
@@ -6277,6 +6299,73 @@
           }
         },
         "title": "QueueReasonIn",
+        "type": "object"
+      },
+      "QuotaIn": {
+        "additionalProperties": false,
+        "properties": {
+          "account_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "quota_bytes": {
+            "maximum": 1125899906842624.0,
+            "minimum": 0.0,
+            "title": "Quota Bytes",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "account_ids",
+          "quota_bytes"
+        ],
+        "title": "QuotaIn",
+        "type": "object"
+      },
+      "QuotaOut": {
+        "properties": {
+          "not_found": {
+            "title": "Not Found",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "skipped_deleted": {
+            "title": "Skipped Deleted",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued",
+          "unchanged",
+          "skipped_deleted",
+          "not_found"
+        ],
+        "title": "QuotaOut",
         "type": "object"
       },
       "RecoveryCodesOut": {
@@ -13351,6 +13440,48 @@
         "summary": "Server Log",
         "tags": [
           "logs"
+        ]
+      }
+    },
+    "/api/mail/accounts/quota": {
+      "post": {
+        "description": "Set the mail quota of one or several accounts (the agent applies it within a minute).",
+        "operationId": "set_quota_api_mail_accounts_quota_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Quota",
+        "tags": [
+          "mail traffic"
         ]
       }
     },

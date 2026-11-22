@@ -266,3 +266,57 @@ def test_delete_mailbox(api: TestClient, engine: Engine) -> None:
     with Session(engine) as s:
         assert s.get(Account, ben_id).status == AccountStatus.DELETED  # type: ignore[union-attr]
     assert api.post(url, json={"confirm": e["ben"]}, headers=h).status_code == 404
+
+
+def test_set_quota_of_several_accounts(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    e = accounts(agent, uuid.uuid4().hex[:6])
+    with Session(engine) as s, s.begin():
+        rows = {a.email: a for a in s.scalars(select(Account).where(Account.email.in_(e.values())))}
+        rows[e["news"]].quota_bytes = 2 << 30  # already at the quota asked
+        ids = {k: rows[v].id for k, v in e.items()}
+    five = 5 << 30
+    body = {"account_ids": [str(i) for i in ids.values()] + [str(uuid.uuid4())]}
+    assert (
+        api.post(
+            "/api/mail/accounts/quota", json={**body, "quota_bytes": -1}, headers=h
+        ).status_code
+        == 422
+    )
+    r = api.post("/api/mail/accounts/quota", json={**body, "quota_bytes": 2 << 30}, headers=h)
+    assert r.json() == {"queued": 2, "unchanged": 1, "skipped_deleted": 0, "not_found": 1}, r.text
+    # A new value replaces the pending one; a lock queued meanwhile is kept.
+    lock = api.post(f"/api/mail/accounts/{ids['ana']}/lock", json={}, headers=h)
+    assert lock.json()["queued"] is True
+    r = api.post(
+        "/api/mail/accounts/quota",
+        json={"account_ids": [str(ids["ana"]), str(ids["ben"])], "quota_bytes": five},
+        headers=h,
+    )
+    assert r.json()["queued"] == 2
+    again = api.post(
+        "/api/mail/accounts/quota",
+        json={"account_ids": [str(ids["ana"])], "quota_bytes": five},
+        headers=h,
+    )
+    assert again.json()["unchanged"] == 1  # same change already pending
+    actions = agent.post("/mail-stats", {"hours": []}).json()["actions"]
+    quotas = [a for a in actions if a["action"] == "quota"]
+    assert sorted(a["email"] for a in quotas) == sorted([e["ana"], e["ben"]])
+    assert {a["value"] for a in quotas} == {five}
+    assert any(a["action"] == "lock" and a["email"] == e["ana"] for a in actions)
+    for a in quotas:
+        agent.post(f"/account-actions/{a['id']}/done", {"error": None})
+    with Session(engine) as s:
+        assert s.get(Account, ids["ana"]).quota_bytes == five  # type: ignore[union-attr]
+        assert s.get(Account, ids["ana"]).status == AccountStatus.ACTIVE  # type: ignore[union-attr]
+        audit = s.scalars(select(AuditEvent.action).where(AuditEvent.target_id == e["ana"])).all()
+    assert "account.quota_request" in audit and "account.quota" in audit
+    # Unlimited (0) is allowed.
+    r = api.post(
+        "/api/mail/accounts/quota",
+        json={"account_ids": [str(ids["ben"])], "quota_bytes": 0},
+        headers=h,
+    )
+    assert r.json()["queued"] == 1

@@ -29,6 +29,7 @@ import type {
   LegalHold,
   OpenedMessage,
   AccountDetail,
+  QuotaResult,
   AccountFacets,
   AccountItem,
   BulkBackupResult,
@@ -189,6 +190,12 @@ export const api = {
     request<BulkBackupResult>("POST", "/api/backups/bulk", {
       account_ids: accountIds,
       backup_type: backupType,
+    }),
+  setQuota: (accountIds: string[], quotaBytes: number, reason?: string) =>
+    request<QuotaResult>("POST", "/api/mail/accounts/quota", {
+      account_ids: accountIds,
+      quota_bytes: quotaBytes,
+      reason: reason || null,
     }),
   account: (id: string) => request<AccountDetail>("GET", `/api/accounts/${id}`),
   snapshots: (id: string) =>

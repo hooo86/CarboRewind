@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Quotas** : modifier le quota d'une boîte (fiche du compte → Gestion de la boîte → « Modifier
+  le quota ») ou de plusieurs à la fois (page Comptes : cocher les comptes → « Modifier le
+  quota »), en Go ou illimité, avec motif facultatif. L'agent l'applique dans Carbonio
+  (`zimbraMailQuota`) dans la minute ; demande et résultat sont audités (migration 0022).
 - **Redémarrage automatique de Carbonio** (Paramètres → Agent, désactivé par défaut) : si le
   MTA, le LMTP, l'annuaire ou le serveur de boîtes restent arrêtés N minutes (5 par défaut),
   l'agent fait lancer `zmcontrol start` par un service root dédié

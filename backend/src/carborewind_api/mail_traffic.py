@@ -297,26 +297,33 @@ async def _raise(
 async def queue_action(
     db: AsyncSession,
     account_id: uuid.UUID,
-    action: Literal["lock", "unlock", "delete"],
+    action: Literal["lock", "unlock", "delete", "quota"],
     reason: str | None,
     *,
     alert_id: uuid.UUID | None = None,
     user_id: uuid.UUID | None = None,
+    value: int | None = None,
 ) -> AccountAction | None:
-    """Queue a lock/unlock/delete for the agent (None if the same one is already pending)."""
+    """Queue a lock/unlock/delete or a quota change for the agent (None if the same one is
+    already pending). A quota change and a status change do not replace each other."""
+    family = (
+        AccountAction.action == "quota" if action == "quota" else AccountAction.action != "quota"
+    )
     pending = await db.scalar(
         select(AccountAction).where(
             AccountAction.account_id == account_id,
             AccountAction.status == "pending",
+            family,
         )
     )
     if pending is not None:
-        if pending.action == action:
+        if pending.action == action and pending.value == value:
             return None
         pending.status, pending.error = "failed", "superseded"
     row = AccountAction(
         account_id=account_id,
         action=action,
+        value=value,
         reason=(reason or "")[:500] or None,
         alert_id=alert_id,
         created_by=user_id,
@@ -341,6 +348,7 @@ async def pending_actions(db: AsyncSession) -> list[dict[str, Any]]:
             "carbonio_id": acc.carbonio_id,
             "email": acc.email,
             "reason": a.reason,
+            **({"value": a.value} if a.action == "quota" else {}),
         }
         for a, acc in rows
     ]

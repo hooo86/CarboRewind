@@ -14,6 +14,7 @@ import type {
   SavedView,
 } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { QuotaForm } from "../components/QuotaForm";
 import {
   LoadView,
   StatusBadge,
@@ -820,7 +821,7 @@ function Favorites({
 export function AccountsPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { canRunBackup, canManagePolicies } = useAuth();
+  const { canRunBackup, canManagePolicies, canManageSettings } = useAuth();
   const [params, setParams] = useSearchParams();
   const filters = params.getAll("f");
   const q = params.get("q") ?? "";
@@ -834,6 +835,7 @@ export function AccountsPage() {
   const [selected, setSelected] = useState<Map<string, AccountItem>>(new Map());
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
+  const [quotaOpen, setQuotaOpen] = useState(false);
 
   const [facets] = useLoad<AccountFacets>(() => api.accountFacets(), []);
   const key = params.toString();
@@ -1186,6 +1188,16 @@ export function AccountsPage() {
               {t("accounts.createPolicy")}
             </button>
           )}
+          {canManageSettings && (
+            <button
+              type="button"
+              className="small secondary"
+              aria-expanded={quotaOpen}
+              onClick={() => setQuotaOpen(!quotaOpen)}
+            >
+              {t("quota.title")}
+            </button>
+          )}
           <button
             type="button"
             className="link"
@@ -1194,6 +1206,25 @@ export function AccountsPage() {
             {t("accounts.clearSelection")}
           </button>
         </div>
+      )}
+      {quotaOpen && canManageSettings && selected.size > 0 && (
+        <section className="card">
+          <QuotaForm
+            accountIds={[...selected.keys()]}
+            current={
+              selection.length === 1
+                ? (selection[0]?.quota_bytes ?? 0)
+                : undefined
+            }
+            onCancel={() => setQuotaOpen(false)}
+            onDone={(text) => {
+              setNotice({ kind: "ok", text });
+              setQuotaOpen(false);
+              setSelected(new Map());
+              reload();
+            }}
+          />
+        </section>
       )}
       <NoticeBar notice={notice} />
 

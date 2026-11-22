@@ -931,13 +931,15 @@ class IpAction(Base):
 
 
 class AccountAction(Base):
-    """Lock, unlock or delete a Carbonio account, carried out by the agent's mail watcher."""
+    """Lock, unlock, delete a Carbonio account or set its quota, carried out by the agent's
+    mail watcher."""
 
     __tablename__ = "account_actions"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
-    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete
+    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete | quota
+    value: Mapped[int | None] = mapped_column(BigInteger)  # quota: bytes, 0 = unlimited
     reason: Mapped[str | None] = mapped_column(Text)
     alert_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("mail_alerts.id", ondelete="SET NULL")
@@ -951,7 +953,7 @@ class AccountAction(Base):
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        CheckConstraint("action IN ('lock', 'unlock')", name="action_known"),
+        CheckConstraint("action IN ('lock', 'unlock', 'delete', 'quota')", name="action_known"),
         CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
         Index(
             "ix_account_actions_pending", "created_at", postgresql_where=text("status = 'pending'")

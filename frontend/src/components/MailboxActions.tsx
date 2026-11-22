@@ -8,8 +8,9 @@ import type { AccountDetail } from "../api/types";
 import { formatDate } from "../utils/format";
 import { errorMessage } from "./common";
 import { NoticeBar, type Notice } from "./notices";
+import { QuotaForm } from "./QuotaForm";
 
-type Panel = "archive" | "delete" | null;
+type Panel = "archive" | "delete" | "quota" | null;
 
 /** Unlock, archive (and empty) or delete a mailbox: global administrators only. */
 export function MailboxActions({
@@ -106,6 +107,14 @@ export function MailboxActions({
         <button
           type="button"
           className="secondary"
+          aria-expanded={panel === "quota"}
+          onClick={() => setPanel(panel === "quota" ? null : "quota")}
+        >
+          {t("quota.title")}
+        </button>
+        <button
+          type="button"
+          className="secondary"
           aria-expanded={panel === "archive"}
           onClick={() => setPanel(panel === "archive" ? null : "archive")}
         >
@@ -125,6 +134,18 @@ export function MailboxActions({
       )}
       <NoticeBar notice={notice} />
 
+      {panel === "quota" && (
+        <QuotaForm
+          accountIds={[account.id]}
+          current={account.quota_bytes ?? 0}
+          onCancel={() => setPanel(null)}
+          onDone={(text) => {
+            setNotice({ kind: "ok", text });
+            setPanel(null);
+            onChange();
+          }}
+        />
+      )}
       {panel === "archive" && (
         <form
           className="stack"

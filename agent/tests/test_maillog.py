@@ -278,6 +278,18 @@ def test_monitor_sends_counters_and_locks(setup: tuple[Any, ...]) -> None:
     assert done["/account-actions/a7/done"] == {"error": None}
     assert "NO_SUCH_ACCOUNT" in done["/account-actions/a8/done"]["error"]
     assert ben.id not in fake.mailboxes and ana.id in fake.mailboxes
+    # Quota: bytes written to zimbraMailQuota; a missing value is refused.
+    server.actions = [
+        {"id": "q1", "action": "quota", "carbonio_id": ana.id, "email": ana.name, "value": 5 << 30},
+        {"id": "q2", "action": "quota", "carbonio_id": ana.id, "email": ana.name},
+        {"id": "q3", "action": "quota", "carbonio_id": "nope", "email": "x@y", "value": 1},
+    ]
+    monitor.tick(NOW)
+    done = {p: b for p, b in server.calls if p.startswith("/account-actions/q")}
+    assert done["/account-actions/q1/done"] == {"error": None}
+    assert ana.attrs["zimbraMailQuota"] == str(5 << 30)
+    assert "invalid quota" in done["/account-actions/q2/done"]["error"]
+    assert "NO_SUCH_ACCOUNT" in done["/account-actions/q3/done"]["error"]
 
 
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:

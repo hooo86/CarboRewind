@@ -778,4 +778,14 @@ ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK
 
 UPDATE alembic_version SET version_num='0021' WHERE alembic_version.version_num = '0020';
 
+-- Running upgrade 0021 -> 0022
+
+ALTER TABLE account_actions ADD COLUMN value BIGINT;
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete', 'quota'));
+
+UPDATE alembic_version SET version_num='0022' WHERE alembic_version.version_num = '0021';
+
 COMMIT;

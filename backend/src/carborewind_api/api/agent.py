@@ -655,11 +655,14 @@ async def account_action_done(
     action.done_at = datetime.now(UTC)
     action.status, action.error = ("failed", body.error) if body.error else ("done", None)
     if account is not None and not body.error:
-        account.status = {
-            "lock": AccountStatus.LOCKED,
-            "unlock": AccountStatus.ACTIVE,
-            "delete": AccountStatus.DELETED,  # still restorable from its backups
-        }[action.action]
+        if action.action == "quota":
+            account.quota_bytes = action.value or None  # 0: unlimited
+        else:
+            account.status = {
+                "lock": AccountStatus.LOCKED,
+                "unlock": AccountStatus.ACTIVE,
+                "delete": AccountStatus.DELETED,  # still restorable from its backups
+            }[action.action]
     if body.error:
         await notify(
             db,
@@ -677,7 +680,12 @@ async def account_action_done(
         target_type="account",
         target_id=account.email if account else None,
         domain_id=account.domain_id if account else None,
-        details={"reason": action.reason, "error": body.error, "action": str(action.id)},
+        details={
+            "reason": action.reason,
+            "error": body.error,
+            "action": str(action.id),
+            **({"quota_bytes": action.value} if action.action == "quota" else {}),
+        },
     )
 
 
