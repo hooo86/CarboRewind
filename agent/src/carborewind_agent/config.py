@@ -77,6 +77,8 @@ class AgentSettings(BaseSettings):
     replica_path: Path | None = None
     # Hand-off with the root helper applying the storage settings of the interface.
     storage_dir: Path = Path("/var/lib/carborewind/storage")
+    # Standby server: what was applied of each account (see standby.py).
+    standby_dir: Path = Path("/var/lib/carborewind/standby")
     # KEK protecting the repository master key: base64 of 32 bytes, file mode 0600/0400.
     repository_key_file: Path = Path("/etc/carborewind/repository.key")
 

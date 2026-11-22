@@ -22,6 +22,7 @@ from .purge import run_purge
 from .replicate import ReplicaError, replicate
 from .repository import Repository, RepositoryError
 from .restore import AccountRestore, RestoreError
+from .standby import StandbyError, StandbySync
 from .storage import describe
 
 log = logging.getLogger(__name__)
@@ -145,6 +146,7 @@ class Worker:
         *,
         migration: MailboxMigration | None = None,
         archiver: MailboxArchiver | None = None,
+        standby: StandbySync | None = None,
         storage_dir: Path | None = None,
         replica: Path | None = None,
         storage_every: int = 3,
@@ -165,6 +167,7 @@ class Worker:
         self._repo = repo
         self._migration = migration
         self._archiver = archiver
+        self._standby = standby
         self._storage_dir = storage_dir
         self._replica = replica
         self._storage_every = storage_every
@@ -426,6 +429,8 @@ class Worker:
             runner = self._run_archive
         elif job["kind"] == "fetch" and self._repo is not None:
             runner = self._run_fetch
+        elif job["kind"] == "standby_sync" and self._standby is not None:
+            runner = self._run_standby
         else:
             self._api.fail(job_id, f"unsupported job kind {job['kind']}", retryable=False)
             return True
@@ -463,6 +468,7 @@ class Worker:
             ReplicaError,
             RepositoryError,
             ArchiveError,
+            StandbyError,
         ) as exc:
             stop_beat.set()
             log.error("job %s failed: %s", job_id, exc)
@@ -587,6 +593,32 @@ class Worker:
             result.copied_bytes,
             result.deleted,
             len(result.errors),
+        )
+
+    def _run_standby(
+        self, job: dict[str, Any], checkpoint: Callable[[dict[str, Any]], None]
+    ) -> None:
+        """Bring this (standby) Carbonio in line with a snapshot of the main server."""
+        assert self._standby is not None  # noqa: S101 - checked by the caller
+        params = job["params"]
+        result = self._standby.run(
+            str(job["carbonio_id"]),
+            str(job["account_email"]),
+            str(params["snapshot_id"]),
+            attrs={str(k): str(v) for k, v in (params.get("attrs") or {}).items()},
+            checkpoint=checkpoint,
+        )
+        self._api.standby_complete(
+            job["job_id"], {**result.to_payload(), "snapshot_id": params["snapshot_id"]}
+        )
+        log.info(
+            "job %s done: standby copy of %s, +%s -%s, %s moved, %s error(s)",
+            job["job_id"],
+            job.get("account_email"),
+            result.added,
+            result.deleted,
+            result.moved,
+            len(result.failed),
         )
 
     def _run_verify(

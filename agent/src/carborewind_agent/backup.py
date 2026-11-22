@@ -294,9 +294,12 @@ class AccountBackup:
             for f in sorted(folders.values(), key=lambda f: f.id)
         ]
         if backup_type == "incremental":
-            merged = {f["id"]: f for f in ctx.base.folders}
-            merged.update({f["id"]: f for f in folder_list})
-            folder_list = sorted(merged.values(), key=lambda f: int(f["id"]))
+            # A delta sync lists changed folders without their place in the tree, and no
+            # deleted folder: the current tree is read whole (one cheap request).
+            folder_list = [
+                {"id": f.id, "parent": f.parent_id, "path": f.path, "view": f.view}
+                for f in sorted(self._client.get_folders(account_id), key=lambda f: f.id)
+            ]
 
         manifest = {
             "version": MANIFEST_VERSION,

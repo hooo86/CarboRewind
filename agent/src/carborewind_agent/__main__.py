@@ -129,6 +129,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     from .carbonio.factory import build_client
     from .migrate import MailboxMigration
     from .restore import AccountRestore
+    from .standby import StandbySync
     from .throttle import Throttle
     from .worker import Worker
 
@@ -188,6 +189,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         archiver=MailboxArchiver(
             carbonio, repo, throttle, protected={settings.carbonio_admin_name}
         ),
+        standby=StandbySync(carbonio, repo, throttle, state_dir=settings.standby_dir),
         storage_dir=settings.storage_dir,
         replica=settings.replica_path,
         kek=read_kek(settings.repository_key_file),

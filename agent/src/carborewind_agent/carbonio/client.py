@@ -418,6 +418,41 @@ class CarbonioClient:
             token=self._admin_auth(),
         )
 
+    def find_account(self, by: str, value: str) -> AccountInfo | None:
+        """``GetAccountRequest`` by ``id`` or ``name``; None when the account does not exist."""
+        if by not in {"id", "name"}:
+            raise ValueError(f"unsupported key {by!r}")
+        try:
+            resp = self._admin.invoke(
+                "GetAccount",
+                NS_ADMIN,
+                {"account": {"by": by, "_content": value}},
+                token=self._admin_auth(),
+            )
+        except SoapFaultError as exc:
+            if exc.code == "account.NO_SUCH_ACCOUNT":
+                return None
+            raise
+        entry = resp["account"][0]
+        attrs = _attrs(entry)
+        return AccountInfo(
+            entry["id"], entry["name"], attrs.get("zimbraAccountStatus", [None])[0], attrs
+        )
+
+    def create_account(self, name: str, password: str, attrs: dict[str, str]) -> str:
+        """``CreateAccountRequest``; returns the new account's id."""
+        resp = self._admin.invoke(
+            "CreateAccount",
+            NS_ADMIN,
+            {
+                "name": name,
+                "password": password,
+                "a": [{"n": k, "_content": v} for k, v in attrs.items() if v],
+            },
+            token=self._admin_auth(),
+        )
+        return str(resp["account"][0]["id"])
+
     def delete_account(self, account_id: str) -> None:
         """Delete the account and its mailbox from Carbonio (``DeleteAccountRequest``)."""
         self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_auth())
@@ -575,6 +610,31 @@ class CarbonioClient:
             "MsgAction",
             NS_MAIL,
             {"action": {"op": "delete", "id": ",".join(str(i) for i in item_ids)}},
+            token=self.delegate(account_id),
+        )
+
+    def item_action(
+        self, account_id: str, item_ids: list[int], op: str, **attrs: str | int
+    ) -> None:
+        """``ItemActionRequest`` on several items at once: ``move`` (``l``), ``update``
+        (``f`` flags, ``tn`` tag names) or ``delete`` (for good, not via the Trash)."""
+        if op not in {"move", "update", "delete"}:
+            raise ValueError(f"unsupported item action {op!r}")
+        if not item_ids:
+            return
+        self._mail.invoke(
+            "ItemAction",
+            NS_MAIL,
+            {"action": {"op": op, "id": ",".join(str(i) for i in item_ids), **attrs}},
+            token=self.delegate(account_id),
+        )
+
+    def empty_folder(self, account_id: str, folder_id: int) -> None:
+        """Delete every item of a folder, keeping the folder (``FolderAction op=empty``)."""
+        self._mail.invoke(
+            "FolderAction",
+            NS_MAIL,
+            {"action": {"op": "empty", "id": str(folder_id), "recursive": 0}},
             token=self.delegate(account_id),
         )
 

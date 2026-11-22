@@ -395,7 +395,11 @@ class FakeCarbonio:
 
     def _GetAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
-        mbox = self.mailboxes.get(body["account"]["_content"])
+        key = body["account"]["_content"]
+        if body["account"].get("by") == "name":
+            mbox = next((m for m in self.mailboxes.values() if m.name == key), None)
+        else:
+            mbox = self.mailboxes.get(key)
         if mbox is None:
             raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
         return {"account": [self._account_entry(mbox)]}
@@ -556,9 +560,54 @@ class FakeCarbonio:
             mbox.delete(item_id)
         return {"action": {"op": "delete", "id": action["id"]}}
 
+    def _CreateAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if any(m.name == body["name"] for m in self.mailboxes.values()):
+            raise _Fault("account.ACCOUNT_EXISTS", "email address already exists")
+        attrs = {a["n"]: a["_content"] for a in body.get("a", [])}
+        mbox = Mailbox(id=attrs.pop("zimbraId", None) or secrets.token_hex(8), name=body["name"])
+        mbox.attrs = attrs
+        self.mailboxes[mbox.id] = mbox
+        self.calls.append(f"create-account:{body['name']}")
+        return {"account": [self._account_entry(mbox)]}
+
+    def _ItemActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        ids = [int(i) for i in action["id"].split(",")]
+        missing = [i for i in ids if i not in mbox.items]
+        if missing:
+            raise _Fault("mail.NO_SUCH_ITEM", f"no such item: {missing[0]}")
+        self.calls.append(f"item-action:{action['op']}:{len(ids)}")
+        for item_id in ids:
+            if action["op"] == "delete":
+                mbox.delete(item_id)
+            elif action["op"] == "move":
+                if int(action["l"]) not in mbox.folders:
+                    raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+                mbox.modify(item_id, folder=int(action["l"]))
+            elif action["op"] == "update":
+                changes = {}
+                if "f" in action:
+                    changes["flags"] = action["f"]
+                if "tn" in action:
+                    changes["tags"] = action["tn"]
+                mbox.modify(item_id, **changes)
+            else:
+                raise _Fault("service.INVALID_REQUEST", action["op"])
+        return {"action": {"op": action["op"], "id": action["id"]}}
+
     def _FolderActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
         action = body["action"]
+        if action["op"] == "empty":
+            fid = int(action["id"])
+            if fid not in mbox.folders:
+                raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+            for item_id in [i for i, item in mbox.items.items() if item.folder == fid]:
+                mbox.delete(item_id)
+            self.calls.append(f"empty:{fid}")
+            return {"action": {"op": "empty", "id": action["id"]}}
         if action["op"] != "delete":
             raise _Fault("service.INVALID_REQUEST", action["op"])
         root = int(action["id"])

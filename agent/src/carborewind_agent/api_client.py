@@ -226,6 +226,9 @@ class AgentApi:
     def replicate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/replicate-complete", payload)
 
+    def standby_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/standby-complete", payload)
+
     def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/migrate-complete", payload)
 
