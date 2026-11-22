@@ -164,6 +164,30 @@ def test_add_message_inline_and_uploaded(
         client.add_message(alice.id, 4242, EML)
 
 
+def test_add_message_too_large_inline_goes_by_upload(
+    client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox
+) -> None:
+    fake.inline_max = 100
+    small = b"Subject: s\r\n\r\nok\r\n"
+    big = b"Subject: big\r\n\r\n" + b"x" * 500 + b"\r\n"
+    big_id = client.add_message(alice.id, 2, big)
+    assert alice.items[big_id].raw == big
+    uploads = sum(c.startswith("upload:") for c in fake.calls)
+    assert uploads == 1
+    # The limit is remembered: the next big message goes straight to the upload.
+    calls = len(fake.calls)
+    client.add_message(alice.id, 2, big + b"y")
+    assert sum(c.startswith("upload:") for c in fake.calls) == 2
+    assert len(fake.calls) - calls <= 3  # no inline attempt first
+    small_id = client.add_message(alice.id, 2, small)
+    assert alice.items[small_id].raw == small
+    assert sum(c.startswith("upload:") for c in fake.calls) == 2  # small stays inline
+    # Upload refused and too big for inline: the error comes back.
+    fake.upload_reply = "401,'null'"
+    with pytest.raises(SoapFaultError):
+        client.add_message(alice.id, 2, big + b"z")
+
+
 def test_rest_import_formats(client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox) -> None:
     client.import_rest(
         alice.name, alice.id, "/Calendar", "ics", b"BEGIN:VCALENDAR\r\nEND:VCALENDAR"

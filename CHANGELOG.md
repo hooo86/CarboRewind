@@ -16,6 +16,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 - **Fuseau horaire** : liste déroulante au lieu d'un champ texte.
 
 ### Fixed
+- **Migration / restauration : « inline message too large »** : Carbonio refusait les messages
+  envoyés dans la requête au-delà de sa limite (bien en dessous de 4 Mo). Ils passent désormais
+  par le téléversement (`/service/upload`), la limite apprise est retenue pour les suivants ; les
+  messages en échec sont repris à la copie suivante du lot.
+- **Sauvegardes** : pause des lectures quand moins de 10 % de la RAM est disponible.
 - **Mise à jour pendant des sauvegardes** : à l'arrêt, l'agent rend ses jobs en cours au
   serveur avec leur point de reprise. Ils reprennent dès le redémarrage, sans attendre 5 minutes
   et sans consommer de tentative. Pendant la mise à jour du serveur, l'agent réessaie ses appels

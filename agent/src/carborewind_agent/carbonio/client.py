@@ -145,6 +145,9 @@ class CarbonioClient:
         self._delegate_seconds = delegate_seconds
         self._admin_token: _Token | None = None
         self._delegated: dict[str, _Token] = {}
+        # Largest message sent inline; lowered when Carbonio answers "inline message too
+        # large" (its limit is a server setting, lower than the SOAP request limit).
+        self._inline_max = INLINE_MAX
 
     # ------------------------------------------------------------------ authentication
 
@@ -604,26 +607,36 @@ class CarbonioClient:
         base64 / RFC 2047 transfer encoding, see :mod:`.mime7bit`) and sent inline.
         """
         msg: dict[str, Any] = {"l": str(folder_id), "f": flags, "tn": tags}
+        if received_ms is not None:
+            msg["d"] = received_ms
         try:
             text: str | None = raw.decode("utf-8")
         except UnicodeDecodeError:
             text = None
-        if text is not None and len(raw) <= INLINE_MAX:
-            msg["content"] = {"_content": text}
-        else:
-            # 8-bit content, or a big message: inline JSON would inflate it past Carbonio's
-            # SOAP size limit, while the upload sends it as is.
+        token = self.delegate(account_id)
+        if text is not None and len(raw) <= min(self._inline_max, INLINE_MAX):
             try:
-                msg["aid"] = self.upload(account_id, raw)
-            except (SoapFaultError, httpx.HTTPError) as exc:
-                inline = text if text is not None else to_7bit(raw)
-                if inline is None:
+                resp = self._mail.invoke(
+                    "AddMsg", NS_MAIL, {"m": {**msg, "content": {"_content": text}}}, token=token
+                )
+                return int(resp["m"][0]["id"])
+            except SoapFaultError as exc:
+                if "inline message too large" not in str(exc).lower():
                     raise
-                log.warning("upload refused (%s), message sent inline", exc)
-                msg["content"] = {"_content": inline}
-        if received_ms is not None:
-            msg["d"] = received_ms
-        resp = self._mail.invoke("AddMsg", NS_MAIL, {"m": msg}, token=self.delegate(account_id))
+                # Remember Carbonio's limit; this message and bigger ones go by upload.
+                self._inline_max = min(self._inline_max, len(raw) - 1)
+                log.info("inline limit of Carbonio below %s bytes: upload used", len(raw))
+        # 8-bit content, or a big message: inline JSON would inflate it past Carbonio's
+        # limits, while the upload sends it as is.
+        try:
+            msg["aid"] = self.upload(account_id, raw)
+        except (SoapFaultError, httpx.HTTPError) as exc:
+            inline = text if text is not None else to_7bit(raw)
+            if inline is None or len(inline) > self._inline_max:
+                raise
+            log.warning("upload refused (%s), message sent inline", exc)
+            msg["content"] = {"_content": inline}
+        resp = self._mail.invoke("AddMsg", NS_MAIL, {"m": msg}, token=token)
         return int(resp["m"][0]["id"])
 
     def upload(self, account_id: str, data: bytes) -> str:

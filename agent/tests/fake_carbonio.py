@@ -110,6 +110,7 @@ class FakeCarbonio:
         # zmcontrol-like status: service -> (running, checked at, s); queue name -> count.
         self.services: dict[str, tuple[bool, int]] = {}
         self.upload_reply: str | None = None  # e.g. "401,'null'": the servlet refuses
+        self.inline_max: int | None = None  # AddMsg refuses bigger inline content
         self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
         # Messages per queue (GetMailQueue) and the queue actions received.
         self.queue_items: dict[str, list[dict[str, Any]]] = {}
@@ -492,6 +493,12 @@ class FakeCarbonio:
     def _AddMsgRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
         m = body["m"]
+        if (
+            "content" in m
+            and self.inline_max is not None
+            and len(m["content"]["_content"]) > self.inline_max
+        ):
+            raise _Fault("service.INVALID_REQUEST", "invalid request: inline message too large")
         raw = self.uploads.pop(m["aid"]) if "aid" in m else m["content"]["_content"].encode("utf-8")
         if int(m["l"]) not in mbox.folders:
             raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
