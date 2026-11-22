@@ -9,6 +9,7 @@ import { formatDate } from "../utils/format";
 import { AccountPicker } from "./AccountPicker";
 import { errorMessage, LoadView, StatusBadge, useLoad } from "./common";
 import { NoticeBar, type Notice } from "./notices";
+import { TimezoneSelect } from "./TimezoneSelect";
 
 function History({ runs }: { runs: RestoreTestRun[] }) {
   const { t } = useTranslation();
@@ -204,9 +205,9 @@ function RestoreTestForm({
         </label>
         <label>
           {t("monitoring.timezone")}
-          <input
+          <TimezoneSelect
             value={form.timezone}
-            onChange={(e) => setForm({ ...form, timezone: e.target.value })}
+            onChange={(timezone) => setForm({ ...form, timezone })}
           />
         </label>
       </div>

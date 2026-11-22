@@ -18,7 +18,6 @@ from cryptography.x509.oid import NameOID
 from . import __version__
 from .config import AgentSettings
 
-
 # Seconds to wait between attempts while the server is unreachable (about 2.5 minutes in
 # all: the time an update takes to restart the server's containers).
 RETRY_DELAYS = (3, 6, 12, 24, 45, 60)

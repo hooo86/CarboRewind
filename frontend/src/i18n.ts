@@ -92,6 +92,10 @@ export const resources = {
           is: "est",
         },
       },
+      timezone: {
+        choose: "Choisir un fuseau horaire",
+        common: "Les plus utilisés",
+      },
       queue: {
         title: "File d'attente des e-mails",
         of: "{{agent}}, relevé du {{date}}",
@@ -1737,6 +1741,10 @@ export const resources = {
           not_in: "is not",
           is: "is",
         },
+      },
+      timezone: {
+        choose: "Choose a time zone",
+        common: "Most used",
       },
       queue: {
         title: "Mail queue",

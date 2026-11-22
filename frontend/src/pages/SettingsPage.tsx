@@ -22,6 +22,7 @@ import {
 } from "../components/common";
 import { StorageSettingsSection } from "../components/StorageSettingsForm";
 import { formatDate } from "../utils/format";
+import { TimezoneSelect } from "../components/TimezoneSelect";
 
 export const EVENTS = [
   "job_failed",
@@ -440,9 +441,9 @@ function NotificationsForm({
           </label>
           <label className="grow">
             {t("policies.timezone")}
-            <input
+            <TimezoneSelect
               value={form.timezone}
-              onChange={(e) => set("timezone", e.target.value)}
+              onChange={(zone) => set("timezone", zone)}
             />
           </label>
         </div>

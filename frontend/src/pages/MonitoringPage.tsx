@@ -23,6 +23,7 @@ import { MailQueuePanel } from "../components/MailQueue";
 import { RestoreTestPanel } from "../components/RestoreTests";
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
+import { TimezoneSelect } from "../components/TimezoneSelect";
 
 const RISKS = ["never", "stale", "failed", "partial", "no_policy", "quota"];
 const DAY = 86400;
@@ -238,9 +239,9 @@ export function MonitoringSettingsForm({
         </label>
         <label>
           {t("monitoring.timezone")}
-          <input
+          <TimezoneSelect
             value={form.integrity_timezone}
-            onChange={(e) => set("integrity_timezone", e.target.value)}
+            onChange={(zone) => set("integrity_timezone", zone)}
           />
         </label>
       </div>

@@ -24,6 +24,7 @@ import {
 } from "../components/common";
 import { IconButton } from "../components/IconButton";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
+import { TimezoneSelect } from "../components/TimezoneSelect";
 
 type Preset = "plan" | "daily" | "weekly" | "custom";
 const DAYS = [1, 2, 3, 4, 5, 6, 0];
@@ -576,10 +577,10 @@ function PolicyForm({
           )}
           <label>
             {t("policies.timezone")}
-            <input
+            <TimezoneSelect
               required
               value={form.timezone}
-              onChange={(e) => set("timezone", e.target.value)}
+              onChange={(zone) => set("timezone", zone)}
             />
           </label>
           {preset !== "plan" && (

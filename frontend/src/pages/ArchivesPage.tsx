@@ -22,6 +22,7 @@ import {
 import { AccountPicker } from "../components/AccountPicker";
 import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate } from "../utils/format";
+import { TimezoneSelect } from "../components/TimezoneSelect";
 
 const PAGE = 50;
 
@@ -700,9 +701,9 @@ function PolicyForm({
         </label>
         <label>
           {t("monitoring.timezone")}
-          <input
+          <TimezoneSelect
             value={form.timezone}
-            onChange={(e) => set("timezone", e.target.value)}
+            onChange={(zone) => set("timezone", zone)}
           />
         </label>
       </div>
