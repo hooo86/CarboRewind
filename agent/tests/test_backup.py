@@ -11,7 +11,7 @@ import pytest
 from carborewind_agent.backup import AccountBackup, BackupResult, extract_metadata
 from carborewind_agent.carbonio import CarbonioClient, SoapFaultError
 from carborewind_agent.repository import Repository, generate_key
-from carborewind_agent.throttle import Throttle
+from carborewind_agent.throttle import Throttle, available_memory
 
 from .fake_carbonio import FakeCarbonio, Mailbox
 from .test_carbonio_client import _settings
@@ -296,7 +296,22 @@ def test_load_backoff() -> None:
     assert slept == [5.0, 5.0]
     stuck = Throttle(0, max_load=1.0, sleep=lambda _: None, loadavg=lambda: 9.0)
     stuck.consume(1)  # gives up waiting after max_wait instead of blocking forever
-    assert stuck.waited == 300.0
+    assert stuck.waited == 900.0
+
+
+def test_memory_backoff(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    frees = iter([0.04, 0.08, 0.30])
+    slept: list[float] = []
+    throttle = Throttle(0, 0, sleep=slept.append, mem_free=lambda: next(frees))
+    throttle.consume(1)
+    assert slept == [5.0, 5.0]  # paused while less than 10 % of the RAM was available
+    unknown = Throttle(0, 0, sleep=slept.append, mem_free=lambda: None)
+    unknown.consume(1)
+    assert slept == [5.0, 5.0]
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:  1000 kB\nMemFree: 10 kB\nMemAvailable:  250 kB\n")
+    assert available_memory(str(meminfo)) == 0.25
+    assert available_memory(str(tmp_path / "missing")) is None
 
 
 def test_full_backup_reads_message_metadata_in_batches(

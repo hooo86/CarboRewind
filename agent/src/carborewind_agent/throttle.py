@@ -7,6 +7,25 @@ import threading
 import time
 from collections.abc import Callable
 
+MIN_MEM_FREE = 0.10  # share of RAM that must stay available (Carbonio's Java needs room)
+
+
+def available_memory(meminfo: str = "/proc/meminfo") -> float | None:
+    """Share of RAM available (``MemAvailable / MemTotal``); None when unknown."""
+    values: dict[str, int] = {}
+    try:
+        with open(meminfo, encoding="ascii") as fh:
+            for line in fh:
+                key, _, rest = line.partition(":")
+                if key in ("MemTotal", "MemAvailable"):
+                    values[key] = int(rest.split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    total = values.get("MemTotal")
+    if not total or "MemAvailable" not in values:
+        return None
+    return values["MemAvailable"] / total
+
 
 class Throttle:
     """Thread-safe token bucket on bytes, plus a pause while the load average is too high.
@@ -23,12 +42,16 @@ class Throttle:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         loadavg: Callable[[], float] | None = None,
+        mem_free: Callable[[], float | None] | None = None,
+        min_mem_free: float = MIN_MEM_FREE,
     ) -> None:
         self._rate = max_bytes_per_second
         self._max_load = max_load
         self._clock = clock
         self._sleep = sleep
         self._loadavg = loadavg or (lambda: os.getloadavg()[0] / (os.cpu_count() or 1))
+        self._mem_free = mem_free or available_memory
+        self._min_mem_free = min_mem_free
         self._lock = threading.Lock()
         self._allowance = float(max_bytes_per_second)
         self._last = clock()
@@ -64,11 +87,16 @@ class Throttle:
             self.waited += delay
             self._sleep(delay)
 
-    def _wait_for_load(self, poll: float = 5.0, max_wait: float = 300.0) -> None:
-        if self._max_load <= 0:
-            return
+    def _busy(self) -> bool:
+        if self._max_load > 0 and self._loadavg() > self._max_load:
+            return True
+        free = self._mem_free() if self._min_mem_free > 0 else None
+        return free is not None and free < self._min_mem_free
+
+    def _wait_for_load(self, poll: float = 5.0, max_wait: float = 900.0) -> None:
+        """Pause while the server is overloaded (load average, or memory running out)."""
         waited = 0.0
-        while self._loadavg() > self._max_load and waited < max_wait:
+        while waited < max_wait and self._busy():
             self._sleep(poll)
             waited += poll
         self.waited += waited
