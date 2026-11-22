@@ -644,7 +644,10 @@ class CarbonioClient:
         except (SoapFaultError, httpx.HTTPError) as exc:
             inline = text if text is not None else to_7bit(raw)
             if inline is None or len(inline) > self._inline_max:
-                raise
+                if isinstance(exc, SoapFaultError):
+                    raise
+                # One message, not the whole mailbox: reported as a per-message fault.
+                raise SoapFaultError("client.UPLOAD_FAILED", f"upload: {exc}"[:300]) from exc
             log.warning("upload refused (%s), message sent inline", exc)
             msg["content"] = {"_content": inline}
         resp = self._mail.invoke("AddMsg", NS_MAIL, {"m": msg}, token=token)

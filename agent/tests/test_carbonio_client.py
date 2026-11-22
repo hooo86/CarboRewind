@@ -186,6 +186,11 @@ def test_add_message_too_large_inline_goes_by_upload(
     fake.upload_reply = "401,'null'"
     with pytest.raises(SoapFaultError):
         client.add_message(alice.id, 2, big + b"z")
+    # An HTTP error of the upload servlet is a per-message fault too.
+    fake.upload_reply = None
+    fake.fail_next = [500]
+    with pytest.raises(SoapFaultError, match="UPLOAD_FAILED"):
+        client.add_message(alice.id, 2, big + b"w")
 
 
 def test_rest_import_formats(client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox) -> None:
