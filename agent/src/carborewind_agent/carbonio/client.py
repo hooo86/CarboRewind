@@ -660,7 +660,9 @@ class CarbonioClient:
         """
         response = self._rest.post(
             "/service/upload",
-            params={"fmt": "raw"},
+            # lbfums: limited by zimbraFileUploadMaxSize; without it Carbonio applies the
+            # (often smaller) MTA limit zimbraMtaMaxMessageSize to the upload.
+            params={"fmt": "raw", "lbfums": "1"},
             content=data,
             headers={
                 "Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}",
