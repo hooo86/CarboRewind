@@ -18,6 +18,7 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
+import { AutostartPanel } from "../components/Autostart";
 import { BlacklistPanel } from "../components/Blacklist";
 import { MailQueuePanel } from "../components/MailQueue";
 import { RestoreTestPanel } from "../components/RestoreTests";
@@ -536,6 +537,11 @@ export function MonitoringPage() {
                       {v.errors.length > 0 && (
                         <p className="muted small">{v.errors.join(" ; ")}</p>
                       )}
+                      <AutostartPanel
+                        view={v}
+                        agentId={v.agent_id ?? null}
+                        onChange={reload}
+                      />
                     </div>
                   ))
                 )}

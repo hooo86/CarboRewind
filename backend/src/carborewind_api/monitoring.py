@@ -182,6 +182,7 @@ async def record_services(
             agent=agent.name,
             detail=", ".join(f"{k}: {v}" for k, v in sorted(queue.items())),
         )
+    await _autostart_events(db, agent, report, (agent.services or {}))
     agent.services = {
         "checked_at": report.get("checked_at") or now.isoformat(),
         "received_at": now.isoformat(),
@@ -192,10 +193,76 @@ async def record_services(
         "queue": raw_queue,
         "queue_total": total,
         "queue_items": report.get("queue_items"),
+        "autostart": report.get("autostart"),
+        "mail_test": report.get("mail_test") or (agent.services or {}).get("mail_test"),
         "errors": report.get("errors", [])[:5],
         "state": state,
     }
     return alerted
+
+
+def _test_lines(test: dict[str, Any]) -> str:
+    out = []
+    for kind, r in sorted((test.get("results") or {}).items()):
+        detail = f" — {r['detail']}" if r.get("detail") else ""
+        out.append(f"{kind}: {r.get('address')} → {r.get('status')}{detail}")
+    if test.get("error"):
+        out.append(str(test["error"]))
+    return "\n".join(out) or "—"
+
+
+async def _autostart_events(
+    db: AsyncSession, agent: Agent, report: dict[str, Any], previous: dict[str, Any]
+) -> None:
+    """Alerts for the automatic start of Carbonio and the sending test, once each."""
+    auto = report.get("autostart") or {}
+    before = previous.get("autostart") or {}
+    asked = auto.get("last_request") or {}
+    if asked.get("id") and asked.get("id") != (before.get("last_request") or {}).get("id"):
+        await notify(
+            db,
+            "carbonio_autostart",
+            dedup_key=f"carbonio_autostart:{asked['id']}",
+            agent=agent.name,
+            down=", ".join(asked.get("down") or []) or "—",
+            minutes=auto.get("minutes", "?"),
+        )
+    result = auto.get("last_result") or {}
+    if (
+        result.get("id")
+        and result.get("ok") is False
+        and result.get("id") != (before.get("last_result") or {}).get("id")
+    ):
+        await notify(
+            db,
+            "carbonio_autostart_failed",
+            dedup_key=f"carbonio_autostart_failed:{result['id']}",
+            agent=agent.name,
+            error=str(result.get("error") or result.get("output") or "")[-1500:] or "—",
+        )
+    test = report.get("mail_test") or {}
+    was = previous.get("mail_test") or {}
+    if (
+        test.get("id")
+        and test.get("done")
+        and not (was.get("id") == test["id"] and was.get("done"))
+    ):
+        if not test.get("ok"):
+            await notify(
+                db,
+                "mail_test_failed",
+                dedup_key=f"mail_test_failed:{test['id']}",
+                agent=agent.name,
+                detail=_test_lines(test),
+            )
+        elif test.get("reason") == "after_start":
+            await notify(
+                db,
+                "mail_test_ok",
+                dedup_key=f"mail_test_ok:{test['id']}",
+                agent=agent.name,
+                detail=_test_lines(test),
+            )
 
 
 def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
@@ -213,6 +280,7 @@ def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
     )
     return {
         "agent": agent.name,
+        "agent_id": str(agent.id),
         "checked_at": data.get("checked_at"),
         "stale": stale,
         "services": services,
@@ -220,6 +288,9 @@ def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
         "queue": data.get("queue"),
         "queue_total": data.get("queue_total"),
         "errors": data.get("errors", []),
+        "autostart": data.get("autostart"),
+        "mail_test": data.get("mail_test"),
+        "mail_test_request": (agent.storage or {}).get("mail_test_request"),
     }
 
 

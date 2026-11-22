@@ -50,6 +50,32 @@ sudo su - zextras -c "zmcontrol start"
 sudo su - zextras -c "postqueue -f"
 ```
 
+## Redémarrage automatique de Carbonio et test d'envoi
+
+**Paramètres → Agent → Redémarrage automatique de Carbonio et test d'envoi** (désactivé par
+défaut) :
+
+* quand le MTA (25), le LMTP (7025), l'annuaire (389) ou le serveur de boîtes restent arrêtés
+  pendant **N minutes** (5 par défaut, de 1 à 240), l'agent demande `zmcontrol start` ;
+* l'agent n'a pas les droits root : il écrit `/var/lib/carborewind/control/request.json`, et
+  l'unité `carborewind-control.path` lance `carborewind-agent control apply` en root. Cette
+  commande revalide la demande (seule l'action « start » est acceptée), puis exécute la commande
+  fixe `su - zextras -c "zmcontrol start"`. Le résultat (code, fin de la sortie) revient dans
+  `status.json` ;
+* **jamais pendant une installation de paquets** (apt / dpkg en cours : une mise à jour arrête
+  Carbonio volontairement), jamais quand il est **suspendu** depuis la Supervision
+  (« Suspendre 2 h » avant une intervention planifiée), au plus une fois toutes les 15 minutes
+  et 3 fois en 6 heures. Au-delà, une intervention est nécessaire ;
+* dès que les services répondent, un **message de test** part vers l'adresse interne et
+  l'adresse externe choisies. Il est remis au Postfix local (127.0.0.1:25, expéditeur : le
+  compte Carbonio de l'agent). Son sort est lu dans le journal du MTA grâce à son
+  Message-ID : **distribué** (relais LMTP 7025 pour l'interne, serveur distant pour
+  l'externe), **différé** ou **refusé**, avec la raison. Sans nouvelles au bout de 10 minutes,
+  le test est en échec ;
+* **Tester l'envoi maintenant** (Supervision) lance le même test à la demande ;
+* alertes : `carbonio_autostart` (démarrage lancé), `carbonio_autostart_failed`,
+  `mail_test_failed`, et `mail_test_ok` quand l'envoi fonctionne après un redémarrage.
+
 ## Listes noires (DNSBL)
 
 **Paramètres → Listes noires** : les adresses IP publiques du serveur de messagerie sont

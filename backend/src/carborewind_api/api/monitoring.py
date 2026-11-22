@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, select
 
-from .. import audit, blacklist, mail_queue, monitoring, restore_test
+from .. import agent_tuning, audit, blacklist, mail_queue, monitoring, restore_test
 from ..authz import Permission
 from ..db.models import Account, AccountStatus, Agent, AgentStatus, Job, JobStatus, Outcome
 from ..scheduling import Cron, CronError, zone
@@ -436,3 +436,76 @@ async def queue_action(
         details={"agent": agent.name, "ids": action["ids"], "server": body.server},
     )
     return {"id": action["id"]}
+
+
+# ------------------------------------------------------------------ automatic start, sending test
+
+
+class MailTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: uuid.UUID
+
+
+@router.post("/mail-test", status_code=status.HTTP_202_ACCEPTED)
+async def mail_test(
+    body: MailTestIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    """Ask the agent to send the test message now (internal and external addresses)."""
+    agent = await db.get(Agent, body.agent_id, with_for_update=True)
+    if agent is None or agent.status != AgentStatus.ACTIVE:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "agent not found")
+    cfg = await agent_tuning.load(db)
+    if not (cfg.mail_test_internal or cfg.mail_test_external):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "set the test addresses first (Settings → Agent)"
+        )
+    test = {
+        "id": uuid.uuid4().hex,
+        "by": principal.user.username,
+        "at": datetime.now(UTC).isoformat(),
+        "sent_at": None,
+    }
+    agent.storage = {**(agent.storage or {}), "mail_test_request": test}
+    await audit.record(
+        db,
+        action="mail_test.request",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="agent",
+        target_id=str(agent.id),
+        details={"internal": cfg.mail_test_internal, "external": cfg.mail_test_external},
+    )
+    return {"id": test["id"]}
+
+
+class PauseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    minutes: int = Field(ge=0, le=7 * 24 * 60)  # 0 = resume now
+
+
+@router.post("/autostart/pause")
+async def pause_autostart(
+    body: PauseIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    """Planned work on Carbonio: no automatic start for this long (0 = resume)."""
+    cfg = await agent_tuning.load(db)
+    until = datetime.now(UTC) + timedelta(minutes=body.minutes) if body.minutes else None
+    cfg.autostart_paused_until = until.isoformat() if until else None
+    cfg.revision += 1
+    await agent_tuning.save(db, cfg)
+    await audit.record(
+        db,
+        action="autostart.pause" if until else "autostart.resume",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="settings",
+        target_id="agent",
+        details={"until": cfg.autostart_paused_until},
+    )
+    return {"paused_until": cfg.autostart_paused_until}

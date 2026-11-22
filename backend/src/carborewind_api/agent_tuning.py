@@ -42,6 +42,14 @@ class AgentTuning:
     service_monitor: bool = True
     service_ports: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PORTS))
     mail_monitor: bool = True
+    # Start Carbonio again when its essential parts stay down this long (off by default:
+    # an administrator decides), and test sending once it is back.
+    autostart_enabled: bool = False
+    autostart_minutes: int = 5
+    autostart_paused_until: str | None = None  # maintenance: ISO date, None = not paused
+    mail_test_after_start: bool = True
+    mail_test_internal: str = ""
+    mail_test_external: str = ""
     # Version of the default port list the saved settings already include (see from_json).
     ports_defaults: int = PORTS_DEFAULTS
 

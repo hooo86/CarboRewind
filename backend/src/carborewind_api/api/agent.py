@@ -9,6 +9,7 @@ the certificate fingerprint to an active agent. Enrolment itself uses a one-time
 from __future__ import annotations
 
 import base64
+import json
 import secrets
 import uuid
 from dataclasses import asdict
@@ -541,7 +542,17 @@ class ServicesIn(BaseModel):
     services: list[ServiceIn] = Field(default_factory=list, max_length=500)
     queue: dict[str, int] | None = Field(default=None, max_length=20)
     queue_items: list[QueueDetailIn] | None = Field(default=None, max_length=10)
+    # Automatic start of Carbonio and sending test (agents from this version on).
+    autostart: dict[str, Any] | None = None
+    mail_test: dict[str, Any] | None = None
     errors: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("autostart", "mail_test")
+    @classmethod
+    def _small(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if value is not None and len(json.dumps(value, default=str)) > 20_000:
+            raise ValueError("report too large")
+        return value
 
 
 @router.post("/services")
@@ -554,7 +565,15 @@ async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> dict
     await monitoring.record_services(db, agent, report, now)
     # Lock the row: an administrator may be adding a queue action at the same moment.
     await db.refresh(agent, attribute_names=["storage"], with_for_update=True)
-    return {"queue_actions": mail_queue.deliver(agent, now)}
+    answer: dict[str, Any] = {"queue_actions": mail_queue.deliver(agent, now)}
+    test = (agent.storage or {}).get("mail_test_request")
+    if test and not test.get("sent_at"):
+        answer["mail_test"] = {"id": test["id"]}
+        agent.storage = {
+            **(agent.storage or {}),
+            "mail_test_request": {**test, "sent_at": now.isoformat()},
+        }
+    return answer
 
 
 @router.post("/mail-stats")

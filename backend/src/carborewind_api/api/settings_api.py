@@ -632,6 +632,19 @@ class AgentTuningIn(BaseModel):
     service_monitor: bool = True
     service_ports: dict[str, int] = Field(default_factory=dict, max_length=20)
     mail_monitor: bool = True
+    autostart_enabled: bool = False
+    autostart_minutes: int = Field(default=5, ge=1, le=240)
+    mail_test_after_start: bool = True
+    mail_test_internal: str = Field(default="", max_length=320)
+    mail_test_external: str = Field(default="", max_length=320)
+
+    @field_validator("mail_test_internal", "mail_test_external")
+    @classmethod
+    def _address(cls, value: str) -> str:
+        value = value.strip()
+        if value and not re.fullmatch(r"[^@\s<>,;]+@[^@\s<>,;]+\.[^@\s<>,;]+", value):
+            raise ValueError(f"invalid e-mail address {value!r}")
+        return value
 
     @field_validator("service_ports")
     @classmethod
@@ -652,6 +665,7 @@ class AgentTuningOut(AgentTuningIn):
 def _tuning_out(cfg: agent_tuning.AgentTuning) -> dict[str, Any]:
     data = asdict(cfg)
     data.pop("ports_defaults", None)  # internal bookkeeping
+    data.pop("autostart_paused_until", None)  # shown and changed in Supervision
     return data
 
 
@@ -672,7 +686,11 @@ async def put_agent_tuning(
     body: AgentTuningIn, principal: Admin, db: DbSession, request: Request
 ) -> AgentTuningOut:
     cfg = await agent_tuning.load(db)
-    new = agent_tuning.AgentTuning(revision=cfg.revision + 1, **body.model_dump())
+    new = agent_tuning.AgentTuning(
+        revision=cfg.revision + 1,
+        autostart_paused_until=cfg.autostart_paused_until,  # set from Supervision
+        **body.model_dump(),
+    )
     await agent_tuning.save(db, new)
     await audit.record(
         db,

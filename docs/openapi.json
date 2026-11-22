@@ -876,10 +876,39 @@
       "AgentTuningIn": {
         "additionalProperties": false,
         "properties": {
+          "autostart_enabled": {
+            "default": false,
+            "title": "Autostart Enabled",
+            "type": "boolean"
+          },
+          "autostart_minutes": {
+            "default": 5,
+            "maximum": 240.0,
+            "minimum": 1.0,
+            "title": "Autostart Minutes",
+            "type": "integer"
+          },
           "mail_monitor": {
             "default": true,
             "title": "Mail Monitor",
             "type": "boolean"
+          },
+          "mail_test_after_start": {
+            "default": true,
+            "title": "Mail Test After Start",
+            "type": "boolean"
+          },
+          "mail_test_external": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Mail Test External",
+            "type": "string"
+          },
+          "mail_test_internal": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Mail Test Internal",
+            "type": "string"
           },
           "max_bandwidth_mbps": {
             "default": 0,
@@ -951,10 +980,39 @@
             "title": "Agents",
             "type": "array"
           },
+          "autostart_enabled": {
+            "default": false,
+            "title": "Autostart Enabled",
+            "type": "boolean"
+          },
+          "autostart_minutes": {
+            "default": 5,
+            "maximum": 240.0,
+            "minimum": 1.0,
+            "title": "Autostart Minutes",
+            "type": "integer"
+          },
           "mail_monitor": {
             "default": true,
             "title": "Mail Monitor",
             "type": "boolean"
+          },
+          "mail_test_after_start": {
+            "default": true,
+            "title": "Mail Test After Start",
+            "type": "boolean"
+          },
+          "mail_test_external": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Mail Test External",
+            "type": "string"
+          },
+          "mail_test_internal": {
+            "default": "",
+            "maxLength": 320,
+            "title": "Mail Test Internal",
+            "type": "string"
           },
           "max_bandwidth_mbps": {
             "default": 0,
@@ -4100,6 +4158,21 @@
         "title": "MailStatsIn",
         "type": "object"
       },
+      "MailTestIn": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ],
+        "title": "MailTestIn",
+        "type": "object"
+      },
       "MailboxLogIn": {
         "properties": {
           "exists": {
@@ -5525,6 +5598,22 @@
           "new_password"
         ],
         "title": "PasswordChange",
+        "type": "object"
+      },
+      "PauseIn": {
+        "additionalProperties": false,
+        "properties": {
+          "minutes": {
+            "maximum": 10080.0,
+            "minimum": 0.0,
+            "title": "Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minutes"
+        ],
+        "title": "PauseIn",
         "type": "object"
       },
       "PlaceIn": {
@@ -7072,6 +7161,18 @@
       "ServicesIn": {
         "additionalProperties": false,
         "properties": {
+          "autostart": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autostart"
+          },
           "checked_at": {
             "anyOf": [
               {
@@ -7091,6 +7192,18 @@
             "maxItems": 20,
             "title": "Errors",
             "type": "array"
+          },
+          "mail_test": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mail Test"
           },
           "queue": {
             "anyOf": [
@@ -14559,6 +14672,50 @@
         ]
       }
     },
+    "/api/monitoring/autostart/pause": {
+      "post": {
+        "description": "Planned work on Carbonio: no automatic start for this long (0 = resume).",
+        "operationId": "pause_autostart_api_monitoring_autostart_pause_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pause Autostart Api Monitoring Autostart Pause Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pause Autostart",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
     "/api/monitoring/blacklist": {
       "get": {
         "operationId": "get_blacklist_api_monitoring_blacklist_get",
@@ -14636,6 +14793,50 @@
           }
         },
         "summary": "Check Blacklist",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/mail-test": {
+      "post": {
+        "description": "Ask the agent to send the test message now (internal and external addresses).",
+        "operationId": "mail_test_api_monitoring_mail_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Mail Test Api Monitoring Mail Test Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail Test",
         "tags": [
           "monitoring"
         ]

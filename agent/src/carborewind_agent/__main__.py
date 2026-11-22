@@ -164,6 +164,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         carbonio,
         settings.service_ports,
         mta=MtaHealth(settings.mail_logs, settings.postfix_guard_status),
+        sender=settings.carbonio_admin_name,
     )
     services.enabled = settings.service_monitor
     threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()
@@ -174,7 +175,7 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
         )
         monitor.enabled = bool(cfg.get("mail_monitor", True))
         services.configure(
-            bool(cfg.get("service_monitor", True)), dict(cfg.get("service_ports") or {})
+            bool(cfg.get("service_monitor", True)), dict(cfg.get("service_ports") or {}), cfg
         )
 
     worker = Worker(
@@ -329,6 +330,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     local = storage_sub.add_parser("local", help="store the repository on a local directory")
     local.add_argument("path", nargs="?", default="/var/lib/carborewind/repository")
+    control = sub.add_parser("control", help="Carbonio start asked by the agent (root)")
+    control_sub = control.add_subparsers(dest="control_command", required=True)
+    control_sub.add_parser("apply", help="start Carbonio if asked (root, systemd path unit)")
     run_p = sub.add_parser("run", help="run the agent service (systemd)")
     run_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
     args = parser.parse_args(argv)
@@ -344,6 +348,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return repo_command(args)
     if args.command == "storage":
         return storage_command(args)
+    if args.command == "control":
+        from .control_apply import apply_command as control_apply
+
+        return control_apply()
     return 2  # pragma: no cover - argparse rejects unknown commands
 
 

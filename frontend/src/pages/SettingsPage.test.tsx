@@ -390,6 +390,11 @@ describe("agent settings", () => {
           service_monitor: true,
           service_ports: { mta: 25, amavis: 10024 },
           mail_monitor: true,
+          autostart_enabled: false,
+          autostart_minutes: 5,
+          mail_test_after_start: true,
+          mail_test_internal: "",
+          mail_test_external: "",
           agents: [
             {
               name: "mx1-mail",
@@ -424,6 +429,18 @@ describe("agent settings", () => {
       target: { value: "mta=25\nAmavis: 10024\n\nlmtp 7025" },
     });
     fireEvent.click(within(form).getByLabelText(/Read the MTA log/));
+    const delay = within(form).getByLabelText(/Delay before starting/);
+    expect(delay).toBeDisabled();
+    fireEvent.click(
+      within(form).getByLabelText(/Start Carbonio automatically/),
+    );
+    fireEvent.change(delay, { target: { value: "10" } });
+    fireEvent.change(within(form).getByLabelText(/Internal test address/), {
+      target: { value: " h.badi@lnhc.dz " },
+    });
+    fireEvent.change(within(form).getByLabelText(/External test address/), {
+      target: { value: "test@gmail.com" },
+    });
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Settings saved/)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
@@ -435,6 +452,11 @@ describe("agent settings", () => {
       min_free_gb_network: 2,
       service_monitor: true,
       mail_monitor: false,
+      autostart_enabled: true,
+      autostart_minutes: 10,
+      mail_test_after_start: true,
+      mail_test_internal: "h.badi@lnhc.dz",
+      mail_test_external: "test@gmail.com",
       service_ports: { mta: 25, amavis: 10024, lmtp: 7025 },
     });
   });

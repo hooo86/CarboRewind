@@ -67,6 +67,11 @@ export function AgentSettingsForm({
         min_free_gb_network,
         service_monitor,
         mail_monitor,
+        autostart_enabled,
+        autostart_minutes,
+        mail_test_after_start,
+        mail_test_internal,
+        mail_test_external,
       } = form;
       await api.saveAgentTuning({
         max_concurrent_accounts,
@@ -77,6 +82,11 @@ export function AgentSettingsForm({
         min_free_gb_network,
         service_monitor,
         mail_monitor,
+        autostart_enabled,
+        autostart_minutes,
+        mail_test_after_start,
+        mail_test_internal: mail_test_internal.trim(),
+        mail_test_external: mail_test_external.trim(),
         service_ports: parsed,
       });
       setNotice({ kind: "ok", text: t("agentSettings.saved") });
@@ -213,6 +223,60 @@ export function AgentSettingsForm({
           />
           {t("agentSettings.mailMonitor")}
         </label>
+      </fieldset>
+      <fieldset>
+        <legend>{t("agentSettings.autostart")}</legend>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={form.autostart_enabled}
+            onChange={(e) => set("autostart_enabled", e.target.checked)}
+          />
+          {t("agentSettings.autostartEnabled")}
+        </label>
+        <div className="row">
+          <label>
+            {t("agentSettings.autostartMinutes")}
+            <input
+              type="number"
+              min={1}
+              max={240}
+              value={form.autostart_minutes}
+              disabled={!form.autostart_enabled}
+              onChange={num("autostart_minutes")}
+            />
+          </label>
+        </div>
+        <p className="muted small">{t("agentSettings.autostartHelp")}</p>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={form.mail_test_after_start}
+            onChange={(e) => set("mail_test_after_start", e.target.checked)}
+          />
+          {t("agentSettings.mailTestAfterStart")}
+        </label>
+        <div className="row">
+          <label className="grow">
+            {t("agentSettings.mailTestInternal")}
+            <input
+              type="email"
+              placeholder="utilisateur@lnhc.dz"
+              value={form.mail_test_internal}
+              onChange={(e) => set("mail_test_internal", e.target.value)}
+            />
+          </label>
+          <label className="grow">
+            {t("agentSettings.mailTestExternal")}
+            <input
+              type="email"
+              placeholder="adresse@gmail.com"
+              value={form.mail_test_external}
+              onChange={(e) => set("mail_test_external", e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="muted small">{t("agentSettings.mailTestHelp")}</p>
       </fieldset>
       <p className="muted small">{t("agentSettings.envOnly")}</p>
       <NoticeBar notice={notice} />

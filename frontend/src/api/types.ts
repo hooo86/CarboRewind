@@ -701,8 +701,51 @@ export interface ServiceState {
   detail?: string | null;
 }
 
+export interface MailTestResult {
+  address: string;
+  status:
+    | "pending"
+    | "sent"
+    | "deferred"
+    | "bounced"
+    | "expired"
+    | "error"
+    | "timeout";
+  relay?: string;
+  detail?: string;
+}
+
+export interface MailTestReport {
+  id: string;
+  reason: "manual" | "after_start";
+  started: string;
+  done: boolean;
+  ok: boolean | null;
+  error: string | null;
+  results: Record<string, MailTestResult>;
+}
+
+export interface AutostartReport {
+  enabled: boolean;
+  minutes: number;
+  paused_until: string | null;
+  down_since: string | null;
+  note: string | null;
+  last_request: { id: string; at: string; down: string[] } | null;
+  last_result: {
+    id: string;
+    at?: string;
+    ok: boolean;
+    returncode?: number;
+    output?: string;
+    error?: string;
+  } | null;
+  starts_6h: number;
+}
+
 export interface ServicesView {
   agent: string;
+  agent_id?: string;
   checked_at: string | null;
   stale: boolean;
   services: ServiceState[];
@@ -710,6 +753,14 @@ export interface ServicesView {
   queue: Record<string, number> | null;
   queue_total: number | null;
   errors: string[];
+  autostart?: AutostartReport | null;
+  mail_test?: MailTestReport | null;
+  mail_test_request?: {
+    id: string;
+    by: string;
+    at: string;
+    sent_at: string | null;
+  } | null;
 }
 
 export type MailQueueOp = "requeue" | "hold" | "release" | "delete" | "flush";
@@ -968,6 +1019,11 @@ export interface AgentTuningInput {
   service_monitor: boolean;
   service_ports: Record<string, number>;
   mail_monitor: boolean;
+  autostart_enabled: boolean;
+  autostart_minutes: number;
+  mail_test_after_start: boolean;
+  mail_test_internal: string;
+  mail_test_external: string;
 }
 
 export interface AgentTuning extends AgentTuningInput {

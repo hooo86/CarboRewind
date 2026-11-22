@@ -6,6 +6,22 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Redémarrage automatique de Carbonio** (Paramètres → Agent, désactivé par défaut) : si le
+  MTA, le LMTP, l'annuaire ou le serveur de boîtes restent arrêtés N minutes (5 par défaut),
+  l'agent fait lancer `zmcontrol start` par un service root dédié
+  (`carborewind-control.path`, commande fixe). Jamais pendant apt / dpkg ni quand il est suspendu
+  depuis la Supervision, au plus 3 fois en 6 h. Puis **test d'envoi automatique** vers une adresse
+  interne et une adresse externe, suivi dans le journal du MTA (distribué / différé / refusé,
+  avec la raison). Bouton « Tester l'envoi maintenant », alertes e-mail et Telegram.
+- **Fuseau horaire** : liste déroulante au lieu d'un champ texte.
+
+### Fixed
+- **Mise à jour pendant des sauvegardes** : à l'arrêt, l'agent rend ses jobs en cours au
+  serveur avec leur point de reprise. Ils reprennent dès le redémarrage, sans attendre 5 minutes
+  et sans consommer de tentative. Pendant la mise à jour du serveur, l'agent réessaie ses appels
+  pendant environ 2 min 30.
+
+### Added
 - Supervision → **File d'attente des e-mails** (super-administrateurs) : nombre de messages par
   file, liste des messages différés et en attente (« hold ») avec expéditeur, destinataires,
   ancienneté et raison, résumé des raisons, actualisée toutes les 20 secondes. Actions :

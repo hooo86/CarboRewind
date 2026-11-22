@@ -661,3 +661,106 @@ def test_mail_queue_messages_and_actions(api: TestClient, engine: Engine) -> Non
     viewer = login(api, engine, Role.DOMAIN_ADMIN)
     assert api.post(url, json=body, headers=viewer).status_code == 403
     assert api.get("/api/monitoring/queue", headers=viewer).status_code == 403
+
+
+def test_autostart_and_sending_test(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    shown = api.get("/api/settings/agent", headers=h).json()
+    body = {k: v for k, v in shown.items() if k not in ("revision", "agents")}
+    assert body["autostart_enabled"] is False and body["autostart_minutes"] == 5
+    url = "/api/monitoring/mail-test"
+    agent_id = next(
+        a["id"] for a in api.get("/api/agents", headers=h).json() if a["id"] == agent.id
+    )
+    with Session(engine) as s, s.begin():
+        s.execute(delete(AppSetting).where(AppSetting.key == "agent_tuning"))
+    assert api.post(url, json={"agent_id": agent_id}, headers=h).status_code == 409
+    bad = {**body, "mail_test_external": "not-an-address"}
+    assert api.put("/api/settings/agent", json=bad, headers=h).status_code == 422
+    body.update(
+        autostart_enabled=True,
+        autostart_minutes=10,
+        mail_test_internal="h.badi@lnhc.dz",
+        mail_test_external="test@gmail.com",
+    )
+    assert api.put("/api/settings/agent", json=body, headers=h).status_code == 200
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["autostart_enabled"] is True and cfg["autostart_minutes"] == 10
+    assert cfg["autostart_paused_until"] is None
+
+    r = api.post("/api/monitoring/autostart/pause", json={"minutes": 120}, headers=h)
+    assert r.status_code == 200 and r.json()["paused_until"]
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["autostart_paused_until"] == r.json()["paused_until"]
+    assert api.put("/api/settings/agent", json=body, headers=h).status_code == 200
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["autostart_paused_until"] is not None  # saving settings keeps the pause
+    api.post("/api/monitoring/autostart/pause", json={"minutes": 0}, headers=h)
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["autostart_paused_until"] is None
+
+    # manual test: handed to the agent once
+    r = api.post(url, json={"agent_id": agent_id}, headers=h)
+    assert r.status_code == 202
+    test_id = r.json()["id"]
+
+    def report(autostart: dict[str, Any], mail_test: dict[str, Any] | None) -> dict[str, Any]:
+        r = agent.post(
+            "/services",
+            {
+                "services": [{"name": "port:mta", "ok": True, "source": "port", "port": 25}],
+                "autostart": autostart,
+                "mail_test": mail_test,
+            },
+        )
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def events(name: str) -> list[Notification]:
+        with Session(engine) as s:
+            return list(s.scalars(select(Notification).where(Notification.event == name)))
+
+    base = {"enabled": True, "minutes": 10, "note": None, "last_request": None}
+    assert report(base, None)["mail_test"] == {"id": test_id}
+    assert "mail_test" not in report(base, None)
+
+    asked = {"id": "a" * 32, "action": "start", "down": ["port:mta", "port:lmtp"]}
+    report({**base, "last_request": asked, "note": "start asked"}, None)
+    report({**base, "last_request": asked}, None)
+    (started,) = events("carbonio_autostart")
+    assert "port:mta, port:lmtp" in started.body and "10 minutes" in started.body
+    failed = {"id": "a" * 32, "ok": False, "error": "zmcontrol: mailbox failed"}
+    report({**base, "last_request": asked, "last_result": failed}, None)
+    report({**base, "last_request": asked, "last_result": failed}, None)
+    (fail,) = events("carbonio_autostart_failed")
+    assert "mailbox failed" in fail.body
+
+    test = {
+        "id": "t" * 32,
+        "reason": "after_start",
+        "done": False,
+        "ok": None,
+        "results": {"internal": {"address": "h.badi@lnhc.dz", "status": "pending"}},
+    }
+    report(base, test)
+    assert events("mail_test_ok") == [] and events("mail_test_failed") == []
+    test.update(
+        done=True,
+        ok=False,
+        results={
+            "internal": {"address": "h.badi@lnhc.dz", "status": "sent"},
+            "external": {
+                "address": "test@gmail.com",
+                "status": "deferred",
+                "detail": "(mail transport unavailable)",
+            },
+        },
+    )
+    report(base, test)
+    report(base, test)
+    (bad_test,) = events("mail_test_failed")
+    assert "test@gmail.com → deferred — (mail transport unavailable)" in bad_test.body
+    ov = api.get("/api/monitoring/overview", headers=h).json()
+    mine = next(v for v in ov["services"] if v.get("mail_test"))
+    assert mine["mail_test"]["id"] == "t" * 32 and mine["autostart"]["enabled"] is True

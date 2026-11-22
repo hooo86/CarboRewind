@@ -437,4 +437,89 @@ describe("monitoring page", () => {
     );
     prompt.mockRestore();
   });
+
+  it("shows the automatic start and the sending test, and runs them", async () => {
+    const calls = open(user("super_admin"), {
+      "GET /api/monitoring/overview": {
+        ...overview,
+        services: [
+          {
+            agent: "mx1-mail",
+            agent_id: "ag-1",
+            checked_at: iso(now),
+            stale: false,
+            services: [{ name: "mta", ok: true, source: "carbonio" }],
+            down: [],
+            queue: null,
+            queue_total: null,
+            errors: [],
+            autostart: {
+              enabled: true,
+              minutes: 5,
+              paused_until: null,
+              down_since: null,
+              note: null,
+              last_request: {
+                id: "a",
+                at: iso(now - 600000),
+                down: ["port:mta"],
+              },
+              last_result: { id: "a", ok: true, returncode: 0 },
+              starts_6h: 1,
+            },
+            mail_test: {
+              id: "t",
+              reason: "after_start",
+              started: iso(now - 300000),
+              done: true,
+              ok: false,
+              error: null,
+              results: {
+                internal: { address: "h.badi@lnhc.dz", status: "sent" },
+                external: {
+                  address: "test@gmail.com",
+                  status: "deferred",
+                  detail: "(mail transport unavailable)",
+                },
+              },
+            },
+          },
+        ],
+      },
+      "POST /api/monitoring/mail-test": { status: 202, body: { id: "x" } },
+      "POST /api/monitoring/autostart/pause": {
+        paused_until: iso(now + 7200000),
+      },
+    });
+    expect(
+      await screen.findByText("Automatic start and sending test"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Automatic start after 5 min down/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Last automatic start/)).toHaveTextContent(
+      "succeeded",
+    );
+    expect(screen.getByText("Sending does not work.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Internal h.badi@lnhc.dz — delivered"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("External test@gmail.com — deferred"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("(mail transport unavailable)"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Test sending now" }));
+    await screen.findByText("Test asked: the agent sends it within a minute.");
+    expect(
+      calls.find((c) => c.url === "/api/monitoring/mail-test")?.body,
+    ).toEqual({ agent_id: "ag-1" });
+    fireEvent.click(screen.getByRole("button", { name: "Pause 2 h" }));
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.url === "/api/monitoring/autostart/pause")?.body,
+      ).toEqual({ minutes: 120 }),
+    );
+  });
 });

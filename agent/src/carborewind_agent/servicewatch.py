@@ -28,7 +28,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .api_client import AgentApi, ApiError
+from .autostart import AutoStart
 from .carbonio import CarbonioClient, SoapFaultError
+from .mailtest import MailTest
 from .mtahealth import MtaHealth
 
 log = logging.getLogger(__name__)
@@ -160,6 +162,8 @@ class ServiceMonitor:
         *,
         interval: float = 60.0,
         mta: MtaHealth | None = None,
+        sender: str = "",
+        autostart: AutoStart | None = None,
     ) -> None:
         self._api = api
         self._carbonio = carbonio
@@ -167,21 +171,68 @@ class ServiceMonitor:
         self._interval = interval
         self._mta = mta
         self.enabled = True
+        self.sender = sender  # the agent's Carbonio account: From of the sending test
+        self.autostart = autostart or AutoStart()
+        self.test: MailTest | None = None
+        self.test_after_start = True
+        self.recipients: dict[str, str] = {}
 
-    def configure(self, enabled: bool, ports: dict[str, int]) -> None:
-        """Settings → Agent: turn the watcher on or off, change the probed ports."""
+    def configure(
+        self, enabled: bool, ports: dict[str, int], cfg: dict[str, Any] | None = None
+    ) -> None:
+        """Settings → Agent: turn the watcher on or off, change the probed ports, the
+        automatic start of Carbonio and the addresses of the sending test."""
         self.enabled = enabled
         self._ports = {str(k): int(v) for k, v in ports.items()}
+        if cfg is not None:
+            self.autostart.configure(cfg)
+            self.test_after_start = bool(cfg.get("mail_test_after_start", True))
+            self.recipients = {
+                kind: str(cfg.get(f"mail_test_{kind}") or "").strip()
+                for kind in ("internal", "external")
+                if str(cfg.get(f"mail_test_{kind}") or "").strip()
+            }
+
+    def start_test(self, reason: str, test_id: str | None = None) -> MailTest | None:
+        """Send the test message now, unless one is still waiting for its outcome."""
+        if self.test is not None and not self.test.done:
+            return None
+        test = MailTest(self.sender, dict(self.recipients), reason=reason)
+        if test_id:
+            test.id = test_id
+        if not self.sender:
+            test.error = "no sender: CARBOREWIND_AGENT_CARBONIO_ADMIN_NAME is not set"
+        elif not self.recipients:
+            test.error = "no test address configured (Settings → Agent)"
+        else:
+            test.send()
+        self.test = test
+        log.warning("mail sending test %s (%s): %s", test.id, reason, test.error or "sent")
+        return test
+
+    def _extend(self, report: dict[str, Any]) -> dict[str, Any]:
+        """Automatic start and sending test: decide, follow, report."""
+        now = time.time()
+        if self.autostart.evaluate(report["services"], now) and self.test_after_start:
+            self.start_test("after_start")
+        if self.test is not None and self._mta is not None:
+            self.test.feed(self._mta.last_lines, now)
+        report["autostart"] = self.autostart.report()
+        report["mail_test"] = self.test.report() if self.test else None
+        return report
 
     def tick(self) -> dict[str, Any]:
-        report = collect(self._carbonio, self._ports, mta=self._mta)
+        report = self._extend(collect(self._carbonio, self._ports, mta=self._mta))
         answer = self._api.services(report) or {}
+        request = answer.get("mail_test")
+        if isinstance(request, dict) and request.get("id"):
+            self.start_test("manual", str(request["id"]))
         actions = answer.get("queue_actions") or []
         for action in actions:
             error = apply_queue_action(self._carbonio, action)
             self._api.queue_action_done(str(action["id"]), error)
         if actions:  # show the result at once rather than in a minute
-            report = collect(self._carbonio, self._ports, mta=self._mta)
+            report = self._extend(collect(self._carbonio, self._ports, mta=self._mta))
             self._api.services(report)
         return report
 

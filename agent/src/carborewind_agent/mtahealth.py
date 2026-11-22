@@ -131,6 +131,7 @@ class MtaHealth:
     _offset: int = 0
     _aligned: bool = False  # the last read ended on a line break
     _checks: dict[str, _Check] = field(default_factory=dict)
+    last_lines: list[str] = field(default_factory=list)
     error: str | None = None
 
     def _log(self) -> Path | None:
@@ -222,7 +223,8 @@ class MtaHealth:
     def collect(self, now: float | None = None) -> tuple[list[dict[str, Any]], list[str]]:
         """``(services, errors)`` to merge into the services report."""
         now = time.time() if now is None else now
-        self._scan(self._read_new(), now)
+        self.last_lines = self._read_new()  # also read by the sending test
+        self._scan(self.last_lines, now)
         services: list[dict[str, Any]] = []
         if self.error is None:
             for name, *_ in CHECKS:

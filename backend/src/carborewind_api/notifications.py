@@ -70,6 +70,10 @@ EVENTS = (
     "blacklist_cleared",
     "restore_test_failed",
     "ip_blocked",
+    "carbonio_autostart",
+    "carbonio_autostart_failed",
+    "mail_test_failed",
+    "mail_test_ok",
 )
 # Events sent to Telegram by default: the ones someone must act on now.
 URGENT_EVENTS = {
@@ -84,6 +88,10 @@ URGENT_EVENTS = {
     "blacklisted",
     "restore_test_failed",
     "ip_blocked",
+    "carbonio_autostart",
+    "carbonio_autostart_failed",
+    "mail_test_failed",
+    "mail_test_ok",
 }
 TELEGRAM_KEY = "telegram"
 TELEGRAM_API = "https://api.telegram.org"
@@ -323,6 +331,27 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "service_up": "[CarboRewind] Service Carbonio rétabli : {service}",
         "service_up_body": "Le service {service} fonctionne à nouveau (arrêté depuis {since}).\n",
+        "carbonio_autostart": "[CarboRewind] Redémarrage automatique de Carbonio",
+        "carbonio_autostart_body": (
+            "Carbonio était arrêté depuis plus de {minutes} minutes sur le serveur de l'agent "
+            "{agent} ({down}) : CarboRewind a lancé « zmcontrol start ». Un test d'envoi suit "
+            "dès que les services répondent.\nPour une intervention planifiée, suspendez le "
+            "redémarrage automatique dans Supervision.\n"
+        ),
+        "carbonio_autostart_failed": "[CarboRewind] Échec du redémarrage automatique de Carbonio",
+        "carbonio_autostart_failed_body": (
+            "« zmcontrol start » a échoué sur le serveur de l'agent {agent}. Intervention "
+            "nécessaire.\n\n{error}\n"
+        ),
+        "mail_test_failed": "[CarboRewind] Test d'envoi en échec",
+        "mail_test_failed_body": (
+            "Le test d'envoi depuis le serveur de l'agent {agent} n'a pas abouti :\n\n{detail}\n\n"
+            "Vérifiez la file d'attente et master.cf (Supervision).\n"
+        ),
+        "mail_test_ok": "[CarboRewind] Carbonio redémarré : l'envoi fonctionne",
+        "mail_test_ok_body": (
+            "Après le redémarrage automatique, le test d'envoi a réussi :\n\n{detail}\n"
+        ),
         "mail_queue": "[CarboRewind] File d'attente mail : {count} message(s)",
         "mail_queue_body": (
             "La file d'attente du MTA ({agent}) contient {count} message(s) (seuil : {limit}) : "
@@ -446,6 +475,24 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "service_up": "[CarboRewind] Carbonio service back: {service}",
         "service_up_body": "The service {service} works again (down since {since}).\n",
+        "carbonio_autostart": "[CarboRewind] Carbonio started automatically",
+        "carbonio_autostart_body": (
+            "Carbonio had been down for more than {minutes} minutes on the server of agent "
+            "{agent} ({down}): CarboRewind ran “zmcontrol start”. A sending test follows as "
+            "soon as the services answer.\nFor planned work, pause the automatic start in "
+            "Monitoring.\n"
+        ),
+        "carbonio_autostart_failed": "[CarboRewind] Automatic start of Carbonio failed",
+        "carbonio_autostart_failed_body": (
+            "“zmcontrol start” failed on the server of agent {agent}. Action needed.\n\n{error}\n"
+        ),
+        "mail_test_failed": "[CarboRewind] Sending test failed",
+        "mail_test_failed_body": (
+            "The sending test from the server of agent {agent} did not succeed:\n\n{detail}\n\n"
+            "Check the mail queue and master.cf (Monitoring).\n"
+        ),
+        "mail_test_ok": "[CarboRewind] Carbonio restarted: sending works",
+        "mail_test_ok_body": "After the automatic start, the sending test succeeded:\n\n{detail}\n",
         "mail_queue": "[CarboRewind] Mail queue: {count} message(s)",
         "mail_queue_body": (
             "The MTA queue ({agent}) holds {count} message(s) (threshold: {limit}): "

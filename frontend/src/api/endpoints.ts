@@ -413,6 +413,14 @@ export const api = {
   checkBlacklist: () =>
     request<BlacklistStatus>("POST", "/api/monitoring/blacklist/check"),
   mailQueue: () => request<MailQueueAgent[]>("GET", "/api/monitoring/queue"),
+  mailTest: (agent_id: string) =>
+    request<{ id: string }>("POST", "/api/monitoring/mail-test", { agent_id }),
+  pauseAutostart: (minutes: number) =>
+    request<{ paused_until: string | null }>(
+      "POST",
+      "/api/monitoring/autostart/pause",
+      { minutes },
+    ),
   mailQueueAction: (body: MailQueueActionInput) =>
     request<{ id: string }>("POST", "/api/monitoring/queue/actions", body),
   telegram: () => request<TelegramSettings>("GET", "/api/settings/telegram"),
