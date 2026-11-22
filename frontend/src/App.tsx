@@ -21,6 +21,7 @@ import { MigrationsPage } from "./pages/MigrationsPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { RestorePage } from "./pages/RestorePage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StandbyPage } from "./pages/StandbyPage";
 import { UsersPage } from "./pages/UsersPage";
 
 export function AppRoutes() {
@@ -48,6 +49,7 @@ export function AppRoutes() {
         <Route path="archives" element={<ArchivesPage />} />
         <Route path="logs" element={<LogsPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="standby" element={<StandbyPage />} />
         <Route path="me" element={<AccountSecurityPage />} />
         <Route path="migrations/:id" element={<MigrationBatchPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

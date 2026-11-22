@@ -1125,3 +1125,33 @@ export interface Widget {
   title?: string | null;
   options: Record<string, unknown>;
 }
+
+export interface StandbyAgent {
+  id: string;
+  name: string;
+  hostname: string;
+  role: "primary" | "standby";
+  status: string;
+  last_heartbeat_at: string | null;
+}
+
+export interface StandbyOverview {
+  config: { enabled: boolean; interval_minutes: number };
+  agents: StandbyAgent[];
+  accounts: number;
+  synced: number;
+  partial: number;
+  failed: number;
+  never: number;
+  behind: number;
+  pending_jobs: number;
+  oldest_waiting_at: string | null;
+  lag_seconds: number;
+  last_applied_at: string | null;
+  problems: {
+    email: string;
+    status: string;
+    error: string | null;
+    applied_at: string | null;
+  }[];
+}

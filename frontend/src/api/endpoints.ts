@@ -30,6 +30,7 @@ import type {
   OpenedMessage,
   AccountDetail,
   QuotaResult,
+  StandbyOverview,
   AccountFacets,
   AccountItem,
   BulkBackupResult,
@@ -191,6 +192,27 @@ export const api = {
       account_ids: accountIds,
       backup_type: backupType,
     }),
+  standby: () => request<StandbyOverview>("GET", "/api/standby"),
+  saveStandby: (enabled: boolean, intervalMinutes: number) =>
+    request<{ enabled: boolean; interval_minutes: number }>(
+      "PUT",
+      "/api/standby/settings",
+      { enabled, interval_minutes: intervalMinutes },
+    ),
+  setAgentRole: (agentId: string, role: "primary" | "standby") =>
+    request<{ id: string; role: string }>(
+      "PUT",
+      `/api/standby/agents/${agentId}/role`,
+      { role },
+    ),
+  standbySyncNow: () =>
+    request<{ queued: number }>("POST", "/api/standby/sync-now"),
+  promoteStandby: (agentId: string, confirm: string) =>
+    request<{ promoted: string; demoted: string[] }>(
+      "POST",
+      "/api/standby/promote",
+      { agent_id: agentId, confirm },
+    ),
   setQuota: (accountIds: string[], quotaBytes: number, reason?: string) =>
     request<QuotaResult>("POST", "/api/mail/accounts/quota", {
       account_ids: accountIds,

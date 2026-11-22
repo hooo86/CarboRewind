@@ -6,6 +6,13 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Serveur de secours** (page « Serveur de secours », docs/standby.md) : une VM clone du
+  serveur Carbonio, avec une autre IP, est tenue à jour à partir des sauvegardes. Son agent
+  a le rôle « secours » (`agent-create … --role standby`) : il ne sauvegarde rien et
+  rejoue le dernier instantané de chaque boîte (comptes créés si absents, messages
+  ajoutés / supprimés / déplacés, drapeaux, contacts et agendas, dossiers). Retard réglable
+  (5 à 1440 min), état et boîtes en échec, « Synchroniser maintenant », bascule avec
+  confirmation (le secours devient principal). Migration 0023.
 - **Quotas** : modifier le quota d'une boîte (fiche du compte → Gestion de la boîte → « Modifier
   le quota ») ou de plusieurs à la fois (page Comptes : cocher les comptes → « Modifier le
   quota »), en Go ou illimité, avec motif facultatif. L'agent l'applique dans Carbonio
@@ -20,6 +27,8 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 - **Fuseau horaire** : liste déroulante au lieu d'un champ texte.
 
 ### Fixed
+- **Sauvegarde incrémentale** : l'arborescence des dossiers est relue entière ; les dossiers
+  supprimés n'y restaient plus, et un nouveau sous-dossier avait un chemin incomplet.
 - **Migration / restauration : « inline message too large »** : Carbonio refusait les messages
   envoyés dans la requête au-delà de sa limite (bien en dessous de 4 Mo). Ils passent désormais
   par le téléversement (`/service/upload`), la limite apprise est retenue pour les suivants ; les
