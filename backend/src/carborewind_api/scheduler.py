@@ -28,7 +28,16 @@ from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import archiving, audit, blacklist, mail_traffic, monitoring, restore_test, storage_settings
+from . import (
+    archiving,
+    audit,
+    blacklist,
+    mail_traffic,
+    monitoring,
+    restore_test,
+    standby,
+    storage_settings,
+)
 from .config import Settings
 from .db.models import (
     Account,
@@ -380,6 +389,7 @@ async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> Ti
     report.errors.extend(errors)
     report.notifications_queued = await periodic_alerts(db, now)
     await enqueue_replicate(db, now, report)
+    report.jobs_queued += await standby.enqueue_due(db, now)
     report.verify_jobs = await monitoring.enqueue_verify(db, now)
     await restore_test.enqueue_due(db, now)
     try:

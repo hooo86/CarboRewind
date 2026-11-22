@@ -133,6 +133,7 @@ class JobKind(enum.StrEnum):
     REPLICATE = "replicate"  # mirror the repository onto copy 02
     ARCHIVE = "archive"  # move old messages of one account into the archive
     FETCH = "fetch"  # read one archived message for the interface
+    STANDBY_SYNC = "standby_sync"  # replay a snapshot into the standby Carbonio
 
 
 class JobStatus(enum.StrEnum):
@@ -351,7 +352,11 @@ class Agent(Base):
     storage: Mapped[dict[str, Any] | None]
     # Carbonio services and mail queue, reported every minute (see monitoring.record_services).
     services: Mapped[dict[str, Any] | None]
+    # "primary": the Carbonio backed up; "standby": the clone kept in line for a disaster.
+    role: Mapped[str] = mapped_column(String(16), server_default=text("'primary'"))
     created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (CheckConstraint("role IN ('primary', 'standby')", name="role_known"),)
 
 
 # --------------------------------------------------------------------------- policies & jobs
@@ -958,6 +963,28 @@ class AccountAction(Base):
         Index(
             "ix_account_actions_pending", "created_at", postgresql_where=text("status = 'pending'")
         ),
+    )
+
+
+class StandbyState(Base):
+    """What the standby Carbonio holds of each account: the last snapshot replayed there."""
+
+    __tablename__ = "standby_states"
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("snapshots.id", ondelete="SET NULL")
+    )
+    snapshot_taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'ok'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    stats: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('ok', 'partial', 'failed')", name="status_known"),
     )
 
 

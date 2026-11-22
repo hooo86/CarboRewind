@@ -659,6 +659,15 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
             "title": "Name",
             "type": "string"
+          },
+          "role": {
+            "default": "primary",
+            "enum": [
+              "primary",
+              "standby"
+            ],
+            "title": "Role",
+            "type": "string"
           }
         },
         "required": [
@@ -715,6 +724,11 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "default": "primary",
+            "title": "Role",
             "type": "string"
           },
           "status": {
@@ -857,6 +871,11 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "default": "primary",
+            "title": "Role",
             "type": "string"
           },
           "status": {
@@ -3388,7 +3407,8 @@
           "migrate",
           "replicate",
           "archive",
-          "fetch"
+          "fetch",
+          "standby_sync"
         ],
         "title": "JobKind",
         "type": "string"
@@ -6076,6 +6096,27 @@
         "title": "PrimaryIn",
         "type": "object"
       },
+      "PromoteIn": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "format": "uuid",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "confirm": {
+            "maxLength": 255,
+            "title": "Confirm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "confirm"
+        ],
+        "title": "PromoteIn",
+        "type": "object"
+      },
       "PurgeResultIn": {
         "additionalProperties": false,
         "properties": {
@@ -6842,6 +6883,24 @@
         "title": "RoleGrant",
         "type": "object"
       },
+      "RoleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "primary",
+              "standby"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "RoleIn",
+        "type": "object"
+      },
       "RoleOut": {
         "properties": {
           "domain_id": {
@@ -7359,7 +7418,7 @@
         "title": "SessionOut",
         "type": "object"
       },
-      "SettingsIn": {
+      "SettingsIn-Output": {
         "additionalProperties": false,
         "properties": {
           "integrity_cron": {
@@ -7816,6 +7875,88 @@
           "sender_domains"
         ],
         "title": "SpamSources",
+        "type": "object"
+      },
+      "StandbyResultIn": {
+        "additionalProperties": false,
+        "properties": {
+          "account_created": {
+            "default": false,
+            "title": "Account Created",
+            "type": "boolean"
+          },
+          "added": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Added",
+            "type": "integer"
+          },
+          "deleted": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Deleted",
+            "type": "integer"
+          },
+          "failed": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "title": "Failed",
+            "type": "object"
+          },
+          "failed_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "folders_created": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Folders Created",
+            "type": "integer"
+          },
+          "folders_deleted": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Folders Deleted",
+            "type": "integer"
+          },
+          "items": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Items",
+            "type": "integer"
+          },
+          "moved": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Moved",
+            "type": "integer"
+          },
+          "reimported_folders": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Reimported Folders",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "updated": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "snapshot_id"
+        ],
+        "title": "StandbyResultIn",
         "type": "object"
       },
       "StartRequest": {
@@ -9329,7 +9470,7 @@
             "type": "array"
           },
           "settings": {
-            "$ref": "#/components/schemas/SettingsIn"
+            "$ref": "#/components/schemas/SettingsIn-Output"
           },
           "storage": {
             "items": {
@@ -9352,6 +9493,79 @@
           "metrics_token_configured"
         ],
         "title": "Overview",
+        "type": "object"
+      },
+      "carborewind_api__api__monitoring__SettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "integrity_cron": {
+            "default": "30 3 * * 0",
+            "maxLength": 128,
+            "title": "Integrity Cron",
+            "type": "string"
+          },
+          "integrity_enabled": {
+            "default": true,
+            "title": "Integrity Enabled",
+            "type": "boolean"
+          },
+          "integrity_sample": {
+            "default": 0.1,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Integrity Sample",
+            "type": "number"
+          },
+          "integrity_timezone": {
+            "default": "UTC",
+            "maxLength": 64,
+            "title": "Integrity Timezone",
+            "type": "string"
+          },
+          "mail_queue_alert": {
+            "default": 200,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Mail Queue Alert",
+            "type": "integer"
+          },
+          "mailbox_alert_gb": {
+            "default": 0.0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Mailbox Alert Gb",
+            "type": "number"
+          },
+          "mailbox_alert_percent": {
+            "default": 90,
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Mailbox Alert Percent",
+            "type": "integer"
+          },
+          "replica_max_lag_hours": {
+            "default": 24,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Replica Max Lag Hours",
+            "type": "integer"
+          },
+          "service_down_reports": {
+            "default": 2,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Service Down Reports",
+            "type": "integer"
+          },
+          "stale_hours": {
+            "default": 24,
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Stale Hours",
+            "type": "integer"
+          }
+        },
+        "title": "SettingsIn",
         "type": "object"
       },
       "carborewind_api__api__monitoring__VerifyOut": {
@@ -9662,6 +9876,27 @@
           }
         },
         "title": "PolicyPatch",
+        "type": "object"
+      },
+      "carborewind_api__api__standby_api__SettingsIn": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "interval_minutes": {
+            "maximum": 1440.0,
+            "minimum": 5.0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "interval_minutes"
+        ],
+        "title": "SettingsIn",
         "type": "object"
       }
     }
@@ -10905,6 +11140,53 @@
           }
         },
         "summary": "Restore Complete",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/jobs/{job_id}/standby-complete": {
+      "post": {
+        "description": "The standby Carbonio now holds this snapshot of the account.",
+        "operationId": "standby_complete_api_agent_jobs__job_id__standby_complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandbyResultIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Standby Complete",
         "tags": [
           "agent protocol"
         ]
@@ -15153,7 +15435,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SettingsIn"
+                "$ref": "#/components/schemas/carborewind_api__api__monitoring__SettingsIn"
               }
             }
           },
@@ -15164,7 +15446,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SettingsIn"
+                  "$ref": "#/components/schemas/SettingsIn-Output"
                 }
               }
             },
@@ -15976,6 +16258,200 @@
         "summary": "Test Telegram",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/standby": {
+      "get": {
+        "operationId": "overview_api_standby_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Overview Api Standby Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "standby"
+        ]
+      }
+    },
+    "/api/standby/agents/{agent_id}/role": {
+      "put": {
+        "description": "Give an agent the primary or the standby role (not for a promotion: see below).",
+        "operationId": "set_role_api_standby_agents__agent_id__role_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Set Role Api Standby Agents  Agent Id  Role Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Role",
+        "tags": [
+          "standby"
+        ]
+      }
+    },
+    "/api/standby/promote": {
+      "post": {
+        "description": "Disaster: the standby becomes the primary server.\n\nThe replication stops; the former primary agents take the standby role (if one comes\nback it is not backed up as a second copy of the same accounts), and the replays still\nqueued are cancelled.",
+        "operationId": "promote_api_standby_promote_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromoteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Promote Api Standby Promote Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Promote",
+        "tags": [
+          "standby"
+        ]
+      }
+    },
+    "/api/standby/settings": {
+      "put": {
+        "operationId": "save_settings_api_standby_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/carborewind_api__api__standby_api__SettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Save Settings Api Standby Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Settings",
+        "tags": [
+          "standby"
+        ]
+      }
+    },
+    "/api/standby/sync-now": {
+      "post": {
+        "description": "Queue at once the replays due, without waiting for the interval.",
+        "operationId": "sync_now_api_standby_sync_now_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Sync Now Api Standby Sync Now Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sync Now",
+        "tags": [
+          "standby"
         ]
       }
     },

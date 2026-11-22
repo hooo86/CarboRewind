@@ -788,4 +788,30 @@ ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK
 
 UPDATE alembic_version SET version_num='0022' WHERE alembic_version.version_num = '0021';
 
+-- Running upgrade 0022 -> 0023
+
+ALTER TABLE agents ADD COLUMN role VARCHAR(16) DEFAULT 'primary' NOT NULL;
+
+ALTER TABLE agents ADD CONSTRAINT ck_agents_role_known CHECK (role IN ('primary', 'standby'));
+
+CREATE TABLE standby_states (
+    account_id UUID NOT NULL,
+    snapshot_id UUID,
+    snapshot_taken_at TIMESTAMP WITH TIME ZONE,
+    applied_at TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(16) DEFAULT 'ok' NOT NULL,
+    error TEXT,
+    stats JSONB DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT pk_standby_states PRIMARY KEY (account_id),
+    CONSTRAINT ck_standby_states_status_known CHECK (status IN ('ok', 'partial', 'failed')),
+    CONSTRAINT fk_standby_states_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_standby_states_snapshot_id_snapshots FOREIGN KEY(snapshot_id) REFERENCES snapshots (id) ON DELETE SET NULL
+);
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate', 'archive', 'fetch', 'standby_sync'));
+
+UPDATE alembic_version SET version_num='0023' WHERE alembic_version.version_num = '0022';
+
 COMMIT;

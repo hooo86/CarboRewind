@@ -29,7 +29,7 @@ from .api import migrations as migrations_api
 from .api import monitoring as monitoring_api
 from .api import policies as policies_api
 from .api import restores as restores_api
-from .api import settings_api
+from .api import settings_api, standby_api
 from .api import users as users_api
 from .api import views as views_api
 from .auth.ldap import LdapAuthenticator
@@ -156,6 +156,7 @@ def create_app(settings: Settings | None = None, checks: dict[str, Check] | None
     app.include_router(inventory_api.router)
     app.include_router(audit_api.router)
     app.include_router(agents_api.router)
+    app.include_router(standby_api.router)
     app.include_router(agent_api.router)
     app.include_router(backups_api.router)
     app.include_router(account_list_api.router)  # before /api/accounts/{id}

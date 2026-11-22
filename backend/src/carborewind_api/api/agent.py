@@ -30,6 +30,7 @@ from .. import (
     mail_traffic,
     monitoring,
     restore_test,
+    standby,
     storage_settings,
 )
 from ..db.models import (
@@ -300,6 +301,16 @@ async def inventory(body: InventoryIn, agent: CurrentAgent, db: DbSession) -> In
             "reported_at": now.isoformat(),
         }
         await monitoring.record_storage(db, agent, body.storage.model_dump())
+    if agent.role == standby.STANDBY:
+        # The clone has the same accounts (same ids): only their number is kept.
+        agent.storage = {
+            **(agent.storage or {}),
+            "standby_accounts": len(body.accounts),
+            "standby_inventory_at": now.isoformat(),
+        }
+        return InventoryOut(
+            domains_created=0, accounts_created=0, accounts_updated=0, accounts_deleted=0
+        )
     domain_names = {a.email.split("@")[1].lower() for a in body.accounts}
     existing = {
         d.name: d for d in await db.scalars(select(Domain).where(Domain.name.in_(domain_names)))
@@ -580,6 +591,8 @@ async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> dict
 async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> dict[str, Any]:
     """Hourly mail counters from the MTA log; answers with the account actions to apply."""
     now = datetime.now(UTC)
+    if agent.role == standby.STANDBY:
+        return {"actions": [], "ip_actions": []}  # the clone carries no user traffic
     hours = [h.model_dump(mode="json") for h in body.hours]
     senders = await mail_traffic.record(db, hours)
     if body.security:
@@ -723,13 +736,21 @@ async def claim(agent: CurrentAgent, db: DbSession, settings: AppSettings) -> Cl
     """Lease the next job: first an abandoned one (expired lease, resumed from its
     checkpoint), else the highest-priority queued job."""
     now = datetime.now(UTC)
+    # The standby agent replays snapshots into its Carbonio and does nothing else; the
+    # others never take those jobs.
+    for_role = (
+        Job.kind == JobKind.STANDBY_SYNC
+        if agent.role == standby.STANDBY
+        else Job.kind != JobKind.STANDBY_SYNC
+    )
     job = await db.scalar(
         select(Job)
         .where(
+            for_role,
             or_(
                 Job.status == JobStatus.QUEUED,
                 and_(Job.status == JobStatus.RUNNING, Job.lease_expires_at < now),
-            )
+            ),
         )
         .order_by((Job.status == JobStatus.RUNNING).desc(), Job.priority, Job.created_at)
         .limit(1)
@@ -1319,6 +1340,55 @@ async def replicate_complete(
     )
 
 
+class StandbyResultIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: uuid.UUID
+    account_created: bool = False
+    items: int = Field(default=0, ge=0)
+    added: int = Field(default=0, ge=0)
+    deleted: int = Field(default=0, ge=0)
+    moved: int = Field(default=0, ge=0)
+    updated: int = Field(default=0, ge=0)
+    reimported_folders: int = Field(default=0, ge=0)
+    folders_created: int = Field(default=0, ge=0)
+    folders_deleted: int = Field(default=0, ge=0)
+    failed: dict[str, str] = Field(default_factory=dict, max_length=200)
+    failed_count: int = Field(default=0, ge=0)
+
+
+@router.post("/jobs/{job_id}/standby-complete", status_code=status.HTTP_204_NO_CONTENT)
+async def standby_complete(
+    job_id: uuid.UUID, body: StandbyResultIn, agent: CurrentAgent, db: DbSession
+) -> None:
+    """The standby Carbonio now holds this snapshot of the account."""
+    job = await db.get(Job, job_id, with_for_update=True)
+    if job is not None and job.status is JobStatus.SUCCEEDED and job.agent_id == agent.id:
+        return  # idempotent
+    job = await _own_running_job(db, agent, job_id)
+    if job.kind is not JobKind.STANDBY_SYNC:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not a standby job")
+    if str(body.snapshot_id) != str(job.params.get("snapshot_id")):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "not the job's snapshot")
+    stats = body.model_dump(mode="json", exclude={"snapshot_id"})
+    job.progress = {k: v for k, v in stats.items() if k != "failed"}
+    job.error = f"{body.failed_count} item(s) not replicated" if body.failed_count else None
+    job.status, job.finished_at, job.lease_expires_at = JobStatus.SUCCEEDED, datetime.now(UTC), None
+    await standby.record(db, job, stats=stats)
+    if body.account_created:
+        account = await db.get(Account, job.account_id) if job.account_id else None
+        await _audit(
+            db,
+            agent,
+            "standby.account_created",
+            Outcome.SUCCESS,
+            target_type="account",
+            target_id=account.email if account else None,
+            domain_id=account.domain_id if account else None,
+            details={"job": str(job.id)},
+        )
+
+
 class VerifyResultIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1513,6 +1583,9 @@ async def fetch_complete(
 async def _notify_failure(db: DbSession, job: Job) -> None:
     if job.kind is JobKind.FETCH:
         return  # the user waiting in the interface sees the error
+    if job.kind is JobKind.STANDBY_SYNC:
+        await standby.record(db, job, error=job.error or "failed")
+        return
     if job.kind is JobKind.RESTORE and job.params.get("test"):
         await restore_test.record_result(
             db,
