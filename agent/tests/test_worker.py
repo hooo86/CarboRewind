@@ -465,3 +465,49 @@ def test_jobs_run_in_parallel_slots(
     assert worker.concurrency == 2
     done = sorted(p for p, _ in api.calls if p.endswith("/complete"))
     assert done == ["/jobs/j-0/complete", "/jobs/j-1/complete", "/jobs/j-2/complete"]
+
+
+def test_stopping_hands_the_running_jobs_back(
+    settings: AgentSettings, carbonio: CarbonioClient, engine: AccountBackup
+) -> None:
+    api = FakeApi([])
+    worker = Worker(AgentApi(settings, http=api.client()), carbonio, engine)
+    worker._running["j-1"] = {"checkpoint": {"done": ["m1"]}}  # a job in progress
+    worker.release_running()
+    assert api.calls == [
+        ("/jobs/j-1/heartbeat", {"checkpoint": {"done": ["m1"]}, "progress": None}),
+        ("/jobs/j-1/release", None),
+    ]
+
+
+def test_api_retries_while_the_server_restarts() -> None:
+    answers = [503, 502, 200]
+    seen: list[int] = []
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        code = answers.pop(0)
+        seen.append(code)
+        return httpx.Response(code, json={})
+
+    http = httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(flaky))
+    api = AgentApi(_settings_dummy(), http=http)
+    assert api._post("/x").status_code == 200  # waited through 503 and 502
+    assert seen == [503, 502, 200]
+    answers[:] = [503, 503, 503]
+    with pytest.raises(ApiError):  # tests allow two retries: gives up on the third 503
+        api._post("/x")
+    answers[:] = [503]
+    with pytest.raises(ApiError) as err:
+        api._post("/x", retry=False)
+    assert err.value.status == 503
+
+    def refused(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    down = AgentApi(
+        _settings_dummy(),
+        http=httpx.Client(base_url="https://api.test", transport=httpx.MockTransport(refused)),
+    )
+    with pytest.raises(ApiError) as err:
+        down._post("/x")
+    assert err.value.status == 0 and "unreachable" in str(err.value)

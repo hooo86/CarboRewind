@@ -412,6 +412,25 @@ def test_abandoned_job_is_resumed_with_its_checkpoint(
     assert (resumed["snapshot_id"], resumed["seq"]) == (first["snapshot_id"], first["seq"])
 
 
+def test_released_job_resumes_at_once_without_counting(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    _drain(agent)
+    email = f"dan@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    job_id = api.post(
+        "/api/backups", json={"account_id": str(_account_id(engine, email))}, headers=admin
+    ).json()["id"]
+    for _ in range(5):  # five agent updates in a row never exhaust the 3 attempts
+        claimed = agent.post("/jobs/claim").json()
+        assert claimed["job_id"] == job_id and claimed["attempt"] == 1
+        agent.post(f"/jobs/{job_id}/heartbeat", {"checkpoint": {"done": {"2": {"x": 1}}}})
+        assert agent.post(f"/jobs/{job_id}/release").status_code == 204
+    resumed = agent.post("/jobs/claim").json()
+    assert resumed["checkpoint"] == {"done": {"2": {"x": 1}}}
+    assert agent.post(f"/jobs/{uuid.uuid4()}/release").status_code == 404
+
+
 def test_lease_expiring_too_often_fails_the_job(
     api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
 ) -> None:

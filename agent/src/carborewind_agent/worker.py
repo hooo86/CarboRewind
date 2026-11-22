@@ -187,6 +187,9 @@ class Worker:
         self._poll = poll_seconds
         self._inventory_every = inventory_every
         self._stop = threading.Event()
+        # Jobs being run, handed back to the server when the agent stops (update).
+        self._running: dict[str, dict[str, Any]] = {}  # job id -> its latest checkpoint
+        self._running_lock = threading.Lock()
         self._sleep = sleep or self._stop.wait  # returns True when stopping
 
     def stop(self) -> None:
@@ -358,8 +361,23 @@ class Worker:
                     break
         finally:
             self._stop.set()
+            self.release_running()
             for slot in slots:
                 slot.join(timeout=5)
+
+    def release_running(self) -> None:
+        """Hand the jobs in progress back to the server: the agent is stopping (package
+        update, restart), so they resume at once from their checkpoint after it, and this
+        interrupted attempt does not count against the job's retries."""
+        with self._running_lock:
+            running = sorted(self._running.items())
+        for job_id, latest in running:
+            try:
+                self._api.heartbeat(job_id, latest["checkpoint"], retry=False)  # resume here
+                self._api.release(job_id)
+                log.warning("job %s handed back (agent stopping)", job_id)
+            except ApiError as exc:  # resumed anyway once its lease expires
+                log.warning("job release failed", extra={"job": job_id, "error": str(exc)})
 
     def _slot(self, index: int) -> None:
         """One job at a time; slots above the configured concurrency stay idle."""
@@ -433,6 +451,8 @@ class Worker:
 
         beater = threading.Thread(target=beat, daemon=True)
         beater.start()
+        with self._running_lock:
+            self._running[job_id] = latest
         try:
             runner(job, lambda state: latest.__setitem__("checkpoint", state))
         except (
@@ -458,6 +478,8 @@ class Worker:
             self._api.heartbeat(job_id, latest["checkpoint"])
             self._api.fail(job_id, repr(exc), retryable=True)
         finally:
+            with self._running_lock:
+                self._running.pop(job_id, None)
             stop_beat.set()
             beater.join(timeout=5)
         return True

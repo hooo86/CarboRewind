@@ -282,8 +282,10 @@ def test_monitor_sends_counters_and_locks(setup: tuple[Any, ...]) -> None:
 
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:
     monitor, server, _fake, log = setup
+    # dated now: the watcher runs on the real clock and drops hours older than two days
+    stamp = datetime.now().strftime("%b %d %H:%M:%S")
     with open(log, "a") as fh:
-        fh.write("\n".join(sent("Q1", "ana@lnhc.dz", 1, "m1")) + "\n")
+        fh.write("\n".join(sent("Q1", "ana@lnhc.dz", 1, "m1", stamp)) + "\n")
     server.down = True
     stop = threading.Event()
     thread = threading.Thread(target=monitor.run, args=(stop,))
@@ -294,6 +296,6 @@ def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) 
     thread.join(timeout=5)
     assert monitor.agg.dirty  # not lost: sent again once the server answers
     server.down = False
-    monitor.tick(NOW)
+    monitor.tick()
     assert server.calls[-1][1]["hours"][0]["sent"] == {"ana@lnhc.dz": [1, 1]}
     assert not monitor.agg.dirty

@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import os
 import ssl
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,11 @@ from cryptography.x509.oid import NameOID
 
 from . import __version__
 from .config import AgentSettings
+
+
+# Seconds to wait between attempts while the server is unreachable (about 2.5 minutes in
+# all: the time an update takes to restart the server's containers).
+RETRY_DELAYS = (3, 6, 12, 24, 45, 60)
 
 
 class ApiError(Exception):
@@ -105,11 +111,25 @@ class AgentApi:
             verify=tls_context(server_ca, (settings.tls_cert, settings.tls_key)),
         )
 
-    def _post(self, path: str, body: Any = None) -> httpx.Response:
-        response = self._http.post(f"/api/agent{path}", json=body)
-        if response.status_code >= 400:
-            raise ApiError(response.status_code, response.text[:200])
-        return response
+    def _post(self, path: str, body: Any = None, retry: bool = True) -> httpx.Response:
+        """POST to the agent API. While the server is being updated (containers restarted),
+        it is unreachable or answers 502/503/504 for a minute or two: wait and try again
+        rather than lose a finished job's result."""
+        delays = list(RETRY_DELAYS) if retry else []
+        while True:
+            try:
+                response = self._http.post(f"/api/agent{path}", json=body)
+            except httpx.TransportError as exc:
+                if not delays:
+                    raise ApiError(0, f"server unreachable: {exc}") from exc
+                time.sleep(delays.pop(0))
+                continue
+            if response.status_code in (502, 503, 504) and delays:
+                time.sleep(delays.pop(0))
+                continue
+            if response.status_code >= 400:
+                raise ApiError(response.status_code, response.text[:200])
+            return response
 
     def inventory(
         self,
@@ -131,9 +151,17 @@ class AgentApi:
         return job
 
     def heartbeat(
-        self, job_id: str, checkpoint: dict[str, Any] | None, progress: dict[str, Any] | None = None
+        self,
+        job_id: str,
+        checkpoint: dict[str, Any] | None,
+        progress: dict[str, Any] | None = None,
+        retry: bool = True,
     ) -> None:
-        self._post(f"/jobs/{job_id}/heartbeat", {"checkpoint": checkpoint, "progress": progress})
+        self._post(
+            f"/jobs/{job_id}/heartbeat",
+            {"checkpoint": checkpoint, "progress": progress},
+            retry=retry,
+        )
 
     def complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/complete", payload)
@@ -224,6 +252,10 @@ class AgentApi:
     def fetch_complete(self, job_id: str, data: bytes) -> None:
         """Content of one archived message, for the interface (base64)."""
         self._post(f"/jobs/{job_id}/fetch-complete", {"data": base64.b64encode(data).decode()})
+
+    def release(self, job_id: str) -> None:
+        """Hand a running job back (the agent is stopping): resumed at once, not counted."""
+        self._post(f"/jobs/{job_id}/release", retry=False)
 
     def fail(self, job_id: str, error: str, retryable: bool) -> None:
         self._post(f"/jobs/{job_id}/fail", {"error": error[:2000], "retryable": retryable})

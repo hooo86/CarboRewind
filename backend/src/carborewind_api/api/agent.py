@@ -1513,6 +1513,24 @@ class FailureIn(BaseModel):
     retryable: bool = True
 
 
+@router.post("/jobs/{job_id}/release", status_code=status.HTTP_204_NO_CONTENT)
+async def release(job_id: uuid.UUID, agent: CurrentAgent, db: DbSession) -> None:
+    """The agent is stopping (update, restart): the job may be resumed at once from its
+    last checkpoint, and this interrupted attempt does not count."""
+    job = await _own_running_job(db, agent, job_id)
+    job.lease_expires_at = datetime.now(UTC)  # reclaimable now, as an abandoned job
+    job.attempts = max(0, job.attempts - 1)
+    await _audit(
+        db,
+        agent,
+        "job.release",
+        Outcome.SUCCESS,
+        target_type="job",
+        target_id=str(job.id),
+        details={"reason": "agent stopping"},
+    )
+
+
 @router.post("/jobs/{job_id}/fail", status_code=status.HTTP_204_NO_CONTENT)
 async def fail(job_id: uuid.UUID, body: FailureIn, agent: CurrentAgent, db: DbSession) -> None:
     """Report a failure: re-queued (keeping its checkpoint) if retryable and attempts remain."""

@@ -10577,6 +10577,43 @@
         ]
       }
     },
+    "/api/agent/jobs/{job_id}/release": {
+      "post": {
+        "description": "The agent is stopping (update, restart): the job may be resumed at once from its\nlast checkpoint, and this interrupted attempt does not count.",
+        "operationId": "release_api_agent_jobs__job_id__release_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Release",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
     "/api/agent/jobs/{job_id}/replicate-complete": {
       "post": {
         "description": "Record a refresh of copy 02.",
