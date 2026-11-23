@@ -14,12 +14,15 @@ if [ "$1" = "configure" ]; then
     install -d -o carborewind -g carborewind -m 0700 /var/lib/carborewind/storage
     # Carbonio start asked by the agent (automatic restart): same hand-off to root.
     install -d -o carborewind -g carborewind -m 0700 /var/lib/carborewind/control
+    # Certificate renewal asked by the agent: same hand-off to root.
+    install -d -o carborewind -g carborewind -m 0700 /var/lib/carborewind/cert
     chown root:carborewind /etc/carborewind/agent.env
     chmod 0640 /etc/carborewind/agent.env
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload || true
         systemctl enable --now carborewind-storage.path || true
         systemctl enable --now carborewind-control.path || true
+        systemctl enable --now carborewind-cert.path || true
     fi
     echo "CarboRewind agent installed. Next steps: see /usr/share/doc/carborewind-agent/INSTALL.md"
 fi

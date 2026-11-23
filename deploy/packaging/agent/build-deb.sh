@@ -75,6 +75,10 @@ install -D -m 0644 "$HERE/carborewind-control.path" \
     "$STAGE/lib/systemd/system/carborewind-control.path"
 install -D -m 0644 "$HERE/carborewind-control.service" \
     "$STAGE/lib/systemd/system/carborewind-control.service"
+install -D -m 0644 "$HERE/carborewind-cert.path" \
+    "$STAGE/lib/systemd/system/carborewind-cert.path"
+install -D -m 0644 "$HERE/carborewind-cert.service" \
+    "$STAGE/lib/systemd/system/carborewind-cert.service"
 install -D -m 0640 "$HERE/agent.env" "$STAGE/etc/carborewind/agent.env"
 install -D -m 0644 "$ROOT/docs/install.md" "$STAGE/usr/share/doc/carborewind-agent/INSTALL.md"
 install -D -m 0644 "$ROOT/LICENSE" "$STAGE/usr/share/doc/carborewind-agent/copyright"

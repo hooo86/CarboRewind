@@ -30,6 +30,7 @@ from typing import Any
 from .api_client import AgentApi, ApiError
 from .autostart import AutoStart
 from .carbonio import CarbonioClient, SoapFaultError
+from .certcheck import CertWatch
 from .mailtest import MailTest
 from .mtahealth import MtaHealth
 
@@ -164,6 +165,7 @@ class ServiceMonitor:
         mta: MtaHealth | None = None,
         sender: str = "",
         autostart: AutoStart | None = None,
+        cert: CertWatch | None = None,
     ) -> None:
         self._api = api
         self._carbonio = carbonio
@@ -173,9 +175,11 @@ class ServiceMonitor:
         self.enabled = True
         self.sender = sender  # the agent's Carbonio account: From of the sending test
         self.autostart = autostart or AutoStart()
+        self.cert = cert or CertWatch()
         self.test: MailTest | None = None
         self.test_after_start = True
         self.recipients: dict[str, str] = {}
+        self.cert_enabled = True
 
     def configure(
         self, enabled: bool, ports: dict[str, int], cfg: dict[str, Any] | None = None
@@ -186,6 +190,8 @@ class ServiceMonitor:
         self._ports = {str(k): int(v) for k, v in ports.items()}
         if cfg is not None:
             self.autostart.configure(cfg)
+            self.cert_enabled = bool(cfg.get("cert_monitor", True))
+            self.cert.configure(cfg, default_name=socket.getfqdn())
             self.test_after_start = bool(cfg.get("mail_test_after_start", True))
             self.recipients = {
                 kind: str(cfg.get(f"mail_test_{kind}") or "").strip()
@@ -217,6 +223,9 @@ class ServiceMonitor:
             self.start_test("after_start")
         if self.test is not None and self._mta is not None:
             self.test.feed(self._mta.last_lines, now)
+        if cert_enabled := self.cert_enabled:
+            self.cert.evaluate(now)
+        report["certificate"] = self.cert.report() if cert_enabled else None
         report["autostart"] = self.autostart.report()
         report["mail_test"] = self.test.report() if self.test else None
         return report
@@ -227,6 +236,9 @@ class ServiceMonitor:
         request = answer.get("mail_test")
         if isinstance(request, dict) and request.get("id"):
             self.start_test("manual", str(request["id"]))
+        renew = answer.get("cert_renew")
+        if isinstance(renew, dict) and renew.get("id"):
+            self.cert.renew(time.time(), "manual", str(renew["id"]))
         actions = answer.get("queue_actions") or []
         for action in actions:
             error = apply_queue_action(self._carbonio, action)

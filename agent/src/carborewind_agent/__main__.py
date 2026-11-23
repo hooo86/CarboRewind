@@ -335,6 +335,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     control = sub.add_parser("control", help="Carbonio start asked by the agent (root)")
     control_sub = control.add_subparsers(dest="control_command", required=True)
     control_sub.add_parser("apply", help="start Carbonio if asked (root, systemd path unit)")
+    cert = sub.add_parser("cert", help="certificate renewal asked by the agent (root)")
+    cert_sub = cert.add_subparsers(dest="cert_command", required=True)
+    cert_sub.add_parser("apply", help="renew and deploy the certificate (root, path unit)")
     run_p = sub.add_parser("run", help="run the agent service (systemd)")
     run_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
     args = parser.parse_args(argv)
@@ -350,6 +353,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return repo_command(args)
     if args.command == "storage":
         return storage_command(args)
+    if args.command == "cert":
+        from .cert_apply import apply_command as cert_apply
+
+        return cert_apply()
     if args.command == "control":
         from .control_apply import apply_command as control_apply
 

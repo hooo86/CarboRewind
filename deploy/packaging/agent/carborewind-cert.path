@@ -1,0 +1,11 @@
+[Unit]
+Description=CarboRewind: watch for a certificate renewal asked by the agent
+Documentation=https://github.com/hooo86/CarboRewind/blob/main/docs/monitoring.md
+
+[Path]
+# Written by the (unprivileged) agent when the certificate is close to expiry; applied as root.
+PathChanged=/var/lib/carborewind/cert/request.json
+Unit=carborewind-cert.service
+
+[Install]
+WantedBy=multi-user.target
