@@ -637,6 +637,21 @@ class AgentTuningIn(BaseModel):
     mail_test_after_start: bool = True
     mail_test_internal: str = Field(default="", max_length=320)
     mail_test_external: str = Field(default="", max_length=320)
+    cert_monitor: bool = True
+    cert_name: str = Field(default="", max_length=253)
+    cert_alert_days: int = Field(default=7, ge=1, le=90)
+    cert_renew_enabled: bool = False
+    cert_renew_days: int = Field(default=7, ge=1, le=60)
+
+    @field_validator("cert_name")
+    @classmethod
+    def _host(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value and not re.fullmatch(
+            r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", value
+        ):
+            raise ValueError(f"invalid server name {value!r}")
+        return value
 
     @field_validator("mail_test_internal", "mail_test_external")
     @classmethod

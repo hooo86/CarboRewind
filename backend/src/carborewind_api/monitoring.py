@@ -183,6 +183,7 @@ async def record_services(
             detail=", ".join(f"{k}: {v}" for k, v in sorted(queue.items())),
         )
     await _autostart_events(db, agent, report, (agent.services or {}))
+    await _certificate_events(db, agent, report, (agent.services or {}), now)
     agent.services = {
         "checked_at": report.get("checked_at") or now.isoformat(),
         "received_at": now.isoformat(),
@@ -195,6 +196,8 @@ async def record_services(
         "queue_items": report.get("queue_items"),
         "autostart": report.get("autostart"),
         "mail_test": report.get("mail_test") or (agent.services or {}).get("mail_test"),
+        # Checked every hour by the agent: keep the last one between two checks.
+        "certificate": report.get("certificate") or (agent.services or {}).get("certificate"),
         "errors": report.get("errors", [])[:5],
         "state": state,
     }
@@ -265,6 +268,61 @@ async def _autostart_events(
             )
 
 
+async def _certificate_events(
+    db: AsyncSession,
+    agent: Agent,
+    report: dict[str, Any],
+    previous: dict[str, Any],
+    now: datetime,
+) -> None:
+    """Expiring certificate: an alert every hour; renewal outcome: once."""
+    cert = report.get("certificate") or {}
+    name = cert.get("name") or agent.hostname
+    days = cert.get("days_left")
+    matching = [
+        c
+        for c in cert.get("certificates") or []
+        if c.get("days_left") is not None and c.get("matches")
+    ]
+    if days is not None and matching and float(days) <= float(cert.get("alert_days") or 7):
+        soonest = min(matching, key=lambda c: float(c["days_left"]))
+        await notify(
+            db,
+            "certificate_expired" if float(days) <= 0 else "certificate_expiring",
+            dedup_key=f"certificate:{agent.id}:{name}:{now:%Y%m%d%H}",
+            name=name,
+            agent=agent.name,
+            days=f"{float(days):.1f}",
+            not_after=str(soonest.get("not_after", "?"))[:16].replace("T", " "),
+            ports=", ".join(f"{c['service']} {c['port']}" for c in matching),
+            mode="cert_auto" if cert.get("renew_enabled") else "cert_manual",
+        )
+    result = cert.get("last_result") or {}
+    before = (previous.get("certificate") or {}).get("last_result") or {}
+    if not result.get("id") or result.get("id") == before.get("id"):
+        return
+    reason = (cert.get("last_request") or {}).get("reason")
+    if result.get("renewed"):
+        await notify(
+            db,
+            "certificate_renewed",
+            dedup_key=f"certificate_renewed:{result['id']}",
+            name=name,
+            agent=agent.name,
+            not_after=str(result.get("not_after") or "?")[:16].replace("T", " "),
+        )
+    elif not result.get("ok") or reason == "auto":
+        output = str(result.get("output") or "")[-1500:]
+        await notify(
+            db,
+            "certificate_renew_failed",
+            dedup_key=f"certificate_renew_failed:{result['id']}",
+            name=name,
+            agent=agent.name,
+            error=str(result.get("error") or "") + (f"\n\n{output}" if output else ""),
+        )
+
+
 def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
     """What the interface shows: services (down first), queue, freshness."""
     data = agent.services
@@ -291,6 +349,8 @@ def services_view(agent: Agent, now: datetime) -> dict[str, Any] | None:
         "autostart": data.get("autostart"),
         "mail_test": data.get("mail_test"),
         "mail_test_request": (agent.storage or {}).get("mail_test_request"),
+        "certificate": data.get("certificate"),
+        "cert_renew_request": (agent.storage or {}).get("cert_renew_request"),
     }
 
 

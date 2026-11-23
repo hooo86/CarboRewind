@@ -929,6 +929,36 @@
             "title": "Autostart Minutes",
             "type": "integer"
           },
+          "cert_alert_days": {
+            "default": 7,
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Cert Alert Days",
+            "type": "integer"
+          },
+          "cert_monitor": {
+            "default": true,
+            "title": "Cert Monitor",
+            "type": "boolean"
+          },
+          "cert_name": {
+            "default": "",
+            "maxLength": 253,
+            "title": "Cert Name",
+            "type": "string"
+          },
+          "cert_renew_days": {
+            "default": 7,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Cert Renew Days",
+            "type": "integer"
+          },
+          "cert_renew_enabled": {
+            "default": false,
+            "title": "Cert Renew Enabled",
+            "type": "boolean"
+          },
           "mail_monitor": {
             "default": true,
             "title": "Mail Monitor",
@@ -1032,6 +1062,36 @@
             "minimum": 1.0,
             "title": "Autostart Minutes",
             "type": "integer"
+          },
+          "cert_alert_days": {
+            "default": 7,
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Cert Alert Days",
+            "type": "integer"
+          },
+          "cert_monitor": {
+            "default": true,
+            "title": "Cert Monitor",
+            "type": "boolean"
+          },
+          "cert_name": {
+            "default": "",
+            "maxLength": 253,
+            "title": "Cert Name",
+            "type": "string"
+          },
+          "cert_renew_days": {
+            "default": 7,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Cert Renew Days",
+            "type": "integer"
+          },
+          "cert_renew_enabled": {
+            "default": false,
+            "title": "Cert Renew Enabled",
+            "type": "boolean"
           },
           "mail_monitor": {
             "default": true,
@@ -7320,6 +7380,18 @@
               }
             ],
             "title": "Autostart"
+          },
+          "certificate": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Certificate"
           },
           "checked_at": {
             "anyOf": [
@@ -15206,6 +15278,50 @@
           }
         },
         "summary": "Check Blacklist",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/api/monitoring/cert-renew": {
+      "post": {
+        "description": "Ask the agent to renew the TLS certificate now (certbot, then deployment).",
+        "operationId": "cert_renew_api_monitoring_cert_renew_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MailTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cert Renew Api Monitoring Cert Renew Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cert Renew",
         "tags": [
           "monitoring"
         ]

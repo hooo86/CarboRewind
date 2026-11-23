@@ -481,6 +481,36 @@ async def mail_test(
     return {"id": test["id"]}
 
 
+@router.post("/cert-renew", status_code=status.HTTP_202_ACCEPTED)
+async def cert_renew(
+    body: MailTestIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    """Ask the agent to renew the TLS certificate now (certbot, then deployment)."""
+    agent = await db.get(Agent, body.agent_id, with_for_update=True)
+    if agent is None or agent.status != AgentStatus.ACTIVE:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "agent not found")
+    ask = {
+        "id": uuid.uuid4().hex,
+        "by": principal.user.username,
+        "at": datetime.now(UTC).isoformat(),
+        "sent_at": None,
+    }
+    agent.storage = {**(agent.storage or {}), "cert_renew_request": ask}
+    cfg = await agent_tuning.load(db)
+    await audit.record(
+        db,
+        action="certificate.renew_request",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="agent",
+        target_id=str(agent.id),
+        details={"name": cfg.cert_name or agent.hostname},
+    )
+    return {"id": ask["id"]}
+
+
 class PauseIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

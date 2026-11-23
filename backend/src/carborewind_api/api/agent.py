@@ -556,9 +556,10 @@ class ServicesIn(BaseModel):
     # Automatic start of Carbonio and sending test (agents from this version on).
     autostart: dict[str, Any] | None = None
     mail_test: dict[str, Any] | None = None
+    certificate: dict[str, Any] | None = None
     errors: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("autostart", "mail_test")
+    @field_validator("autostart", "mail_test", "certificate")
     @classmethod
     def _small(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
         if value is not None and len(json.dumps(value, default=str)) > 20_000:
@@ -577,6 +578,13 @@ async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> dict
     # Lock the row: an administrator may be adding a queue action at the same moment.
     await db.refresh(agent, attribute_names=["storage"], with_for_update=True)
     answer: dict[str, Any] = {"queue_actions": mail_queue.deliver(agent, now)}
+    renew = (agent.storage or {}).get("cert_renew_request")
+    if renew and not renew.get("sent_at"):
+        answer["cert_renew"] = {"id": renew["id"]}
+        agent.storage = {
+            **(agent.storage or {}),
+            "cert_renew_request": {**renew, "sent_at": now.isoformat()},
+        }
     test = (agent.storage or {}).get("mail_test_request")
     if test and not test.get("sent_at"):
         answer["mail_test"] = {"id": test["id"]}

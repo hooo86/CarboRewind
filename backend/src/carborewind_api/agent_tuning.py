@@ -50,6 +50,12 @@ class AgentTuning:
     mail_test_after_start: bool = True
     mail_test_internal: str = ""
     mail_test_external: str = ""
+    # TLS certificate: alert every hour from N days before expiry; optional renewal.
+    cert_monitor: bool = True
+    cert_name: str = ""  # empty: the server's own name
+    cert_alert_days: int = 7
+    cert_renew_enabled: bool = False
+    cert_renew_days: int = 7
     # Version of the default port list the saved settings already include (see from_json).
     ports_defaults: int = PORTS_DEFAULTS
 

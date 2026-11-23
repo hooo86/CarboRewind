@@ -74,6 +74,10 @@ EVENTS = (
     "carbonio_autostart_failed",
     "mail_test_failed",
     "mail_test_ok",
+    "certificate_expiring",
+    "certificate_expired",
+    "certificate_renewed",
+    "certificate_renew_failed",
 )
 # Events sent to Telegram by default: the ones someone must act on now.
 URGENT_EVENTS = {
@@ -92,6 +96,9 @@ URGENT_EVENTS = {
     "carbonio_autostart_failed",
     "mail_test_failed",
     "mail_test_ok",
+    "certificate_expiring",
+    "certificate_expired",
+    "certificate_renew_failed",
 }
 TELEGRAM_KEY = "telegram"
 TELEGRAM_API = "https://api.telegram.org"
@@ -352,6 +359,34 @@ TEXTS: dict[str, dict[str, str]] = {
         "mail_test_ok_body": (
             "Après le redémarrage automatique, le test d'envoi a réussi :\n\n{detail}\n"
         ),
+        "certificate_expiring": "[CarboRewind] Certificat {name} : expire dans {days} jour(s)",
+        "certificate_expiring_body": (
+            "Le certificat TLS de {name} (serveur de l'agent {agent}) expire le {not_after} "
+            "({days} jour(s)).\nPorts : {ports}\n{mode}\n"
+            "Cette alerte est répétée toutes les heures jusqu'au renouvellement.\n"
+        ),
+        "certificate_expired": "[CarboRewind] Certificat {name} EXPIRÉ",
+        "certificate_expired_body": (
+            "Le certificat TLS de {name} (serveur de l'agent {agent}) a expiré le {not_after} : "
+            "les clients mail et les navigateurs refusent la connexion.\nPorts : {ports}\n"
+            "{mode}\n"
+        ),
+        "mode.cert_auto": "Le renouvellement automatique va être tenté par CarboRewind.",
+        "mode.cert_manual": (
+            "Renouvellement automatique désactivé : activez-le dans Paramètres → Agent, ou "
+            "cliquez sur « Renouveler maintenant » dans Supervision."
+        ),
+        "certificate_renewed": "[CarboRewind] Certificat {name} renouvelé",
+        "certificate_renewed_body": (
+            "Le certificat de {name} a été renouvelé et déployé dans Carbonio (serveur de "
+            "l'agent {agent}) : valable jusqu'au {not_after}.\n"
+        ),
+        "certificate_renew_failed": "[CarboRewind] Échec du renouvellement du certificat {name}",
+        "certificate_renew_failed_body": (
+            "Le renouvellement du certificat de {name} (serveur de l'agent {agent}) a échoué :\n\n"
+            "{error}\n\nVérifiez que le port 80 de {name} est joignable depuis Internet "
+            "(validation Let's Encrypt).\n"
+        ),
         "mail_queue": "[CarboRewind] File d'attente mail : {count} message(s)",
         "mail_queue_body": (
             "La file d'attente du MTA ({agent}) contient {count} message(s) (seuil : {limit}) : "
@@ -493,6 +528,33 @@ TEXTS: dict[str, dict[str, str]] = {
         ),
         "mail_test_ok": "[CarboRewind] Carbonio restarted: sending works",
         "mail_test_ok_body": "After the automatic start, the sending test succeeded:\n\n{detail}\n",
+        "certificate_expiring": "[CarboRewind] Certificate {name}: expires in {days} day(s)",
+        "certificate_expiring_body": (
+            "The TLS certificate of {name} (server of agent {agent}) expires on {not_after} "
+            "({days} day(s)).\nPorts: {ports}\n{mode}\n"
+            "This alert is repeated every hour until it is renewed.\n"
+        ),
+        "certificate_expired": "[CarboRewind] Certificate {name} EXPIRED",
+        "certificate_expired_body": (
+            "The TLS certificate of {name} (server of agent {agent}) expired on {not_after}: "
+            "mail clients and browsers refuse the connection.\nPorts: {ports}\n{mode}\n"
+        ),
+        "mode.cert_auto": "CarboRewind will try the automatic renewal.",
+        "mode.cert_manual": (
+            "Automatic renewal is off: turn it on in Settings → Agent, or click Renew now in "
+            "Monitoring."
+        ),
+        "certificate_renewed": "[CarboRewind] Certificate {name} renewed",
+        "certificate_renewed_body": (
+            "The certificate of {name} was renewed and deployed into Carbonio (server of agent "
+            "{agent}): valid until {not_after}.\n"
+        ),
+        "certificate_renew_failed": "[CarboRewind] Renewal of certificate {name} failed",
+        "certificate_renew_failed_body": (
+            "The renewal of the certificate of {name} (server of agent {agent}) failed:\n\n"
+            "{error}\n\nCheck that port 80 of {name} is reachable from the Internet "
+            "(Let's Encrypt validation).\n"
+        ),
         "mail_queue": "[CarboRewind] Mail queue: {count} message(s)",
         "mail_queue_body": (
             "The MTA queue ({agent}) holds {count} message(s) (threshold: {limit}): "

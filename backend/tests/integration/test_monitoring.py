@@ -764,3 +764,83 @@ def test_autostart_and_sending_test(api: TestClient, engine: Engine) -> None:
     ov = api.get("/api/monitoring/overview", headers=h).json()
     mine = next(v for v in ov["services"] if v.get("mail_test"))
     assert mine["mail_test"]["id"] == "t" * 32 and mine["autostart"]["enabled"] is True
+
+
+def test_certificate_expiry_alerts_and_renewal(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    shown = api.get("/api/settings/agent", headers=h).json()
+    body = {k: v for k, v in shown.items() if k not in ("revision", "agents")}
+    assert body["cert_monitor"] is True and body["cert_alert_days"] == 7
+    assert (
+        api.put(
+            "/api/settings/agent", json={**body, "cert_name": "x; reboot"}, headers=h
+        ).status_code
+        == 422
+    )
+    body.update(cert_name="Mail.Lnhc.Dz", cert_renew_enabled=True, cert_renew_days=5)
+    assert api.put("/api/settings/agent", json=body, headers=h).status_code == 200
+    cfg = agent.api.get("/api/agent/config", headers=agent.headers).json()
+    assert cfg["cert_name"] == "mail.lnhc.dz" and cfg["cert_renew_days"] == 5
+
+    def cert(days: float, **extra: Any) -> dict[str, Any]:
+        return {
+            "name": "mail.lnhc.dz",
+            "alert_days": 7,
+            "renew_enabled": True,
+            "renew_days": 5,
+            "days_left": days,
+            "certificates": [
+                {
+                    "service": "https",
+                    "port": 443,
+                    "days_left": days,
+                    "matches": True,
+                    "not_after": "2026-11-28T10:00:00+00:00",
+                },
+                {"service": "smtp", "port": 25, "error": "refused"},
+            ],
+            **extra,
+        }
+
+    def report(certificate: dict[str, Any]) -> dict[str, Any]:
+        r = agent.post("/services", {"services": [], "certificate": certificate})
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def events(name: str) -> list[Notification]:
+        with Session(engine) as s:
+            return list(
+                s.scalars(
+                    select(Notification).where(
+                        Notification.event == name, Notification.subject.contains("mail.lnhc.dz")
+                    )
+                )
+            )
+
+    with Session(engine) as s, s.begin():
+        s.execute(delete(Notification).where(Notification.event.like("certificate%")))
+    report(cert(30))
+    assert events("certificate_expiring") == []
+    report(cert(4.5))
+    report(cert(4.4))  # same hour: one alert
+    [alert] = [n for n in events("certificate_expiring") if n.channel == "email"]
+    assert "4.5" in alert.subject and "https 443" in alert.body
+    assert "automatic renewal" in alert.body or "renouvellement automatique" in alert.body
+    # Asked from the interface: handed to the agent once.
+    r = api.post("/api/monitoring/cert-renew", json={"agent_id": agent.id}, headers=h)
+    assert r.status_code == 202
+    ask = r.json()["id"]
+    assert report(cert(4.4))["cert_renew"] == {"id": ask}
+    assert "cert_renew" not in report(cert(4.4))
+    done = {"id": ask, "ok": True, "renewed": True, "not_after": "2027-02-21T10:00:00+00:00"}
+    report(cert(89, last_request={"id": ask, "reason": "manual"}, last_result=done))
+    report(cert(89, last_request={"id": ask, "reason": "manual"}, last_result=done))
+    assert len([n for n in events("certificate_renewed") if n.channel == "email"]) == 1
+    failed = {"id": "f" * 32, "ok": False, "renewed": False, "error": "certbot renew failed"}
+    report(cert(3, last_request={"id": "f" * 32, "reason": "auto"}, last_result=failed))
+    [bad] = [n for n in events("certificate_renew_failed") if n.channel == "email"]
+    assert "certbot renew failed" in bad.body
+    view = api.get("/api/monitoring/overview", headers=h).json()
+    mine = [v for v in view["services"] if v.get("agent_id") == agent.id]
+    assert mine and mine[0]["certificate"]["days_left"] == 3
