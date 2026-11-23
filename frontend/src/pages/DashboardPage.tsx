@@ -873,7 +873,7 @@ export function DashboardPage() {
             count: blockedNow.length,
             list: blockedNow.map((ip) => ip.ip).join(", "),
           })}{" "}
-          <Link to="/mail">{t("alerts.seeBlocked")}</Link>
+          <Link to="/blocking?tab=ips">{t("alerts.seeBlocked")}</Link>
         </p>
       )}
       {policies.state === "ready" && !policies.data.some((p) => p.enabled) && (

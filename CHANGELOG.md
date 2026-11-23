@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Menu « Blocages »** : tout ce qui bloque est regroupé en onglets — expéditeurs bloqués,
+  origine du spam, IP bloquées et adresses de confiance, comptes verrouillés (avec
+  déblocage), limites d'envoi, listes noires (DNSBL). Ces sections quittent Trafic mail et
+  Paramètres.
 - **Expéditeurs bloqués** (Trafic mail) : « Origine du spam » affiche les adresses
   d'expéditeur derrière chaque réseau, avec « Bloquer l'adresse » / « Bloquer le domaine »
   (pas pour les grands fournisseurs : outlook.com, gmail.com…). La liste est appliquée par

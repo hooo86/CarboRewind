@@ -119,7 +119,7 @@ export function BlacklistPanel() {
             {busy ? t("blacklist.checking") : t("blacklist.checkNow")}
           </button>
         )}
-        <Link className="button secondary small" to="/settings?tab=blacklist">
+        <Link className="button secondary small" to="/blocking?tab=dnsbl">
           {t("blacklist.settings")}
         </Link>
       </div>

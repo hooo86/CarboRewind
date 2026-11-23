@@ -4,17 +4,14 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { AgentSettingsForm } from "../components/AgentSettingsForm";
-import { BlacklistSettingsTab } from "../components/Blacklist";
 import { RestoreTestSettingsTab } from "../components/RestoreTests";
 import { TelegramSection } from "../components/Telegram";
-import { LimitsForm } from "./MailTrafficPage";
 import { MonitoringSettingsForm } from "./MonitoringPage";
 import { PolicyCard } from "./UsersPage";
 
 import { api } from "../api/endpoints";
 import type { NotificationSettings, OutboxEntry } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { BlocklistPanel } from "../components/Blocklist";
 import {
   LoadView,
   StatusBadge,
@@ -574,23 +571,11 @@ function AgentTab() {
   );
 }
 
-function MailLimitsTab() {
-  const [load, reload] = useLoad(() => api.mailLimits(), []);
-  return (
-    <LoadView load={load} reload={reload}>
-      {(limits) => <LimitsForm initial={limits} onSaved={reload} />}
-    </LoadView>
-  );
-}
-
 const TABS = [
   "notifications",
   "storage",
   "monitoring",
-  "mail",
-  "senders",
   "security",
-  "blacklist",
   "restoreTest",
   "agent",
 ] as const;
@@ -654,15 +639,9 @@ export function SettingsPage() {
       )}
       {tab === "storage" && <StorageSettingsSection />}
       {tab === "monitoring" && <MonitoringSettingsTab />}
-      {tab === "mail" && <MailLimitsTab />}
-      {tab === "senders" && (
-        <section className="card stack" aria-labelledby="senders-title">
-          <h2 id="senders-title">{t("blocklist.title")}</h2>
-          <BlocklistPanel />
-        </section>
-      )}
+
       {tab === "security" && <PolicyCard />}
-      {tab === "blacklist" && <BlacklistSettingsTab />}
+
       {tab === "restoreTest" && <RestoreTestSettingsTab />}
       {tab === "agent" && <AgentTab />}
     </>

@@ -55,7 +55,7 @@ d'expéditeur qui en sont venues. Chaque adresse a deux boutons : « Bloquer l'a
 « Bloquer le domaine ». Le second n'est pas proposé pour les grands fournisseurs
 (outlook.com, gmail.com…) : bloquer leur domaine bloquerait tous leurs utilisateurs. Le
 panneau « Expéditeurs bloqués » permet aussi d'ajouter une adresse ou un domaine à la
-main, et de les débloquer.
+main, et de les débloquer (onglet « Expéditeurs bloqués »).
 
 **Comment c'est appliqué.** L'agent ajoute et retire les entrées dans l'attribut
 `amavisBlacklistSender` de chaque domaine local de Carbonio. Une adresse s'écrit telle

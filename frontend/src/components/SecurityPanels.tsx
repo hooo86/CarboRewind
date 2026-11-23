@@ -143,7 +143,9 @@ export function BlockedIpsPanel({
               d.totals.ips > 0 && (
                 <p className="muted small">
                   {t("loginSecurity.failedNotBlocked", { count: d.totals.ips })}{" "}
-                  <Link to="/mail">{t("loginSecurity.seeAll")}</Link>
+                  <Link to="/blocking?tab=ips">
+                    {t("loginSecurity.seeAll")}
+                  </Link>
                 </p>
               )
             ) : (

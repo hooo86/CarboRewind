@@ -220,7 +220,7 @@ describe("customizable dashboard", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "See the blocked IPs" }),
-    ).toHaveAttribute("href", "/mail");
+    ).toHaveAttribute("href", "/blocking?tab=ips");
   });
 
   it("points to failed logins when the widget only shows blocked IPs", async () => {
@@ -249,7 +249,7 @@ describe("customizable dashboard", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See them" })).toHaveAttribute(
       "href",
-      "/mail",
+      "/blocking?tab=ips",
     );
   });
 

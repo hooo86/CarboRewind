@@ -205,6 +205,7 @@ export function Layout() {
           {canManageSettings &&
             item("/monitoring", "monitoring", t("nav.monitoring"))}
           {canManageSettings && item("/mail", "traffic", t("nav.mail"))}
+          {canManageSettings && item("/blocking", "block", t("nav.blocking"))}
           {canReadArchives && item("/archives", "archive", t("nav.archives"))}
           {canManageMigrations &&
             item("/migrations", "migration", t("nav.migrations"))}

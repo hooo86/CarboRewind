@@ -367,6 +367,7 @@ export const resources = {
         blockDomain: "Bloquer {{domain}}",
         fromSpam: "depuis Origine du spam",
         kind: { address: "adresse", domain: "domaine" },
+        account: "Compte",
         applied: "{{agent}} : appliqué ({{domains}}).",
         pending: "{{agent}} : en attente d'application par l'agent…",
         failed: "{{agent}} : échec — {{error}}",
@@ -711,6 +712,28 @@ export const resources = {
         users: "Comptes d'accès",
         me: "Mon compte",
         standby: "Serveur de secours",
+        blocking: "Blocages",
+      },
+      blocking: {
+        title: "Blocages",
+        intro:
+          "Tout ce qui bloque quelque chose : expéditeurs de spam, adresses IP, comptes verrouillés, limites d'envoi et listes noires publiques.",
+        tabs: {
+          senders: "Expéditeurs bloqués",
+          spam: "Origine du spam",
+          ips: "IP bloquées",
+          accounts: "Comptes verrouillés",
+          limits: "Limites d'envoi",
+          dnsbl: "Listes noires (DNSBL)",
+        },
+        moved:
+          "Les blocages (expéditeurs, origine du spam, IP, comptes verrouillés, limites d'envoi, listes noires) sont regroupés dans le menu Blocages.",
+        lockedTitle: "Comptes verrouillés",
+        lockedHelp:
+          "Boîtes verrouillées dans Carbonio : par un administrateur, une limite d'envoi dépassée ou trop de mots de passe erronés. Les débloquer efface aussi le compteur d'échecs.",
+        noLocked: "Aucun compte verrouillé.",
+        lastLogin: "Dernière connexion",
+        unlockQueued: "{{email}} sera débloqué par l'agent dans la minute.",
       },
       standby: {
         title: "Serveur de secours",
@@ -2217,6 +2240,7 @@ export const resources = {
         blockDomain: "Block {{domain}}",
         fromSpam: "from Spam origin",
         kind: { address: "address", domain: "domain" },
+        account: "Account",
         applied: "{{agent}}: applied ({{domains}}).",
         pending: "{{agent}}: waiting for the agent…",
         failed: "{{agent}}: failed — {{error}}",
@@ -2557,6 +2581,29 @@ export const resources = {
         users: "Access accounts",
         me: "My account",
         standby: "Standby server",
+        blocking: "Blocking",
+      },
+      blocking: {
+        title: "Blocking",
+        intro:
+          "Everything that blocks something: spam senders, IP addresses, locked accounts, sending limits and public blacklists.",
+        tabs: {
+          senders: "Blocked senders",
+          spam: "Spam origin",
+          ips: "Blocked IPs",
+          accounts: "Locked accounts",
+          limits: "Sending limits",
+          dnsbl: "Blacklists (DNSBL)",
+        },
+        moved:
+          "Blocking (senders, spam origin, IPs, locked accounts, sending limits, blacklists) is grouped in the Blocking menu.",
+        lockedTitle: "Locked accounts",
+        lockedHelp:
+          "Mailboxes locked in Carbonio: by an administrator, an exceeded sending limit or too many wrong passwords. Unlocking also clears the failure count.",
+        noLocked: "No locked account.",
+        lastLogin: "Last login",
+        unlockQueued:
+          "{{email}} will be unlocked by the agent within a minute.",
       },
       standby: {
         title: "Standby server",

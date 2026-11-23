@@ -293,7 +293,7 @@ describe("settings page", () => {
           agents: [],
         },
       },
-      "/settings?tab=senders",
+      "/blocking",
     );
     expect(
       await screen.findByRole("heading", { name: "Blocked senders" }),
@@ -618,7 +618,7 @@ describe("fallback SMTP and blacklists", () => {
           ],
         },
       },
-      "/settings?tab=blacklist",
+      "/blocking?tab=dnsbl",
     );
     const form = await screen.findByRole("form", {
       name: "Blacklists (DNSBL)",

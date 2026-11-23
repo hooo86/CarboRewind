@@ -1,6 +1,6 @@
 """Blocked senders: addresses or domains whose mail is treated as spam by Carbonio.
 
-The list is kept here (Trafic mail → Expéditeurs bloqués) and applied by the agent to the
+The list is kept here (menu Blocages → Expéditeurs bloqués) and applied by the agent to the
 ``amavisBlacklistSender`` attribute of every local domain of Carbonio: Amavis then gives
 their messages a spam score high enough for the Junk folder (or the quarantine), whatever
 their content. Entries use the Amavis syntax: ``user@example.com`` for one address,

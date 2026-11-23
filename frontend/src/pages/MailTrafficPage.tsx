@@ -13,12 +13,6 @@ import {
   useLoad,
 } from "../components/common";
 import { NoticeBar, type Notice } from "../components/notices";
-import { BlocklistPanel } from "../components/Blocklist";
-import {
-  BlockedIpsPanel,
-  SpamSourcesPanel,
-  TrustedIpsPanel,
-} from "../components/SecurityPanels";
 import { formatDate, formatRelative } from "../utils/format";
 
 const PERIODS: MailPeriod[] = ["1h", "24h", "7d", "30d"];
@@ -195,8 +189,6 @@ export function MailTrafficPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
   const [period, setPeriod] = useState<MailPeriod>("24h");
-  const [onlyBlocked, setOnlyBlocked] = useState(false);
-  const [filterTick, setFilterTick] = useState(0);
   const [load, reload] = useLoad<MailOverview>(
     () => api.mailOverview(period),
     [period],
@@ -256,7 +248,7 @@ export function MailTrafficPage() {
             </button>
           ))}
         </div>
-        <Link className="button secondary" to="/settings?tab=mail">
+        <Link className="button secondary" to="/blocking?tab=limits">
           {t("mail.limits")}
         </Link>
       </div>
@@ -515,38 +507,20 @@ export function MailTrafficPage() {
           );
         }}
       </LoadView>
-      <section className="card stack" aria-labelledby="security-title">
-        <h2 id="security-title">{t("loginSecurity.title")}</h2>
-        <p className="muted small">{t("loginSecurity.intro")}</p>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={onlyBlocked}
-            onChange={(e) => setOnlyBlocked(e.target.checked)}
-          />
-          {t("widgets.onlyBlocked")}
-        </label>
-        <BlockedIpsPanel
-          period={period}
-          onlyBlocked={onlyBlocked}
-          onChange={() => setFilterTick((n) => n + 1)}
-        />
-      </section>
-      <section className="card stack" aria-labelledby="trusted-title">
-        <h2 id="trusted-title">{t("loginSecurity.trustedTitle")}</h2>
-        <TrustedIpsPanel refresh={filterTick} />
-      </section>
-      <section className="card stack" aria-labelledby="spam-sources-title">
-        <h2 id="spam-sources-title">{t("spamSources.title")}</h2>
-        <p className="muted small">{t("spamSources.intro")}</p>
-        <SpamSourcesPanel
-          period={period}
-          onBlocked={() => setFilterTick((n) => n + 1)}
-        />
-      </section>
-      <section className="card stack" aria-labelledby="blocklist-title">
-        <h2 id="blocklist-title">{t("blocklist.title")}</h2>
-        <BlocklistPanel refresh={filterTick} />
+      <section className="card stack" aria-labelledby="blocking-link-title">
+        <h2 id="blocking-link-title">{t("blocking.title")}</h2>
+        <p className="muted small">{t("blocking.moved")}</p>
+        <div className="actions wrap-actions">
+          <Link className="button secondary" to="/blocking">
+            {t("blocking.tabs.senders")}
+          </Link>
+          <Link className="button secondary" to="/blocking?tab=spam">
+            {t("blocking.tabs.spam")}
+          </Link>
+          <Link className="button secondary" to="/blocking?tab=ips">
+            {t("blocking.tabs.ips")}
+          </Link>
+        </div>
       </section>
     </>
   );

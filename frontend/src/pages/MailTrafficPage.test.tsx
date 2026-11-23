@@ -103,7 +103,7 @@ const overview: MailOverview = {
   agents: [{ agent: "mail", log: "/var/log/carbonio.log", reported_at: now }],
 };
 
-function open(role = user("super_admin"), extra = {}) {
+function open(role = user("super_admin"), extra = {}, path = "/mail") {
   const calls = fakeApi({
     "GET /api/auth/me": role,
     "GET /api/mail/overview": overview,
@@ -121,7 +121,7 @@ function open(role = user("super_admin"), extra = {}) {
     },
     ...extra,
   });
-  window.history.pushState({}, "", "/mail");
+  window.history.pushState({}, "", path);
   render(<App />);
   return calls;
 }
@@ -235,56 +235,60 @@ describe("mail traffic page", () => {
 
 describe("security and spam origin", () => {
   it("lists blocked IPs and spam networks for the chosen period", async () => {
-    const calls = open(user("super_admin"), {
-      "GET /api/mail/security": {
-        period: "24h",
-        since: "2026-11-19T00:00:00Z",
-        totals: { ips: 2, failed: 47, blocked: 1 },
-        reported: true,
-        ips: [
-          {
-            ip: "203.0.113.9",
-            ptr: "mail-1.mx.spammer.co.uk",
-            domain: "spammer.co.uk",
-            failed_mailbox: 42,
-            failed_smtp: 3,
-            suspended: 2,
-            last_suspended_at: "2026-11-18T10:00:00Z",
-            recently_blocked: false,
-            first_seen: "2026-11-18T08:00:00Z",
-            last_seen: "2026-11-19T11:00:00Z",
-            accounts: ["ana@lnhc.dz", "contact@lnhc.dz"],
-          },
-          {
-            ip: "198.51.100.7",
-            ptr: null,
-            domain: null,
-            failed_mailbox: 0,
-            failed_smtp: 2,
-            suspended: 0,
-            last_suspended_at: null,
-            recently_blocked: false,
-            first_seen: "2026-11-19T08:00:00Z",
-            last_seen: "2026-11-19T09:00:00Z",
-            last_seen_exact: false,
-            accounts: [],
-          },
-        ],
+    const calls = open(
+      user("super_admin"),
+      {
+        "GET /api/mail/security": {
+          period: "24h",
+          since: "2026-11-19T00:00:00Z",
+          totals: { ips: 2, failed: 47, blocked: 1 },
+          reported: true,
+          ips: [
+            {
+              ip: "203.0.113.9",
+              ptr: "mail-1.mx.spammer.co.uk",
+              domain: "spammer.co.uk",
+              failed_mailbox: 42,
+              failed_smtp: 3,
+              suspended: 2,
+              last_suspended_at: "2026-11-18T10:00:00Z",
+              recently_blocked: false,
+              first_seen: "2026-11-18T08:00:00Z",
+              last_seen: "2026-11-19T11:00:00Z",
+              accounts: ["ana@lnhc.dz", "contact@lnhc.dz"],
+            },
+            {
+              ip: "198.51.100.7",
+              ptr: null,
+              domain: null,
+              failed_mailbox: 0,
+              failed_smtp: 2,
+              suspended: 0,
+              last_suspended_at: null,
+              recently_blocked: false,
+              first_seen: "2026-11-19T08:00:00Z",
+              last_seen: "2026-11-19T09:00:00Z",
+              last_seen_exact: false,
+              accounts: [],
+            },
+          ],
+        },
+        "GET /api/mail/spam-sources": {
+          period: "24h",
+          since: "2026-11-19T00:00:00Z",
+          sources: [
+            {
+              domain: null,
+              count: 4,
+              ips: [{ ip: "192.0.2.55", ptr: null, count: 4 }],
+              sender_domains: ["nowhere.example"],
+            },
+          ],
+          sender_domains: [{ domain: "nowhere.example", count: 4 }],
+        },
       },
-      "GET /api/mail/spam-sources": {
-        period: "24h",
-        since: "2026-11-19T00:00:00Z",
-        sources: [
-          {
-            domain: null,
-            count: 4,
-            ips: [{ ip: "192.0.2.55", ptr: null, count: 4 }],
-            sender_domains: ["nowhere.example"],
-          },
-        ],
-        sender_domains: [{ domain: "nowhere.example", count: 4 }],
-      },
-    });
+      "/blocking?tab=ips",
+    );
     const blocked = await screen.findByRole("region", {
       name: "Failed logins and blocked IPs",
     });
@@ -309,7 +313,8 @@ describe("security and spam origin", () => {
         /2 address\(es\), 47 failed login\(s\), 1 blocked/,
       ),
     ).toBeInTheDocument();
-    const origin = screen.getByRole("region", { name: "Spam origin" });
+    fireEvent.click(screen.getByRole("tab", { name: "Spam origin" }));
+    const origin = await screen.findByRole("region", { name: "Spam origin" });
     expect(
       await within(origin).findByText("No reverse name"),
     ).toBeInTheDocument();
@@ -319,7 +324,7 @@ describe("security and spam origin", () => {
       expect(
         calls.some(
           (c) =>
-            c.url.startsWith("/api/mail/security") &&
+            c.url.startsWith("/api/mail/spam-sources") &&
             c.url.includes("period=7d"),
         ),
       ).toBe(true),
@@ -327,55 +332,59 @@ describe("security and spam origin", () => {
   });
 
   it("shows the spam senders and blocks one", async () => {
-    const calls = open(user("super_admin"), {
-      "GET /api/mail/spam-sources": {
-        period: "24h",
-        since: "2026-11-19T00:00:00Z",
-        sources: [
-          {
-            domain: "outlook.com",
-            count: 22,
-            ips: [{ ip: "52.102.160.4", ptr: "mail.outlook.com", count: 12 }],
-            sender_domains: ["outlook.com", "bad.example"],
-            senders: [
-              { address: "promo@outlook.com", count: 15 },
-              { address: "x@bad.example", count: 7 },
-            ],
-          },
-        ],
-        sender_domains: [{ domain: "outlook.com", count: 15 }],
-      },
-      "GET /api/mail/blocklist": {
-        revision: 1,
-        entries: [
-          {
-            value: "@bad.example",
-            kind: "domain",
-            by: "admin",
-            at: "2026-11-19T10:00:00Z",
-            reason: "phishing",
-          },
-        ],
-        agents: [
-          {
-            name: "mx1-mail",
-            applied: true,
-            status: {
-              revision: 1,
-              domains: ["lnhc.dz"],
-              error: null,
-              at: "2026-11-19T10:01:00Z",
+    const calls = open(
+      user("super_admin"),
+      {
+        "GET /api/mail/spam-sources": {
+          period: "24h",
+          since: "2026-11-19T00:00:00Z",
+          sources: [
+            {
+              domain: "outlook.com",
+              count: 22,
+              ips: [{ ip: "52.102.160.4", ptr: "mail.outlook.com", count: 12 }],
+              sender_domains: ["outlook.com", "bad.example"],
+              senders: [
+                { address: "promo@outlook.com", count: 15 },
+                { address: "x@bad.example", count: 7 },
+              ],
             },
-          },
-        ],
+          ],
+          sender_domains: [{ domain: "outlook.com", count: 15 }],
+        },
+        "GET /api/mail/blocklist": {
+          revision: 1,
+          entries: [
+            {
+              value: "@bad.example",
+              kind: "domain",
+              by: "admin",
+              at: "2026-11-19T10:00:00Z",
+              reason: "phishing",
+            },
+          ],
+          agents: [
+            {
+              name: "mx1-mail",
+              applied: true,
+              status: {
+                revision: 1,
+                domains: ["lnhc.dz"],
+                error: null,
+                at: "2026-11-19T10:01:00Z",
+              },
+            },
+          ],
+        },
+        "POST /api/mail/blocklist": { revision: 2, entries: [], agents: [] },
+        "POST /api/mail/blocklist/remove": {
+          revision: 3,
+          entries: [],
+          agents: [],
+        },
       },
-      "POST /api/mail/blocklist": { revision: 2, entries: [], agents: [] },
-      "POST /api/mail/blocklist/remove": {
-        revision: 3,
-        entries: [],
-        agents: [],
-      },
-    });
+      "/blocking?tab=spam",
+    );
     const origin = await screen.findByRole("region", { name: "Spam origin" });
     const row = (await within(origin).findByText("promo@outlook.com")).closest(
       "li",
@@ -403,7 +412,9 @@ describe("security and spam origin", () => {
       force: false,
     });
 
-    const list = screen.getByRole("region", { name: "Blocked senders" });
+    fireEvent.click(screen.getByRole("tab", { name: "Blocked senders" }));
+    const list = await screen.findByRole("region", { name: "Blocked senders" });
+    await within(list).findByText("@bad.example");
     expect(within(list).getByText("@bad.example")).toBeInTheDocument();
     expect(
       within(list).getByText("mx1-mail: applied (lnhc.dz)."),
@@ -430,17 +441,21 @@ describe("security and spam origin", () => {
   });
 
   it("explains why nothing shows, and says when nothing is blocked", async () => {
-    open(user("super_admin"), {
-      "GET /api/mail/security": {
-        period: "24h",
-        since: "2026-11-19T00:00:00Z",
-        totals: { ips: 0, failed: 0, blocked: 0 },
-        reported: false,
-        ips: [],
-        log_status: "denied",
-        log_path: "/opt/zextras/log/mailbox.log",
+    open(
+      user("super_admin"),
+      {
+        "GET /api/mail/security": {
+          period: "24h",
+          since: "2026-11-19T00:00:00Z",
+          totals: { ips: 0, failed: 0, blocked: 0 },
+          reported: false,
+          ips: [],
+          log_status: "denied",
+          log_path: "/opt/zextras/log/mailbox.log",
+        },
       },
-    });
+      "/blocking?tab=ips",
+    );
     expect(
       await screen.findByText(
         /cannot read \/opt\/zextras\/log\/mailbox.log: add the carborewind user/,
@@ -482,39 +497,43 @@ describe("security and spam origin", () => {
         },
       ],
     });
-    open(user("super_admin"), {
-      "GET /api/mail/security": () => ({ body: security(true) }),
-      "GET /api/mail/login-filter": () => ({
-        body: {
-          config: {
-            safe_ips: trusted,
-            max_failed: 10,
-            block_minutes: 15,
-            task_minutes: 5,
-            at: "2026-11-19T11:00:00Z",
-          },
-          actions: [],
-        },
-      }),
-      "POST /api/mail/login-filter/trust": (c: { body: unknown }) => {
-        posted.push(c.body);
-        return {
-          status: 202,
-          body: { id: "i1", ip: "x", action: "trust", status: "pending" },
-        };
-      },
-      "POST /api/mail/login-filter/untrust": (c: { body: unknown }) => {
-        trusted = [];
-        return {
-          status: 202,
+    open(
+      user("super_admin"),
+      {
+        "GET /api/mail/security": () => ({ body: security(true) }),
+        "GET /api/mail/login-filter": () => ({
           body: {
-            id: "i2",
-            ip: (c.body as { ip: string }).ip,
-            action: "untrust",
+            config: {
+              safe_ips: trusted,
+              max_failed: 10,
+              block_minutes: 15,
+              task_minutes: 5,
+              at: "2026-11-19T11:00:00Z",
+            },
+            actions: [],
           },
-        };
+        }),
+        "POST /api/mail/login-filter/trust": (c: { body: unknown }) => {
+          posted.push(c.body);
+          return {
+            status: 202,
+            body: { id: "i1", ip: "x", action: "trust", status: "pending" },
+          };
+        },
+        "POST /api/mail/login-filter/untrust": (c: { body: unknown }) => {
+          trusted = [];
+          return {
+            status: 202,
+            body: {
+              id: "i2",
+              ip: (c.body as { ip: string }).ip,
+              action: "untrust",
+            },
+          };
+        },
       },
-    });
+      "/blocking?tab=ips",
+    );
     const panel = await screen.findByRole("region", {
       name: "Failed logins and blocked IPs",
     });
@@ -557,16 +576,20 @@ describe("security and spam origin", () => {
   });
 
   it("says when no IP was blocked", async () => {
-    open(user("super_admin"), {
-      "GET /api/mail/security": {
-        period: "24h",
-        since: "2026-11-19T00:00:00Z",
-        totals: { ips: 0, failed: 0, blocked: 0 },
-        reported: false,
-        log_status: "ok",
-        ips: [],
+    open(
+      user("super_admin"),
+      {
+        "GET /api/mail/security": {
+          period: "24h",
+          since: "2026-11-19T00:00:00Z",
+          totals: { ips: 0, failed: 0, blocked: 0 },
+          reported: false,
+          log_status: "ok",
+          ips: [],
+        },
       },
-    });
+      "/blocking?tab=ips",
+    );
     expect(
       await screen.findByText("No IP address blocked in the period."),
     ).toBeInTheDocument();
