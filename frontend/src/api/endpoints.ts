@@ -4,6 +4,7 @@ import type {
   LoginFilter,
   LoginSecurity,
   SpamSources,
+  Blocklist,
   Widget,
   AccountGroup,
   PolicyRun,
@@ -507,6 +508,15 @@ export const api = {
   loginFilter: () => request<LoginFilter>("GET", "/api/mail/login-filter"),
   ipAction: (action: "trust" | "untrust", ip: string) =>
     request<IpAction>("POST", `/api/mail/login-filter/${action}`, { ip }),
+  blocklist: () => request<Blocklist>("GET", "/api/mail/blocklist"),
+  blockSender: (value: string, reason?: string, force = false) =>
+    request<Blocklist>("POST", "/api/mail/blocklist", {
+      value,
+      reason: reason || null,
+      force,
+    }),
+  unblockSender: (value: string) =>
+    request<Blocklist>("POST", "/api/mail/blocklist/remove", { value }),
   spamSources: (period: MailPeriod) =>
     request<SpamSources>("GET", "/api/mail/spam-sources", undefined, {
       period,

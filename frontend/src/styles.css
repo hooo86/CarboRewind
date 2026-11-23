@@ -2227,3 +2227,16 @@ button.danger-solid {
 button.danger-solid:hover:not(:disabled) {
   filter: brightness(1.1);
 }
+
+/* Spam origin: sender addresses with their block buttons */
+ul.senders {
+  margin: 0 0 0.4rem;
+}
+ul.senders li {
+  overflow-wrap: anywhere;
+}
+.actions-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}

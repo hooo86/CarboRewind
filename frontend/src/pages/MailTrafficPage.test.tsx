@@ -326,6 +326,109 @@ describe("security and spam origin", () => {
     );
   });
 
+  it("shows the spam senders and blocks one", async () => {
+    const calls = open(user("super_admin"), {
+      "GET /api/mail/spam-sources": {
+        period: "24h",
+        since: "2026-11-19T00:00:00Z",
+        sources: [
+          {
+            domain: "outlook.com",
+            count: 22,
+            ips: [{ ip: "52.102.160.4", ptr: "mail.outlook.com", count: 12 }],
+            sender_domains: ["outlook.com", "bad.example"],
+            senders: [
+              { address: "promo@outlook.com", count: 15 },
+              { address: "x@bad.example", count: 7 },
+            ],
+          },
+        ],
+        sender_domains: [{ domain: "outlook.com", count: 15 }],
+      },
+      "GET /api/mail/blocklist": {
+        revision: 1,
+        entries: [
+          {
+            value: "@bad.example",
+            kind: "domain",
+            by: "admin",
+            at: "2026-11-19T10:00:00Z",
+            reason: "phishing",
+          },
+        ],
+        agents: [
+          {
+            name: "mx1-mail",
+            applied: true,
+            status: {
+              revision: 1,
+              domains: ["lnhc.dz"],
+              error: null,
+              at: "2026-11-19T10:01:00Z",
+            },
+          },
+        ],
+      },
+      "POST /api/mail/blocklist": { revision: 2, entries: [], agents: [] },
+      "POST /api/mail/blocklist/remove": {
+        revision: 3,
+        entries: [],
+        agents: [],
+      },
+    });
+    const origin = await screen.findByRole("region", { name: "Spam origin" });
+    const row = (await within(origin).findByText("promo@outlook.com")).closest(
+      "li",
+    ) as HTMLElement;
+    // A public provider: the address can be blocked, not the whole domain.
+    expect(
+      within(row).queryByRole("button", { name: "Block outlook.com" }),
+    ).toBeNull();
+    const other = within(origin)
+      .getByText("x@bad.example")
+      .closest("li") as HTMLElement;
+    expect(await within(other).findByText("blocked")).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Block address" }));
+    expect(
+      await screen.findByText(
+        /promo@outlook.com blocked: the agent applies it/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      calls.find((c) => c.method === "POST" && c.url === "/api/mail/blocklist")
+        ?.body,
+    ).toEqual({
+      value: "promo@outlook.com",
+      reason: "from Spam origin",
+      force: false,
+    });
+
+    const list = screen.getByRole("region", { name: "Blocked senders" });
+    expect(within(list).getByText("@bad.example")).toBeInTheDocument();
+    expect(
+      within(list).getByText("mx1-mail: applied (lnhc.dz)."),
+    ).toBeInTheDocument();
+    const form = within(list).getByRole("form", { name: "Block" });
+    fireEvent.change(within(form).getByLabelText("Address or domain"), {
+      target: { value: "gmail.com" },
+    });
+    fireEvent.click(
+      within(form).getByLabelText(/Block all of gmail.com anyway/),
+    );
+    fireEvent.click(within(form).getByRole("button", { name: "Block" }));
+    await waitFor(() =>
+      expect(
+        calls
+          .filter((c) => c.url === "/api/mail/blocklist" && c.method === "POST")
+          .at(-1)?.body,
+      ).toEqual({ value: "gmail.com", reason: null, force: true }),
+    );
+    fireEvent.click(within(list).getByRole("button", { name: "Unblock" }));
+    expect(
+      await screen.findByText("@bad.example unblocked."),
+    ).toBeInTheDocument();
+  });
+
   it("explains why nothing shows, and says when nothing is blocked", async () => {
     open(user("super_admin"), {
       "GET /api/mail/security": {

@@ -292,6 +292,26 @@ def test_monitor_sends_counters_and_locks(setup: tuple[Any, ...]) -> None:
     assert "NO_SUCH_ACCOUNT" in done["/account-actions/q3/done"]["error"]
 
 
+def test_monitor_applies_the_blocked_senders(setup: tuple[Any, ...]) -> None:
+    monitor, _server, fake, _log = setup
+    monitor.refresh_addresses()
+    calls: list[tuple[int, list[str], str | None]] = []
+    monitor._api.blocklist_done = lambda r, d, e: calls.append((r, d, e))  # type: ignore[method-assign]
+    monitor.apply_blocklist(
+        {"revision": 3, "add": ["spam@x.com", "@bad.example", "bad value"], "remove": []}
+    )
+    assert calls == [(3, ["lnhc.dz"], None)]
+    assert fake.domain_attrs["dom-lnhc.dz"]["amavisBlacklistSender"] == [
+        "spam@x.com",
+        "@bad.example",
+    ]
+    monitor.apply_blocklist({"revision": 4, "add": ["@bad.example"], "remove": ["spam@x.com"]})
+    assert fake.domain_attrs["dom-lnhc.dz"]["amavisBlacklistSender"] == ["@bad.example"]
+    monitor.agg.local = {}
+    monitor.apply_blocklist({"revision": 5, "add": [], "remove": []})
+    assert calls[-1] == (5, [], "no local domain known yet")
+
+
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:
     monitor, server, _fake, log = setup
     # dated now: the watcher runs on the real clock and drops hours older than two days

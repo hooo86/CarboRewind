@@ -453,6 +453,30 @@ class CarbonioClient:
         )
         return str(resp["account"][0]["id"])
 
+    def domain_id(self, name: str) -> str | None:
+        """Id of a Carbonio domain (``GetDomainRequest``); None when it does not exist."""
+        try:
+            resp = self._admin.invoke(
+                "GetDomain",
+                NS_ADMIN,
+                {"domain": {"by": "name", "_content": name}, "attrs": "zimbraId"},
+                token=self._admin_auth(),
+            )
+        except SoapFaultError as exc:
+            if exc.code == "account.NO_SUCH_DOMAIN":
+                return None
+            raise
+        return str(resp["domain"][0]["id"])
+
+    def update_blocked_senders(self, domain_id: str, add: list[str], remove: list[str]) -> None:
+        """Add / remove values of ``amavisBlacklistSender`` on a domain (``+`` / ``-``)."""
+        attrs = [{"n": "+amavisBlacklistSender", "_content": v} for v in add]
+        attrs += [{"n": "-amavisBlacklistSender", "_content": v} for v in remove]
+        if attrs:
+            self._admin.invoke(
+                "ModifyDomain", NS_ADMIN, {"id": domain_id, "a": attrs}, token=self._admin_auth()
+            )
+
     def delete_account(self, account_id: str) -> None:
         """Delete the account and its mailbox from Carbonio (``DeleteAccountRequest``)."""
         self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_auth())

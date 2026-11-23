@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from sqlalchemy import desc, func, select
 
-from .. import audit, mail_traffic, rdns
+from .. import audit, blocklist, mail_traffic, rdns
 from ..authz import Permission
 from ..db.models import (
     Account,
@@ -581,11 +581,19 @@ class SpamSourceIp(BaseModel):
     count: int
 
 
+class SpamSenderOut(BaseModel):
+    address: str
+    count: int
+
+
 class SpamSource(BaseModel):
     domain: str | None
     count: int
     ips: list[SpamSourceIp]
     sender_domains: list[str]
+    # The sender addresses behind these IPs (what can be blocked without blocking the
+    # whole provider).
+    senders: list[SpamSenderOut] = Field(default_factory=list)
 
 
 class SpamSources(BaseModel):
@@ -614,6 +622,7 @@ async def spam_sources(
     )
     per_ip: dict[str, int] = {}
     ip_senders: dict[str, dict[str, int]] = {}
+    ip_addresses: dict[str, dict[str, int]] = {}
     sender_domains: dict[str, int] = {}
     for sender, count, ips in rows:
         sender_domain = sender.rpartition("@")[2].lower() if "@" in sender else "<>"
@@ -622,9 +631,12 @@ async def spam_sources(
             per_ip[ip] = per_ip.get(ip, 0) + count
             domains = ip_senders.setdefault(ip, {})
             domains[sender_domain] = domains.get(sender_domain, 0) + count
+            addresses = ip_addresses.setdefault(ip, {})
+            addresses[sender.lower()] = addresses.get(sender.lower(), 0) + count
     top = sorted(per_ip, key=lambda ip: (-per_ip[ip], ip))[:MAX_SPAM_IPS]
     names = await rdns.resolve(top)
     groups: dict[str | None, SpamSource] = {}
+    group_senders: dict[str | None, dict[str, int]] = {}
     for ip in top:
         ptr = names.get(ip)
         domain = rdns.organisation(ptr)
@@ -633,12 +645,20 @@ async def spam_sources(
         )
         group.count += per_ip[ip]
         group.ips.append(SpamSourceIp(ip=ip, ptr=ptr, count=per_ip[ip]))
+        tally = group_senders.setdefault(domain, {})
+        for address, n in ip_addresses[ip].items():
+            tally[address] = tally.get(address, 0) + n
         for d in sorted(ip_senders[ip], key=lambda d: -ip_senders[ip][d]):
             if d not in group.sender_domains and len(group.sender_domains) < 10:
                 group.sender_domains.append(d)
     sources = sorted(groups.values(), key=lambda g: (-g.count, g.domain or "~"))[:100]
     for g in sources:
         g.ips = g.ips[:20]
+        tally = group_senders.get(g.domain, {})
+        g.senders = [
+            SpamSenderOut(address=a, count=n)
+            for a, n in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
+        ]
     return SpamSources(
         period=period,
         since=since,
@@ -648,6 +668,91 @@ async def spam_sources(
             for d, n in sorted(sender_domains.items(), key=lambda kv: (-kv[1], kv[0]))[:50]
         ],
     )
+
+
+class BlockIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str = Field(min_length=3, max_length=320)
+    reason: str | None = Field(default=None, max_length=300)
+    force: bool = False  # confirm the domain of a public provider
+
+
+class UnblockIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    value: str = Field(min_length=3, max_length=320)
+
+
+async def _blocklist_out(db: DbSession) -> dict[str, Any]:
+    data = await blocklist.load(db)
+    agents = await db.scalars(
+        select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
+    )
+    return {
+        "revision": data["revision"],
+        "entries": data["entries"],
+        "agents": [
+            {
+                "name": a.name,
+                "applied": int((a.storage or {}).get("blocklist_revision") or 0)
+                >= data["revision"],
+                "status": (a.storage or {}).get("blocklist_status"),
+            }
+            for a in agents
+        ],
+    }
+
+
+@router.get("/blocklist")
+async def get_blocklist(principal: Admin, db: DbSession) -> dict[str, Any]:
+    """Blocked senders (addresses, domains) and whether the agents applied the list."""
+    return await _blocklist_out(db)
+
+
+@router.post("/blocklist")
+async def block_sender(
+    body: BlockIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    try:
+        await blocklist.add(
+            db, body.value, by=principal.user.username, reason=body.reason, force=body.force
+        )
+    except blocklist.BlocklistError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    await audit.record(
+        db,
+        action="blocklist.add",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="sender",
+        target_id=blocklist.normalise(body.value)[0],
+        details={"reason": body.reason, "force": body.force},
+    )
+    return await _blocklist_out(db)
+
+
+@router.post("/blocklist/remove")
+async def unblock_sender(
+    body: UnblockIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    try:
+        await blocklist.remove(db, body.value)
+    except blocklist.BlocklistError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    await audit.record(
+        db,
+        action="blocklist.remove",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="sender",
+        target_id=blocklist.normalise(body.value)[0],
+    )
+    return await _blocklist_out(db)
 
 
 @router.post("/alerts/{alert_id}/ack", status_code=status.HTTP_204_NO_CONTENT)

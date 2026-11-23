@@ -9,6 +9,7 @@ account must be stopped within minutes, even while a long backup is running.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -147,7 +148,35 @@ class MailMonitor:
             self.apply(action)
         for action in answer.get("ip_actions", []):
             self.apply_ip(action)
+        if isinstance(answer.get("blocklist"), dict):
+            self.apply_blocklist(answer["blocklist"])
         return {"lines": len(lines), "actions": len(answer.get("actions", []))}
+
+    def apply_blocklist(self, data: dict[str, Any]) -> None:
+        """Blocked senders (Trafic mail): ``amavisBlacklistSender`` of every local domain."""
+        valid = re.compile(r"^[^\s@<>,;]*@[a-z0-9.-]+\.[a-z]{2,63}$")
+        add = [str(v) for v in data.get("add", []) if valid.match(str(v))]
+        remove = [str(v) for v in data.get("remove", []) if valid.match(str(v))]
+        domains = sorted({a.rpartition("@")[2] for a in self.agg.local if "@" in a})
+        done: list[str] = []
+        error = None if domains else "no local domain known yet"
+        for name in domains:
+            try:
+                domain_id = self._carbonio.domain_id(name)
+                if domain_id is None:
+                    continue  # an alias address of a domain Carbonio does not hold
+                self._carbonio.update_blocked_senders(domain_id, add, remove)
+                done.append(name)
+            except SoapFaultError as exc:
+                error = f"{name}: {exc.code}: {exc}"[:500]
+                break
+        log.warning(
+            "blocked senders revision %s applied to %s (%s)",
+            data.get("revision"),
+            ", ".join(done) or "-",
+            error or "ok",
+        )
+        self._api.blocklist_done(int(data.get("revision") or 0), done, error)
 
     def apply_ip(self, action: dict[str, Any]) -> None:
         """Trust (never block) or untrust an address in Carbonio's login filter."""

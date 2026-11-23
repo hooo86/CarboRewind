@@ -320,3 +320,47 @@ def test_set_quota_of_several_accounts(api: TestClient, engine: Engine) -> None:
         headers=h,
     )
     assert r.json()["queued"] == 1
+
+
+def test_blocked_senders(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    e = accounts(agent, uuid.uuid4().hex[:6])
+    own = e["ana"].split("@")[1]
+    with Session(engine) as s, s.begin():
+        s.execute(delete(AppSetting).where(AppSetting.key == "sender_blocklist"))
+    url = "/api/mail/blocklist"
+    for bad in ("not an address", "x@", own, f"@{own}"):
+        assert api.post(url, json={"value": bad}, headers=h).status_code == 422, bad
+    r = api.post(url, json={"value": "outlook.com"}, headers=h)
+    assert r.status_code == 422 and "public mail provider" in r.json()["detail"]
+    r = api.post(url, json={"value": " Spammer@Outlook.com ", "reason": "phishing"}, headers=h)
+    assert r.status_code == 200, r.text
+    r = api.post(url, json={"value": "@bad.example"}, headers=h)
+    assert [x["value"] for x in r.json()["entries"]] == ["spammer@outlook.com", "@bad.example"]
+    assert r.json()["entries"][1]["kind"] == "domain"
+    api.post(url, json={"value": "bad.example"}, headers=h)  # already there: unchanged
+    assert api.post(url, json={"value": "outlook.com", "force": True}, headers=h).status_code == 200
+    assert api.post(f"{url}/remove", json={"value": "outlook.com"}, headers=h).status_code == 200
+    assert api.post(f"{url}/remove", json={"value": "nope@x.example"}, headers=h).status_code == 404
+
+    # Handed to the agent until it confirms.
+    first = agent.post("/mail-stats", {"hours": []}).json()["blocklist"]
+    assert first == {
+        "revision": 4,
+        "add": ["spammer@outlook.com", "@bad.example"],
+        "remove": ["@outlook.com"],
+    }
+    r = agent.post("/blocklist-done", {"revision": 4, "domains": [own], "error": "x"})
+    assert r.status_code == 204
+    assert "blocklist" in agent.post("/mail-stats", {"hours": []}).json()
+    agent.post("/blocklist-done", {"revision": 4, "domains": [own]})
+    assert "blocklist" not in agent.post("/mail-stats", {"hours": []}).json()
+    out = api.get(url, headers=h).json()
+    mine = [a for a in out["agents"] if a["status"] and a["status"]["domains"] == [own]]
+    assert mine and mine[0]["applied"] is True
+    with Session(engine) as s:
+        actions = set(
+            s.scalars(select(AuditEvent.action).where(AuditEvent.target_type == "sender"))
+        )
+    assert {"blocklist.add", "blocklist.remove"} <= actions

@@ -4,13 +4,16 @@ import { useTranslation } from "react-i18next";
 
 import { api } from "../api/endpoints";
 import type {
+  Blocklist,
   LoginFilter,
   LoginSecurity,
   MailPeriod,
   SpamSources,
 } from "../api/types";
 import { formatDate, formatRelative } from "../utils/format";
+import { SenderBlockButtons } from "./Blocklist";
 import { LoadView, StatusBadge, errorMessage, useLoad } from "./common";
+import { NoticeBar, type Notice } from "./notices";
 
 const hhmm = (d: Date) =>
   d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -416,10 +419,12 @@ export function SpamSourcesPanel({
   period,
   limit = 100,
   compact = false,
+  onBlocked,
 }: {
   period: MailPeriod;
   limit?: number;
   compact?: boolean;
+  onBlocked?: () => void;
 }) {
   const { t } = useTranslation();
   const [load, reload] = useLoad<SpamSources>(
@@ -427,81 +432,124 @@ export function SpamSourcesPanel({
     [period],
     60000,
   );
+  const [blockedLoad, reloadBlocked] = useLoad<Blocklist>(
+    () => api.blocklist(),
+    [],
+  );
+  const [notice, setNotice] = useState<Notice>(null);
+  const blocked = new Set(
+    blockedLoad.state === "ready"
+      ? blockedLoad.data.entries.map((e) => e.value)
+      : [],
+  );
+  const done = (n: Notice) => {
+    setNotice(n);
+    reloadBlocked();
+    onBlocked?.();
+  };
   return (
-    <LoadView load={load} reload={reload}>
-      {(d) =>
-        d.sources.length === 0 ? (
-          <p className="muted">{t("mail.noSpam")}</p>
-        ) : (
-          <div className={compact ? "stack" : "split"}>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{t("spamSources.network")}</th>
-                    <th className="num">{t("mail.count")}</th>
-                    <th>{t("spamSources.ips")}</th>
-                    {!compact && <th>{t("spamSources.senders")}</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.sources.slice(0, limit).map((s) => (
-                    <tr key={s.domain ?? "?"}>
-                      <td className="wrap">
-                        {s.domain ? (
-                          <strong>{s.domain}</strong>
-                        ) : (
-                          <span className="muted">
-                            {t("spamSources.noPtr")}
-                          </span>
-                        )}
-                      </td>
-                      <td className="num">{s.count.toLocaleString()}</td>
-                      <td className="wrap small">
-                        {s.ips.slice(0, compact ? 3 : 20).map((ip) => (
-                          <span
-                            key={ip.ip}
-                            className="ip-chip"
-                            title={ip.ptr ?? ""}
-                          >
-                            <code>{ip.ip}</code>
-                            {!compact && ip.ptr && (
-                              <span className="muted"> {ip.ptr}</span>
-                            )}
-                          </span>
-                        ))}
-                        {s.ips.length > (compact ? 3 : 20) && " …"}
-                      </td>
-                      {!compact && (
-                        <td className="wrap small">
-                          {s.sender_domains.join(", ") || "—"}
-                        </td>
-                      )}
+    <>
+      <NoticeBar notice={notice} />
+      <LoadView load={load} reload={reload}>
+        {(d) =>
+          d.sources.length === 0 ? (
+            <p className="muted">{t("mail.noSpam")}</p>
+          ) : (
+            <div className={compact ? "stack" : "split"}>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t("spamSources.network")}</th>
+                      <th className="num">{t("mail.count")}</th>
+                      <th>{t("spamSources.sendersAndIps")}</th>
+                      {!compact && <th>{t("spamSources.senders")}</th>}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {d.sources.slice(0, limit).map((s) => (
+                      <tr key={s.domain ?? "?"}>
+                        <td className="wrap">
+                          {s.domain ? (
+                            <strong>{s.domain}</strong>
+                          ) : (
+                            <span className="muted">
+                              {t("spamSources.noPtr")}
+                            </span>
+                          )}
+                        </td>
+                        <td className="num">{s.count.toLocaleString()}</td>
+                        <td className="wrap small">
+                          {(s.senders ?? []).length > 0 && (
+                            <ul className="plain senders">
+                              {(s.senders ?? [])
+                                .slice(0, compact ? 3 : 10)
+                                .map((snd) => (
+                                  <li key={snd.address}>
+                                    <span
+                                      title={t("spamSources.spamCount", {
+                                        count: snd.count,
+                                      })}
+                                    >
+                                      {snd.address}{" "}
+                                      <span className="muted">
+                                        ({snd.count})
+                                      </span>
+                                    </span>{" "}
+                                    <SenderBlockButtons
+                                      address={snd.address}
+                                      blocked={blocked}
+                                      onDone={done}
+                                    />
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                          {s.ips.slice(0, compact ? 3 : 20).map((ip) => (
+                            <span
+                              key={ip.ip}
+                              className="ip-chip"
+                              title={ip.ptr ?? ""}
+                            >
+                              <code>{ip.ip}</code>
+                              {!compact && ip.ptr && (
+                                <span className="muted"> {ip.ptr}</span>
+                              )}
+                            </span>
+                          ))}
+                          {s.ips.length > (compact ? 3 : 20) && " …"}
+                        </td>
+                        {!compact && (
+                          <td className="wrap small">
+                            {s.sender_domains.join(", ") || "—"}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!compact && d.sender_domains.length > 0 && (
+                <section>
+                  <h3>{t("spamSources.senderDomains")}</h3>
+                  <div className="table-wrap">
+                    <table>
+                      <tbody>
+                        {d.sender_domains.slice(0, 20).map((s) => (
+                          <tr key={s.domain}>
+                            <td className="wrap">{s.domain}</td>
+                            <td className="num">{s.count.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
             </div>
-            {!compact && d.sender_domains.length > 0 && (
-              <section>
-                <h3>{t("spamSources.senderDomains")}</h3>
-                <div className="table-wrap">
-                  <table>
-                    <tbody>
-                      {d.sender_domains.slice(0, 20).map((s) => (
-                        <tr key={s.domain}>
-                          <td className="wrap">{s.domain}</td>
-                          <td className="num">{s.count.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-          </div>
-        )
-      }
-    </LoadView>
+          )
+        }
+      </LoadView>
+    </>
   );
 }

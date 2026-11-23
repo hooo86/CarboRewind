@@ -2257,6 +2257,39 @@
         "title": "BlacklistSettingsIn",
         "type": "object"
       },
+      "BlockIn": {
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "value": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "BlockIn",
+        "type": "object"
+      },
       "BlockedIp": {
         "properties": {
           "accounts": {
@@ -2378,6 +2411,41 @@
           "accounts"
         ],
         "title": "BlockedIp",
+        "type": "object"
+      },
+      "BlocklistDoneIn": {
+        "additionalProperties": false,
+        "properties": {
+          "domains": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Domains",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "BlocklistDoneIn",
         "type": "object"
       },
       "BulkBackupOut": {
@@ -7842,6 +7910,24 @@
         "title": "SourceOut",
         "type": "object"
       },
+      "SpamSenderOut": {
+        "properties": {
+          "address": {
+            "title": "Address",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "address",
+          "count"
+        ],
+        "title": "SpamSenderOut",
+        "type": "object"
+      },
       "SpamSource": {
         "properties": {
           "count": {
@@ -7871,6 +7957,13 @@
               "type": "string"
             },
             "title": "Sender Domains",
+            "type": "array"
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/SpamSenderOut"
+            },
+            "title": "Senders",
             "type": "array"
           }
         },
@@ -8541,6 +8634,22 @@
           "qr_svg"
         ],
         "title": "TotpSetupOut",
+        "type": "object"
+      },
+      "UnblockIn": {
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "UnblockIn",
         "type": "object"
       },
       "UserCreate": {
@@ -10527,6 +10636,41 @@
           }
         },
         "summary": "Account Action Done",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/blocklist-done": {
+      "post": {
+        "description": "The agent wrote the blocked senders into Carbonio (or could not).",
+        "operationId": "blocklist_done_api_agent_blocklist_done_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlocklistDoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Blocklist Done",
         "tags": [
           "agent protocol"
         ]
@@ -13991,6 +14135,114 @@
           }
         },
         "summary": "Acknowledge",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/blocklist": {
+      "get": {
+        "description": "Blocked senders (addresses, domains) and whether the agents applied the list.",
+        "operationId": "get_blocklist_api_mail_blocklist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Blocklist Api Mail Blocklist Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Blocklist",
+        "tags": [
+          "mail traffic"
+        ]
+      },
+      "post": {
+        "operationId": "block_sender_api_mail_blocklist_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Block Sender Api Mail Blocklist Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Block Sender",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/blocklist/remove": {
+      "post": {
+        "operationId": "unblock_sender_api_mail_blocklist_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnblockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Unblock Sender Api Mail Blocklist Remove Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unblock Sender",
         "tags": [
           "mail traffic"
         ]

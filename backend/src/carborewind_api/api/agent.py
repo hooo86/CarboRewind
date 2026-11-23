@@ -26,6 +26,7 @@ from .. import (
     agent_tuning,
     archiving,
     audit,
+    blocklist,
     mail_queue,
     mail_traffic,
     monitoring,
@@ -621,10 +622,44 @@ async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> d
             **({"login_filter": login_filter} if login_filter else {}),
         },
     }
-    return {
+    answer: dict[str, Any] = {
         "actions": await mail_traffic.pending_actions(db),
         "ip_actions": await mail_traffic.pending_ip_actions(db),
     }
+    if (pending := await blocklist.for_agent(db, agent)) is not None:
+        answer["blocklist"] = pending
+    return answer
+
+
+class BlocklistDoneIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: int = Field(ge=1)
+    domains: list[str] = Field(default_factory=list, max_length=500)
+    error: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/blocklist-done", status_code=status.HTTP_204_NO_CONTENT)
+async def blocklist_done(body: BlocklistDoneIn, agent: CurrentAgent, db: DbSession) -> None:
+    """The agent wrote the blocked senders into Carbonio (or could not)."""
+    await db.refresh(agent, attribute_names=["storage"], with_for_update=True)
+    storage = dict(agent.storage or {})
+    storage["blocklist_status"] = {
+        "revision": body.revision,
+        "domains": body.domains[:50],
+        "error": body.error,
+        "at": datetime.now(UTC).isoformat(),
+    }
+    if not body.error:
+        storage["blocklist_revision"] = body.revision
+    agent.storage = storage
+    await _audit(
+        db,
+        agent,
+        "blocklist.applied",
+        Outcome.FAILURE if body.error else Outcome.SUCCESS,
+        details={"revision": body.revision, "domains": body.domains[:50], "error": body.error},
+    )
 
 
 class ActionDoneIn(BaseModel):

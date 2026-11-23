@@ -1140,6 +1140,28 @@ export interface SpamSource {
   count: number;
   ips: { ip: string; ptr: string | null; count: number }[];
   sender_domains: string[];
+  senders?: { address: string; count: number }[];
+}
+
+export interface Blocklist {
+  revision: number;
+  entries: {
+    value: string;
+    kind: "address" | "domain";
+    by: string;
+    at: string;
+    reason: string | null;
+  }[];
+  agents: {
+    name: string;
+    applied: boolean;
+    status: {
+      revision: number;
+      domains: string[];
+      error: string | null;
+      at: string;
+    } | null;
+  }[];
 }
 
 export interface SpamSources {

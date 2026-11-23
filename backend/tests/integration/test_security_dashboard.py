@@ -179,6 +179,11 @@ def test_spam_sources_grouped_by_network(api: TestClient, engine: Engine) -> Non
     assert out["sources"][0]["domain"] == "spammer.co.uk"
     assert out["sender_domains"][0] == {"domain": "deals.example", "count": 5}
     assert "x.example" not in {d["domain"] for d in out["sender_domains"]}
+    # The addresses behind a network (promo counted once per IP: 2 IPs x 5).
+    assert spammer["senders"] == [
+        {"address": "promo@deals.example", "count": 10},
+        {"address": "x@other.example", "count": 2},
+    ]
 
 
 def test_dashboard_layout(api: TestClient, engine: Engine) -> None:

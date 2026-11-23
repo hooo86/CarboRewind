@@ -349,6 +349,28 @@ export const resources = {
         trustHelp:
           "Liste zimbraHttpThrottleSafeIPs de Carbonio, modifiée par l'agent. Carbonio peut ne la relire qu'au redémarrage du service mailbox (su - zextras -c \"zmmailboxdctl restart\") ; un blocage en cours se lève de toute façon à la fin du délai.",
       },
+      blocklist: {
+        title: "Expéditeurs bloqués",
+        help: "Les messages de ces adresses ou domaines sont classés comme spam par Carbonio (Amavis, attribut amavisBlacklistSender de chaque domaine local), quel que soit leur contenu. Bloquez l'adresse de l'expéditeur plutôt que le domaine d'un grand fournisseur (outlook.com, gmail.com…), qui bloquerait tous ses utilisateurs.",
+        value: "Adresse ou domaine",
+        reason: "Motif",
+        by: "Ajouté par",
+        add: "Bloquer",
+        force: "Bloquer quand même tout {{domain}} (fournisseur public)",
+        empty: "Aucun expéditeur bloqué.",
+        unblock: "Débloquer",
+        blocked:
+          "{{value}} bloqué : l'agent l'applique dans Carbonio sous une minute.",
+        unblocked: "{{value}} débloqué.",
+        isBlocked: "bloqué",
+        blockAddress: "Bloquer l'adresse",
+        blockDomain: "Bloquer {{domain}}",
+        fromSpam: "depuis Origine du spam",
+        kind: { address: "adresse", domain: "domaine" },
+        applied: "{{agent}} : appliqué ({{domains}}).",
+        pending: "{{agent}} : en attente d'application par l'agent…",
+        failed: "{{agent}} : échec — {{error}}",
+      },
       spamSources: {
         title: "Origine du spam",
         intro:
@@ -358,6 +380,9 @@ export const resources = {
         senders: "Domaines d'expéditeur",
         noPtr: "Sans nom inverse",
         senderDomains: "Domaines d'expéditeur",
+        sendersAndIps: "Expéditeurs et adresses IP",
+        spamCount_one: "{{count}} spam",
+        spamCount_other: "{{count}} spams",
       },
       quota: {
         title: "Modifier le quota",
@@ -2173,6 +2198,28 @@ export const resources = {
         trustHelp:
           'Carbonio\'s zimbraHttpThrottleSafeIPs list, changed by the agent. Carbonio may only read it again when the mailbox service restarts (su - zextras -c "zmmailboxdctl restart"); a current block ends with the delay anyway.',
       },
+      blocklist: {
+        title: "Blocked senders",
+        help: "Messages from these addresses or domains are classified as spam by Carbonio (Amavis, attribute amavisBlacklistSender of every local domain), whatever their content. Block the sender's address rather than the domain of a big provider (outlook.com, gmail.com…), which would block all its users.",
+        value: "Address or domain",
+        reason: "Reason",
+        by: "Added by",
+        add: "Block",
+        force: "Block all of {{domain}} anyway (public provider)",
+        empty: "No blocked sender.",
+        unblock: "Unblock",
+        blocked:
+          "{{value}} blocked: the agent applies it in Carbonio within a minute.",
+        unblocked: "{{value}} unblocked.",
+        isBlocked: "blocked",
+        blockAddress: "Block address",
+        blockDomain: "Block {{domain}}",
+        fromSpam: "from Spam origin",
+        kind: { address: "address", domain: "domain" },
+        applied: "{{agent}}: applied ({{domains}}).",
+        pending: "{{agent}}: waiting for the agent…",
+        failed: "{{agent}}: failed — {{error}}",
+      },
       spamSources: {
         title: "Spam origin",
         intro:
@@ -2182,6 +2229,9 @@ export const resources = {
         senders: "Sender domains",
         noPtr: "No reverse name",
         senderDomains: "Sender domains",
+        sendersAndIps: "Senders and IP addresses",
+        spamCount_one: "{{count}} spam",
+        spamCount_other: "{{count}} spams",
       },
       quota: {
         title: "Change quota",

@@ -13,6 +13,7 @@ import {
   useLoad,
 } from "../components/common";
 import { NoticeBar, type Notice } from "../components/notices";
+import { BlocklistPanel } from "../components/Blocklist";
 import {
   BlockedIpsPanel,
   SpamSourcesPanel,
@@ -538,7 +539,14 @@ export function MailTrafficPage() {
       <section className="card stack" aria-labelledby="spam-sources-title">
         <h2 id="spam-sources-title">{t("spamSources.title")}</h2>
         <p className="muted small">{t("spamSources.intro")}</p>
-        <SpamSourcesPanel period={period} />
+        <SpamSourcesPanel
+          period={period}
+          onBlocked={() => setFilterTick((n) => n + 1)}
+        />
+      </section>
+      <section className="card stack" aria-labelledby="blocklist-title">
+        <h2 id="blocklist-title">{t("blocklist.title")}</h2>
+        <BlocklistPanel refresh={filterTick} />
       </section>
     </>
   );

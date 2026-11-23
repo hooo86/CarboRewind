@@ -6,6 +6,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Expéditeurs bloqués** (Trafic mail) : « Origine du spam » affiche les adresses
+  d'expéditeur derrière chaque réseau, avec « Bloquer l'adresse » / « Bloquer le domaine »
+  (pas pour les grands fournisseurs : outlook.com, gmail.com…). La liste est appliquée par
+  l'agent à `amavisBlacklistSender` de chaque domaine local de Carbonio (messages classés
+  en spam) ; débloquer la retire.
 - **Certificat TLS** (Supervision, Paramètres → Agent) : date d'expiration lue toutes les
   heures sur 443, 993, 25 et 587 pour le nom du serveur choisi ; alerte toutes les heures
   sous N jours (7 par défaut) ; renouvellement Let's Encrypt automatique à N jours ou

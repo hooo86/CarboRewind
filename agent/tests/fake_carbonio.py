@@ -102,6 +102,7 @@ class FakeCarbonio:
         self.admin_tokens: set[str] = set()
         self.delegated: dict[str, str] = {}  # token -> account id
         self.uploads: dict[str, bytes] = {}
+        self.domain_attrs: dict[str, dict[str, list[str]]] = {}  # ModifyDomain
         self.calls: list[str] = []
         self.fail_next: list[int] = []  # HTTP statuses to return before answering
         self.quota_denied = False
@@ -559,6 +560,26 @@ class FakeCarbonio:
         for item_id in ids:
             mbox.delete(item_id)
         return {"action": {"op": "delete", "id": action["id"]}}
+
+    def _GetDomainRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        name = body["domain"]["_content"]
+        if not any(m.name.endswith("@" + name) for m in self.mailboxes.values()):
+            raise _Fault("account.NO_SUCH_DOMAIN", "no such domain")
+        return {"domain": [{"id": f"dom-{name}", "name": name}]}
+
+    def _ModifyDomainRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        values = self.domain_attrs.setdefault(body["id"], {}).setdefault(
+            "amavisBlacklistSender", []
+        )
+        for attr in body.get("a", []):
+            name, value = attr["n"], attr["_content"]
+            if name == "+amavisBlacklistSender" and value not in values:
+                values.append(value)
+            elif name == "-amavisBlacklistSender" and value in values:
+                values.remove(value)
+        return {"domain": [{"id": body["id"]}]}
 
     def _CreateAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)

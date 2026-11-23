@@ -47,3 +47,24 @@ sudo journalctl -u carborewind-agent | grep -i "mail statistics"
 Si l'écran indique « Aucune statistique reçue », mettez à jour le paquet de l'agent (il ajoute le
 groupe `adm`) et redémarrez-le. Si votre syslog écrit ailleurs, indiquez le chemin dans
 `/etc/carborewind/agent.env` : `CARBOREWIND_AGENT_MAIL_LOGS=["/var/log/mail.log"]`.
+
+## Expéditeurs bloqués
+
+**Où bloquer.** Dans « Origine du spam », chaque réseau d'origine liste les adresses
+d'expéditeur qui en sont venues. Chaque adresse a deux boutons : « Bloquer l'adresse » et
+« Bloquer le domaine ». Le second n'est pas proposé pour les grands fournisseurs
+(outlook.com, gmail.com…) : bloquer leur domaine bloquerait tous leurs utilisateurs. Le
+panneau « Expéditeurs bloqués » permet aussi d'ajouter une adresse ou un domaine à la
+main, et de les débloquer.
+
+**Comment c'est appliqué.** L'agent ajoute et retire les entrées dans l'attribut
+`amavisBlacklistSender` de chaque domaine local de Carbonio. Une adresse s'écrit telle
+quelle (`spammeur@exemple.com`) et un domaine avec un `@` devant (`@exemple.com`).
+Amavis classe alors leurs messages comme spam : ils vont dans le dossier Indésirables, ou
+en quarantaine selon les seuils, quel que soit leur contenu.
+
+**Vérifier sur le serveur Carbonio.** Remplacez `lnhc.dz` par votre domaine :
+
+```bash
+sudo su - zextras -c "zmprov gd lnhc.dz amavisBlacklistSender"
+```
