@@ -522,4 +522,88 @@ describe("monitoring page", () => {
       ).toEqual({ minutes: 120 }),
     );
   });
+
+  it("shows the certificate expiry and asks a renewal", async () => {
+    const calls = open(user("super_admin"), {
+      "GET /api/monitoring/overview": {
+        ...overview,
+        services: [
+          {
+            agent: "mx1-mail",
+            agent_id: "ag-1",
+            checked_at: iso(now),
+            stale: false,
+            services: [],
+            down: [],
+            queue: null,
+            queue_total: null,
+            errors: [],
+            certificate: {
+              name: "mail.lnhc.dz",
+              alert_days: 7,
+              renew_enabled: false,
+              renew_days: 7,
+              checked_at: iso(now - 600000),
+              days_left: 4.6,
+              certificates: [
+                {
+                  service: "https",
+                  port: 443,
+                  name: "mail.lnhc.dz",
+                  names: ["mail.lnhc.dz"],
+                  issuer: "Let's Encrypt R11",
+                  not_after: iso(now + 4.6 * 86400000),
+                  days_left: 4.6,
+                  matches: true,
+                },
+                {
+                  service: "smtp",
+                  port: 25,
+                  name: "mail.lnhc.dz",
+                  names: ["other.example"],
+                  issuer: null,
+                  self_signed: true,
+                  not_after: iso(now + 300 * 86400000),
+                  days_left: 300,
+                  matches: false,
+                },
+                {
+                  service: "submission",
+                  port: 587,
+                  name: "mail.lnhc.dz",
+                  error: "refused",
+                },
+              ],
+              last_request: { id: "r", reason: "auto", at: iso(now) },
+              last_result: {
+                id: "r",
+                at: iso(now),
+                ok: false,
+                renewed: false,
+                not_after: null,
+                error: "certbot renew failed",
+              },
+              note: null,
+            },
+          },
+        ],
+      },
+      "POST /api/monitoring/cert-renew": { status: 202, body: { id: "x" } },
+    });
+    expect(
+      await screen.findByText("TLS certificate — mail.lnhc.dz"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Expires in 4 days/)).toBeInTheDocument();
+    expect(screen.getByText("Let's Encrypt R11")).toBeInTheDocument();
+    expect(screen.getByText("self-signed")).toBeInTheDocument();
+    expect(screen.getByText(/does not match the name/)).toBeInTheDocument();
+    expect(screen.getByText("refused")).toBeInTheDocument();
+    expect(screen.getByText(/certbot renew failed/)).toBeInTheDocument();
+    expect(screen.getByText(/Automatic renewal off/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Renew now" }));
+    await screen.findByText(/Renewal asked/);
+    expect(
+      calls.find((c) => c.url === "/api/monitoring/cert-renew")?.body,
+    ).toEqual({ agent_id: "ag-1" });
+  });
 });

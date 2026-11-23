@@ -138,3 +138,47 @@ Métriques principales (jauges, sans libellé par compte) :
 | `carborewind_integrity_last_check_timestamp_seconds`, `carborewind_integrity_corrupted_files` | `target` |
 | `carborewind_agent_last_seen_seconds`, `carborewind_agent_certificate_expiry_seconds` | `agent` |
 | `carborewind_mail_sent_current_hour`, `_spam_received_current_hour`, `_spam_sent_current_hour`, `carborewind_mail_alerts_open` | |
+
+## Certificat TLS (date d'expiration, renouvellement Let's Encrypt)
+
+**Contrôle** : toutes les heures, l'agent lit le certificat présenté sur HTTPS 443,
+IMAPS 993, SMTP 25 et submission 587 (STARTTLS). Il se connecte en local, avec le nom
+du serveur choisi dans Paramètres → Agent : « Nom du serveur », ou le nom de la machine
+si le champ est vide. La Supervision affiche, port par port, les noms du certificat,
+l'émetteur et la date d'expiration. Elle signale un certificat auto-signé ou qui ne
+correspond pas au nom.
+
+**Alerte** : sous le seuil (7 jours par défaut), une alerte `certificate_expiring` part
+toutes les heures par e-mail et Telegram, jusqu'au renouvellement.
+`certificate_expired` part quand le certificat est expiré.
+
+**Renouvellement** : automatique (désactivé par défaut, déclenché à N jours de
+l'expiration, 7 par défaut) ou avec le bouton « Renouveler maintenant » de la
+Supervision. L'agent n'a pas les droits root : il écrit
+`/var/lib/carborewind/cert/request.json`, et l'unité `carborewind-cert.path` lance en root
+`carborewind-agent cert apply`, qui :
+
+1. vérifie la demande (action `renew`, nom d'hôte valide ; aucun shell ne reçoit le nom) ;
+2. lance `certbot renew --cert-name <nom> --non-interactive` : le certbot de Carbonio
+   (`/opt/zextras/libexec/certbot`, en zextras) s'il existe, sinon celui du système ;
+3. si certbot a produit un certificat plus récent que celui de Carbonio, copie la clé
+   dans `/opt/zextras/ssl/carbonio/commercial/commercial.key`, puis lance
+   `zmcertmgr deploycrt comm` avec la chaîne et la racine ISRG X1, et redémarre le proxy
+   et le MTA ;
+4. écrit le résultat dans `status.json`. Il part en alerte `certificate_renewed` ou
+   `certificate_renew_failed`.
+
+Une tentative automatique au plus toutes les 6 heures. Certbot ne renouvelle qu'à moins
+de 30 jours de l'expiration et utilise la méthode de validation choisie à la création
+du certificat. Le port 80 du serveur doit donc être joignable depuis Internet pour la
+validation HTTP.
+
+Vérifier sur le serveur Carbonio :
+
+```bash
+systemctl is-enabled carborewind-cert.path
+```
+
+```bash
+sudo cat /var/lib/carborewind/cert/status.json
+```

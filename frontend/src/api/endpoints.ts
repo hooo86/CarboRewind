@@ -444,6 +444,8 @@ export const api = {
   mailQueue: () => request<MailQueueAgent[]>("GET", "/api/monitoring/queue"),
   mailTest: (agent_id: string) =>
     request<{ id: string }>("POST", "/api/monitoring/mail-test", { agent_id }),
+  certRenew: (agent_id: string) =>
+    request<{ id: string }>("POST", "/api/monitoring/cert-renew", { agent_id }),
   pauseAutostart: (minutes: number) =>
     request<{ paused_until: string | null }>(
       "POST",

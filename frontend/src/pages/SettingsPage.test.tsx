@@ -395,6 +395,11 @@ describe("agent settings", () => {
           mail_test_after_start: true,
           mail_test_internal: "",
           mail_test_external: "",
+          cert_monitor: true,
+          cert_name: "",
+          cert_alert_days: 7,
+          cert_renew_enabled: false,
+          cert_renew_days: 7,
           agents: [
             {
               name: "mx1-mail",
@@ -441,6 +446,10 @@ describe("agent settings", () => {
     fireEvent.change(within(form).getByLabelText(/External test address/), {
       target: { value: "test@gmail.com" },
     });
+    fireEvent.change(within(form).getByLabelText(/Server name/), {
+      target: { value: "Mail.Lnhc.Dz" },
+    });
+    fireEvent.click(within(form).getByLabelText("Renew automatically"));
     fireEvent.click(within(form).getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Settings saved/)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "PUT")?.body).toEqual({
@@ -457,6 +466,11 @@ describe("agent settings", () => {
       mail_test_after_start: true,
       mail_test_internal: "h.badi@lnhc.dz",
       mail_test_external: "test@gmail.com",
+      cert_monitor: true,
+      cert_name: "mail.lnhc.dz",
+      cert_alert_days: 7,
+      cert_renew_enabled: true,
+      cert_renew_days: 7,
       service_ports: { mta: 25, amavis: 10024, lmtp: 7025 },
     });
   });

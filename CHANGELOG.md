@@ -6,6 +6,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Certificat TLS** (Supervision, Paramètres → Agent) : date d'expiration lue toutes les
+  heures sur 443, 993, 25 et 587 pour le nom du serveur choisi ; alerte toutes les heures
+  sous N jours (7 par défaut) ; renouvellement Let's Encrypt automatique à N jours ou
+  « Renouveler maintenant » (service root `carborewind-cert.path` : certbot renew,
+  zmcertmgr deploycrt, redémarrage du proxy et du MTA).
 - **Serveur de secours** (page « Serveur de secours », docs/standby.md) : une VM clone du
   serveur Carbonio, avec une autre IP, est tenue à jour à partir des sauvegardes. Son agent
   a le rôle « secours » (`agent-create … --role standby`) : il ne sauvegarde rien et

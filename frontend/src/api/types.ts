@@ -770,6 +770,42 @@ export interface ServicesView {
     at: string;
     sent_at: string | null;
   } | null;
+  certificate?: CertificateReport | null;
+  cert_renew_request?: { id: string; by: string; at: string } | null;
+}
+
+export interface CertificateInfo {
+  service: string;
+  port: number;
+  name: string;
+  subject?: string | null;
+  names?: string[];
+  issuer?: string | null;
+  not_after?: string;
+  days_left?: number;
+  matches?: boolean;
+  self_signed?: boolean;
+  error?: string;
+}
+
+export interface CertificateReport {
+  name: string;
+  alert_days: number;
+  renew_enabled: boolean;
+  renew_days: number;
+  checked_at: string | null;
+  days_left: number | null;
+  certificates: CertificateInfo[];
+  last_request: { id: string; reason: string; at: string } | null;
+  last_result: {
+    id: string;
+    at: string;
+    ok: boolean;
+    renewed: boolean;
+    not_after: string | null;
+    error: string | null;
+  } | null;
+  note: string | null;
 }
 
 export type MailQueueOp = "requeue" | "hold" | "release" | "delete" | "flush";
@@ -1033,6 +1069,11 @@ export interface AgentTuningInput {
   mail_test_after_start: boolean;
   mail_test_internal: string;
   mail_test_external: string;
+  cert_monitor: boolean;
+  cert_name: string;
+  cert_alert_days: number;
+  cert_renew_enabled: boolean;
+  cert_renew_days: number;
 }
 
 export interface AgentTuning extends AgentTuningInput {

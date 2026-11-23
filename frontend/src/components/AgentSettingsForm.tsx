@@ -72,6 +72,11 @@ export function AgentSettingsForm({
         mail_test_after_start,
         mail_test_internal,
         mail_test_external,
+        cert_monitor,
+        cert_name,
+        cert_alert_days,
+        cert_renew_enabled,
+        cert_renew_days,
       } = form;
       await api.saveAgentTuning({
         max_concurrent_accounts,
@@ -87,6 +92,11 @@ export function AgentSettingsForm({
         mail_test_after_start,
         mail_test_internal: mail_test_internal.trim(),
         mail_test_external: mail_test_external.trim(),
+        cert_monitor,
+        cert_name: cert_name.trim().toLowerCase(),
+        cert_alert_days,
+        cert_renew_enabled,
+        cert_renew_days,
         service_ports: parsed,
       });
       setNotice({ kind: "ok", text: t("agentSettings.saved") });
@@ -277,6 +287,57 @@ export function AgentSettingsForm({
           </label>
         </div>
         <p className="muted small">{t("agentSettings.mailTestHelp")}</p>
+      </fieldset>
+      <fieldset>
+        <legend>{t("agentSettings.cert")}</legend>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={form.cert_monitor}
+            onChange={(e) => set("cert_monitor", e.target.checked)}
+          />
+          {t("agentSettings.certMonitor")}
+        </label>
+        <div className="row">
+          <label className="grow">
+            {t("agentSettings.certName")}
+            <input
+              placeholder="mail.lnhc.dz"
+              value={form.cert_name}
+              onChange={(e) => set("cert_name", e.target.value)}
+            />
+          </label>
+          <label>
+            {t("agentSettings.certAlertDays")}
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={form.cert_alert_days}
+              onChange={num("cert_alert_days")}
+            />
+          </label>
+        </div>
+        <label className="inline">
+          <input
+            type="checkbox"
+            checked={form.cert_renew_enabled}
+            onChange={(e) => set("cert_renew_enabled", e.target.checked)}
+          />
+          {t("agentSettings.certRenew")}
+        </label>
+        <label>
+          {t("agentSettings.certRenewDays")}
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={form.cert_renew_days}
+            disabled={!form.cert_renew_enabled}
+            onChange={num("cert_renew_days")}
+          />
+        </label>
+        <p className="muted small">{t("agentSettings.certHelp")}</p>
       </fieldset>
       <p className="muted small">{t("agentSettings.envOnly")}</p>
       <NoticeBar notice={notice} />
