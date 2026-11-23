@@ -18,6 +18,14 @@ const VIEW = {
       last_heartbeat_at: "2026-11-22T10:00:00Z",
     },
     {
+      id: "e1",
+      name: "old1",
+      hostname: "mail.example.org",
+      role: "primary",
+      status: "pending",
+      last_heartbeat_at: null,
+    },
+    {
       id: "s1",
       name: "secours",
       hostname: "mail.lnhc.dz",
@@ -52,7 +60,8 @@ function open(role = user("super_admin"), view = VIEW) {
     "GET /api/standby": view,
     "PUT /api/standby/settings": { enabled: true, interval_minutes: 30 },
     "POST /api/standby/sync-now": { queued: 3 },
-    "PUT /api/standby/agents/p1/role": { id: "p1", role: "standby" },
+    "PUT /api/standby/agents/s1/role": { id: "s1", role: "primary" },
+    "POST /api/agents/e1/revoke": { id: "e1" },
     "POST /api/standby/promote": { promoted: "secours", demoted: ["mx1"] },
   });
   window.history.pushState({}, "", "/standby");
@@ -90,8 +99,14 @@ it("shows the delay, the problems and changes the settings", async () => {
   expect(await screen.findByText("Settings saved.")).toBeInTheDocument();
   const put = calls.find((c) => c.url === "/api/standby/settings");
   expect(put?.body).toEqual({ enabled: true, interval_minutes: 30 });
-  fireEvent.click(screen.getByRole("button", { name: "Make standby" }));
-  expect(await screen.findByText("mx1: role standby.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Make standby" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Make primary" }));
+  expect(await screen.findByText("secours: role primary.")).toBeInTheDocument();
+  expect(screen.getByText("never enrolled")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+  expect(
+    await screen.findByText("Agent old1 removed (revoked)."),
+  ).toBeInTheDocument();
 });
 
 it("switches to the standby server after typing its name", async () => {

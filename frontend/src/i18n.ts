@@ -733,6 +733,9 @@ export const resources = {
         roleValue: { primary: "principal", standby: "secours" },
         makeRole: { primary: "Rendre principal", standby: "Rendre secours" },
         roleChanged: "{{agent}} : rôle {{role}}.",
+        pendingAgent: "jamais enrôlé",
+        removeAgent: "Supprimer",
+        agentRemoved: "Agent {{agent}} supprimé (révoqué).",
         agentsHelp:
           "L'agent de secours doit lire le même dépôt (même partage, même fichier repository.key) que le serveur principal.",
         promoteTitle: "Basculer sur le serveur de secours",
@@ -2550,6 +2553,9 @@ export const resources = {
         roleValue: { primary: "primary", standby: "standby" },
         makeRole: { primary: "Make primary", standby: "Make standby" },
         roleChanged: "{{agent}}: role {{role}}.",
+        pendingAgent: "never enrolled",
+        removeAgent: "Remove",
+        agentRemoved: "Agent {{agent}} removed (revoked).",
         agentsHelp:
           "The standby agent must read the same repository (same share, same repository.key file) as the primary server.",
         promoteTitle: "Switch to the standby server",

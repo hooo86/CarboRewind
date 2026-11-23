@@ -97,7 +97,9 @@ function Content({
         <dl className="facts">
           <div>
             <dt>{t("standby.lag")}</dt>
-            <dd>{lagText(view.lag_seconds)}</dd>
+            <dd>
+              {active && view.config.enabled ? lagText(view.lag_seconds) : "—"}
+            </dd>
           </div>
           <div>
             <dt>{t("standby.synced")}</dt>
@@ -180,7 +182,7 @@ function Content({
           onSubmit={save}
           aria-label={t("standby.settings")}
         >
-          <label className="checkbox">
+          <label className="inline">
             <input
               type="checkbox"
               checked={enabled}
@@ -224,7 +226,19 @@ function Content({
           </thead>
           <tbody>
             {view.agents.map((a) => (
-              <AgentRow key={a.id} agent={a} busy={busy} run={run} />
+              <AgentRow
+                key={a.id}
+                agent={a}
+                busy={busy}
+                run={run}
+                lastPrimary={
+                  a.role === "primary" &&
+                  a.status === "active" &&
+                  view.agents.filter(
+                    (o) => o.role === "primary" && o.status === "active",
+                  ).length <= 1
+                }
+              />
             ))}
           </tbody>
         </table>
@@ -240,10 +254,13 @@ function AgentRow({
   agent,
   busy,
   run,
+  lastPrimary,
 }: {
   agent: StandbyAgent;
   busy: boolean;
   run: (action: () => Promise<string>) => void;
+  /** The only working primary agent: it cannot become a standby. */
+  lastPrimary: boolean;
 }) {
   const { t } = useTranslation();
   const next = agent.role === "standby" ? "primary" : "standby";
@@ -251,12 +268,31 @@ function AgentRow({
     <tr>
       <td>{agent.name}</td>
       <td>{agent.hostname}</td>
-      <td>{t(`standby.roleValue.${agent.role}`)}</td>
+      <td>
+        {agent.status === "pending"
+          ? t("standby.pendingAgent")
+          : t(`standby.roleValue.${agent.role}`)}
+      </td>
       <td title={formatDate(agent.last_heartbeat_at)}>
         {formatRelative(agent.last_heartbeat_at)}
       </td>
       <td>
-        {agent.status === "active" && (
+        {agent.status === "pending" && (
+          <button
+            type="button"
+            className="small secondary danger"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                await api.revokeAgent(agent.id);
+                return t("standby.agentRemoved", { agent: agent.name });
+              })
+            }
+          >
+            {t("standby.removeAgent")}
+          </button>
+        )}
+        {agent.status === "active" && !lastPrimary && (
           <button
             type="button"
             className="small secondary"

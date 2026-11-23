@@ -193,7 +193,11 @@ async def record(
 async def overview(db: AsyncSession, now: datetime) -> dict[str, Any]:
     """What the interface shows: the agents, the delay, the accounts behind or failing."""
     cfg = await load(db)
-    agents = list(await db.scalars(select(Agent).order_by(Agent.name)))
+    agents = list(
+        await db.scalars(
+            select(Agent).where(Agent.status != AgentStatus.REVOKED).order_by(Agent.name)
+        )
+    )
     live = select(Account.id).where(
         Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED])
     )

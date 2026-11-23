@@ -205,6 +205,8 @@ export const api = {
       `/api/standby/agents/${agentId}/role`,
       { role },
     ),
+  revokeAgent: (agentId: string) =>
+    request<unknown>("POST", `/api/agents/${agentId}/revoke`),
   standbySyncNow: () =>
     request<{ queued: number }>("POST", "/api/standby/sync-now"),
   promoteStandby: (agentId: string, confirm: string) =>
