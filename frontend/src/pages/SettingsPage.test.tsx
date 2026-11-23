@@ -275,6 +275,32 @@ describe("settings page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("down");
   });
 
+  it("has a tab for the blocked senders", async () => {
+    open(
+      user("super_admin"),
+      {
+        "GET /api/mail/blocklist": {
+          revision: 1,
+          entries: [
+            {
+              value: "spam@x.example",
+              kind: "address",
+              by: "admin",
+              at: "2026-11-19T10:00:00Z",
+              reason: null,
+            },
+          ],
+          agents: [],
+        },
+      },
+      "/settings?tab=senders",
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Blocked senders" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("spam@x.example")).toBeInTheDocument();
+  });
+
   it("is reserved to super-administrators", async () => {
     open(user("domain_admin", null));
     expect(await screen.findByRole("alert")).toHaveTextContent(
