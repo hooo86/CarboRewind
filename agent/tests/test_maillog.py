@@ -115,7 +115,11 @@ def test_counts_sent_mail_and_spam() -> None:
     assert ten.spam_in == {"ana@lnhc.dz": 2, "ben@lnhc.dz": 1}
     assert ten.spam_out == {"ben@lnhc.dz": 1}
     assert ten.spam_senders == {
-        "promo@spam.example": {"count": 2, "ips": ["203.0.113.9", "198.51.100.7"]}
+        "promo@spam.example": {
+            "count": 2,
+            "ips": ["203.0.113.9", "198.51.100.7"],
+            "rcpts": ["ana@lnhc.dz", "ben@lnhc.dz"],  # contact@ is an alias of ana
+        }
     }
     assert eleven.spam_in == {}
     payload = agg.payload()
@@ -123,6 +127,13 @@ def test_counts_sent_mail_and_spam() -> None:
     assert "seen" not in payload[0]
     agg.prune(NOW + timedelta(days=3))
     assert agg.buckets == {} and agg.payload() == []
+
+
+def test_bounces_keep_their_recipient() -> None:
+    agg = Aggregator(LOCAL, UTC)
+    agg.feed(SPAM_IN.replace("<promo@spam.example>", "<>").replace(",<ben@lnhc.dz>", ""), NOW)
+    entry = next(iter(agg.buckets.values())).spam_senders["<>"]
+    assert entry["rcpts"] == ["ana@lnhc.dz"] and entry["count"] == 1
 
 
 def test_spam_senders_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -154,10 +154,12 @@ class Aggregator:
                 bucket.spam_out[local_sender] = bucket.spam_out.get(local_sender, 0) + 1
             return
         rcpts = re.findall(r"<([^>]*)>", m_a.group("rcpts"))
+        local_rcpts: list[str] = []
         for rcpt in rcpts:
             local_rcpt = self.local.get(rcpt.lower())
             if local_rcpt:
                 bucket.spam_in[local_rcpt] = bucket.spam_in.get(local_rcpt, 0) + 1
+                local_rcpts.append(local_rcpt)
         key = sender or "<>"
         entry = bucket.spam_senders.get(key)
         if entry is None:
@@ -165,6 +167,11 @@ class Aggregator:
                 return
             entry = bucket.spam_senders[key] = {"count": 0, "ips": []}
         entry["count"] += 1
+        # Who received it: for a bounce (<>), the mailbox concerned is the recipient.
+        targets = entry.setdefault("rcpts", [])
+        for rcpt in local_rcpts:
+            if rcpt not in targets and len(targets) < 10:
+                targets.append(rcpt)
         ip = m_a.group("ip")
         if ip and ip not in entry["ips"] and len(entry["ips"]) < 10:
             entry["ips"].append(ip)

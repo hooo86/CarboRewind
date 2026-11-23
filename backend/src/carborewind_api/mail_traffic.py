@@ -156,6 +156,7 @@ async def record(db: AsyncSession, hours: list[dict[str, Any]]) -> set[str]:
                         "sender": sender[:320],
                         "count": int(v.get("count", 0)),
                         "ips": [str(ip)[:64] for ip in v.get("ips", [])][:10],
+                        "rcpts": [str(r).lower()[:320] for r in v.get("rcpts", [])][:10],
                     }
                     for sender, v in spam.items()
                 ]
@@ -163,7 +164,11 @@ async def record(db: AsyncSession, hours: list[dict[str, Any]]) -> set[str]:
             await db.execute(
                 stmt2.on_conflict_do_update(
                     index_elements=["hour", "sender"],
-                    set_={"count": stmt2.excluded.count, "ips": stmt2.excluded.ips},
+                    set_={
+                        "count": stmt2.excluded.count,
+                        "ips": stmt2.excluded.ips,
+                        "rcpts": stmt2.excluded.rcpts,
+                    },
                 )
             )
     return senders

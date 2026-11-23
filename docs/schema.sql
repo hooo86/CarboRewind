@@ -814,4 +814,10 @@ ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'rest
 
 UPDATE alembic_version SET version_num='0023' WHERE alembic_version.version_num = '0022';
 
+-- Running upgrade 0023 -> 0024
+
+ALTER TABLE spam_senders ADD COLUMN rcpts JSONB DEFAULT '[]'::jsonb NOT NULL;
+
+UPDATE alembic_version SET version_num='0024' WHERE alembic_version.version_num = '0023';
+
 COMMIT;

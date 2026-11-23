@@ -6,6 +6,9 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Origine du spam** : boîtes destinataires de chaque expéditeur (migration 0024) ; un
+  expéditeur vide `<>` est affiché comme avis de non-remise (rebond), avec la boîte
+  concernée et l'explication (backscatter, SPF / DKIM / DMARC) — il ne peut pas être bloqué.
 - **Menu « Blocages »** : tout ce qui bloque est regroupé en onglets — expéditeurs bloqués,
   origine du spam, IP bloquées et adresses de confiance, comptes verrouillés (avec
   déblocage), limites d'envoi, listes noires (DNSBL). Ces sections quittent Trafic mail et

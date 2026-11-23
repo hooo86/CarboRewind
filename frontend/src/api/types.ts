@@ -1140,7 +1140,7 @@ export interface SpamSource {
   count: number;
   ips: { ip: string; ptr: string | null; count: number }[];
   sender_domains: string[];
-  senders?: { address: string; count: number }[];
+  senders?: { address: string; count: number; recipients?: string[] }[];
 }
 
 export interface Blocklist {

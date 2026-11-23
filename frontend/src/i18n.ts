@@ -382,6 +382,10 @@ export const resources = {
         noPtr: "Sans nom inverse",
         senderDomains: "Domaines d'expéditeur",
         sendersAndIps: "Expéditeurs et adresses IP",
+        bounce: "<> avis de non-remise",
+        to: "→ {{list}}",
+        bounceHelp:
+          "<> = message sans expéditeur : un avis de non-remise (rebond) renvoyé par un serveur. On ne peut pas bloquer <> sans bloquer tous les avis de non-remise. La boîte concernée est le destinataire (→) : soit elle a envoyé des messages refusés, soit des spammeurs ont usurpé son adresse (backscatter). Dans ce cas, vérifiez SPF, DKIM et DMARC du domaine, et changez le mot de passe de la boîte si elle a envoyé du spam.",
         spamCount_one: "{{count}} spam",
         spamCount_other: "{{count}} spams",
       },
@@ -2255,6 +2259,10 @@ export const resources = {
         noPtr: "No reverse name",
         senderDomains: "Sender domains",
         sendersAndIps: "Senders and IP addresses",
+        bounce: "<> non-delivery report",
+        to: "→ {{list}}",
+        bounceHelp:
+          "<> = message without sender: a non-delivery report (bounce) sent back by a server. <> cannot be blocked without blocking every bounce. The mailbox concerned is the recipient (→): either it sent messages that were refused, or spammers forged its address (backscatter). Then check SPF, DKIM and DMARC of the domain, and change the mailbox password if it sent spam.",
         spamCount_one: "{{count}} spam",
         spamCount_other: "{{count}} spams",
       },

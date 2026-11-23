@@ -493,11 +493,28 @@ export function SpamSourcesPanel({
                                         count: snd.count,
                                       })}
                                     >
-                                      {snd.address}{" "}
+                                      {snd.address === "<>" ? (
+                                        <abbr
+                                          title={t("spamSources.bounceHelp")}
+                                        >
+                                          {t("spamSources.bounce")}
+                                        </abbr>
+                                      ) : (
+                                        snd.address
+                                      )}{" "}
                                       <span className="muted">
                                         ({snd.count})
                                       </span>
                                     </span>{" "}
+                                    {(snd.recipients ?? []).length > 0 && (
+                                      <span className="muted">
+                                        {t("spamSources.to", {
+                                          list: (snd.recipients ?? []).join(
+                                            ", ",
+                                          ),
+                                        })}{" "}
+                                      </span>
+                                    )}
                                     <SenderBlockButtons
                                       address={snd.address}
                                       blocked={blocked}
@@ -531,6 +548,12 @@ export function SpamSourcesPanel({
                   </tbody>
                 </table>
               </div>
+              {!compact &&
+                d.sources.some((src) =>
+                  (src.senders ?? []).some((x) => x.address === "<>"),
+                ) && (
+                  <p className="muted small">{t("spamSources.bounceHelp")}</p>
+                )}
               {!compact && d.sender_domains.length > 0 && (
                 <section>
                   <h3>{t("spamSources.senderDomains")}</h3>

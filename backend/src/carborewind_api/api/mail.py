@@ -582,8 +582,9 @@ class SpamSourceIp(BaseModel):
 
 
 class SpamSenderOut(BaseModel):
-    address: str
+    address: str  # "<>": a bounce (delivery status notification), no sender
     count: int
+    recipients: list[str] = Field(default_factory=list)  # local mailboxes that received it
 
 
 class SpamSource(BaseModel):
@@ -616,7 +617,7 @@ async def spam_sources(
     now = datetime.now(UTC)
     since = mail_traffic.hour_start(now) - timedelta(hours=PERIODS[period])
     rows = await db.execute(
-        select(SpamSender.sender, SpamSender.count, SpamSender.ips)
+        select(SpamSender.sender, SpamSender.count, SpamSender.ips, SpamSender.rcpts)
         .where(SpamSender.hour >= since)
         .limit(50_000)
     )
@@ -624,7 +625,12 @@ async def spam_sources(
     ip_senders: dict[str, dict[str, int]] = {}
     ip_addresses: dict[str, dict[str, int]] = {}
     sender_domains: dict[str, int] = {}
-    for sender, count, ips in rows:
+    rcpts_of: dict[str, list[str]] = {}
+    for sender, count, ips, rcpts in rows:
+        known = rcpts_of.setdefault(sender.lower(), [])
+        for r in rcpts or []:
+            if r not in known and len(known) < 10:
+                known.append(r)
         sender_domain = sender.rpartition("@")[2].lower() if "@" in sender else "<>"
         sender_domains[sender_domain] = sender_domains.get(sender_domain, 0) + count
         for ip in ips or []:
@@ -656,7 +662,7 @@ async def spam_sources(
         g.ips = g.ips[:20]
         tally = group_senders.get(g.domain, {})
         g.senders = [
-            SpamSenderOut(address=a, count=n)
+            SpamSenderOut(address=a, count=n, recipients=rcpts_of.get(a, []))
             for a, n in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
         ]
     return SpamSources(

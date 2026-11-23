@@ -7919,6 +7919,13 @@
           "count": {
             "title": "Count",
             "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipients",
+            "type": "array"
           }
         },
         "required": [

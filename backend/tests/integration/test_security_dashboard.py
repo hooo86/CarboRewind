@@ -158,7 +158,13 @@ def test_spam_sources_grouped_by_network(api: TestClient, engine: Engine) -> Non
                     count=5,
                     ips=["203.0.113.9", "203.0.113.10"],
                 ),
-                SpamSender(hour=now, sender="x@other.example", count=2, ips=["203.0.113.9"]),
+                SpamSender(
+                    hour=now,
+                    sender="x@other.example",
+                    count=2,
+                    ips=["203.0.113.9"],
+                    rcpts=["ana@lnhc.dz"],
+                ),
                 SpamSender(hour=now, sender="y@isp.example", count=1, ips=["198.51.100.7"]),
                 SpamSender(hour=now, sender="z@nowhere.example", count=4, ips=["192.0.2.55"]),
                 SpamSender(
@@ -181,8 +187,8 @@ def test_spam_sources_grouped_by_network(api: TestClient, engine: Engine) -> Non
     assert "x.example" not in {d["domain"] for d in out["sender_domains"]}
     # The addresses behind a network (promo counted once per IP: 2 IPs x 5).
     assert spammer["senders"] == [
-        {"address": "promo@deals.example", "count": 10},
-        {"address": "x@other.example", "count": 2},
+        {"address": "promo@deals.example", "count": 10, "recipients": []},
+        {"address": "x@other.example", "count": 2, "recipients": ["ana@lnhc.dz"]},
     ]
 
 

@@ -858,6 +858,8 @@ class SpamSender(Base):
     sender: Mapped[str] = mapped_column(String(320), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     ips: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # Local recipients (for a bounce, sender "<>", the mailbox concerned).
+    rcpts: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
 
     __table_args__ = (Index("ix_spam_senders_hour", "hour"),)
 

@@ -347,6 +347,7 @@ describe("security and spam origin", () => {
               senders: [
                 { address: "promo@outlook.com", count: 15 },
                 { address: "x@bad.example", count: 7 },
+                { address: "<>", count: 3, recipients: ["ana@lnhc.dz"] },
               ],
             },
           ],
@@ -393,6 +394,12 @@ describe("security and spam origin", () => {
     expect(
       within(row).queryByRole("button", { name: "Block outlook.com" }),
     ).toBeNull();
+    const bounce = within(origin)
+      .getByText("<> non-delivery report")
+      .closest("li") as HTMLElement;
+    expect(within(bounce).getByText(/→ ana@lnhc.dz/)).toBeInTheDocument();
+    expect(within(bounce).queryByRole("button")).toBeNull(); // <> cannot be blocked
+    expect(within(origin).getByText(/backscatter/)).toBeInTheDocument();
     const other = within(origin)
       .getByText("x@bad.example")
       .closest("li") as HTMLElement;
