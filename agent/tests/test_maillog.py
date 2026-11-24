@@ -342,3 +342,20 @@ def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) 
     monitor.tick()
     assert server.calls[-1][1]["hours"][0]["sent"] == {"ana@lnhc.dz": [1, 1]}
     assert not monitor.agg.dirty
+
+
+def test_amavis_variants() -> None:
+    """Template variants: author after the sender, IPv6 client, spaces after commas."""
+    agg = Aggregator(LOCAL, UTC)
+    agg.feed(
+        "Nov 19 10:20:00 mail amavis[2001]: (02001-05) Passed SPAMMY {RelayedTaggedInbound}, "
+        "[IPv6:2a01:111:f400::5]:4000 [2a01:111:f400::5] <news@shop.example> "
+        "(Shop <a@shop.example>)"
+        " -> <ana@lnhc.dz>, <ben@lnhc.dz>, Queue-ID: X1, Hits: 6.1, 90 ms",
+        NOW,
+    )
+    bucket = next(iter(agg.buckets.values()))
+    assert bucket.spam_in == {"ana@lnhc.dz": 1, "ben@lnhc.dz": 1}
+    entry = bucket.spam_senders["news@shop.example"]
+    assert entry["ips"] == ["2a01:111:f400::5"]
+    assert entry["rcpts"] == ["ana@lnhc.dz", "ben@lnhc.dz"]

@@ -17,6 +17,7 @@ Timestamps: RFC 3164 (``Nov 19 10:12:01``, local time, year guessed) or RFC 3339
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -37,11 +38,25 @@ _RFC3339 = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]
 _CLEANUP = re.compile(r"postfix/cleanup\[\d+\]: ([0-9A-Za-z]+): message-id=<?([^>\s]*)>?")
 _QMGR = re.compile(r"postfix/qmgr\[\d+\]: ([0-9A-Za-z]+): from=<([^>]*)>, size=\d+, nrcpt=(\d+)")
 _AMAVIS = re.compile(
-    r"amavis\[\d+\]: \([^)]*\) (?:Passed|Blocked) (SPAM|SPAMMY)\b[^{]*\{([^}]*)\},?"
-    r"(?P<orig> ORIGINATING(?: LOCAL)?)?"
-    r"(?: \[(?P<ip>[0-9A-Fa-f.:]+)\](?::\d+)?)?(?: \[[^\]]*\])?"
-    r" <(?P<sender>[^>]*)> -> (?P<rcpts><[^>]*>(?:,<[^>]*>)*)"
+    r"amavis\[\d+\]: \([^)]*\) (?:Passed|Blocked) (SPAM|SPAMMY)\b[^{]*\{([^}]*)\},?(?P<rest>.*)"
 )
+# "<sender> -> <rcpt>,<rcpt>": the sender may be followed by "(author)" in some templates.
+_ARROW = re.compile(
+    r"<(?P<sender>[^<>]*)>(?: \([^)]*\))?\s*->\s*(?P<rcpts><[^<>]*>(?:,\s*<[^<>]*>)*)"
+)
+_BRACKET_IP = re.compile(r"\[(?:IPv6:)?([0-9A-Fa-f.:]*[0-9A-Fa-f])\]")
+
+
+def _client_ip(text: str) -> str | None:
+    """First bracketed IP address: the client that handed the message to Amavis."""
+    for candidate in _BRACKET_IP.findall(text):
+        try:
+            return str(ipaddress.ip_address(candidate))
+        except ValueError:
+            continue
+    return None
+
+
 MAX_QUEUE_IDS = 50_000
 MAX_SPAM_SENDERS = 500  # per hour
 KEEP_HOURS = 48
@@ -145,15 +160,20 @@ class Aggregator:
             return
         assert m_a is not None  # noqa: S101
         flags = m_a.group(2)
-        sender = m_a.group("sender").lower()
-        outbound = bool(m_a.group("orig")) or "Outbound" in flags or "Originating" in flags
+        rest = m_a.group("rest")
+        m_arrow = _ARROW.search(rest)
+        if m_arrow is None:
+            return
+        prefix = rest[: m_arrow.start()]
+        sender = m_arrow.group("sender").lower()
+        outbound = "ORIGINATING" in prefix or "Outbound" in flags or "Originating" in flags
         bucket = self._bucket(hour)
         if outbound:
             local_sender = self.local.get(sender)
             if local_sender:
                 bucket.spam_out[local_sender] = bucket.spam_out.get(local_sender, 0) + 1
             return
-        rcpts = re.findall(r"<([^>]*)>", m_a.group("rcpts"))
+        rcpts = re.findall(r"<([^>]*)>", m_arrow.group("rcpts"))
         local_rcpts: list[str] = []
         for rcpt in rcpts:
             local_rcpt = self.local.get(rcpt.lower())
@@ -172,7 +192,7 @@ class Aggregator:
         for rcpt in local_rcpts:
             if rcpt not in targets and len(targets) < 10:
                 targets.append(rcpt)
-        ip = m_a.group("ip")
+        ip = _client_ip(prefix)
         if ip and ip not in entry["ips"] and len(entry["ips"]) < 10:
             entry["ips"].append(ip)
 

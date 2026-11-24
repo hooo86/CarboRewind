@@ -457,7 +457,7 @@ export function SpamSourcesPanel({
           d.sources.length === 0 ? (
             <p className="muted">{t("mail.noSpam")}</p>
           ) : (
-            <div className={compact ? "stack" : "split"}>
+            <div className="stack">
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -548,28 +548,33 @@ export function SpamSourcesPanel({
                   </tbody>
                 </table>
               </div>
-              {!compact &&
-                d.sources.some((src) =>
-                  (src.senders ?? []).some((x) => x.address === "<>"),
-                ) && (
-                  <p className="muted small">{t("spamSources.bounceHelp")}</p>
-                )}
-              {!compact && d.sender_domains.length > 0 && (
-                <section>
-                  <h3>{t("spamSources.senderDomains")}</h3>
-                  <div className="table-wrap">
-                    <table>
-                      <tbody>
-                        {d.sender_domains.slice(0, 20).map((s) => (
-                          <tr key={s.domain}>
-                            <td className="wrap">{s.domain}</td>
-                            <td className="num">{s.count.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
+              {!compact && (
+                <div className="split">
+                  {d.sources.some((src) =>
+                    (src.senders ?? []).some((x) => x.address === "<>"),
+                  ) && (
+                    <p className="muted small">{t("spamSources.bounceHelp")}</p>
+                  )}
+                  {d.sender_domains.length > 0 && (
+                    <section>
+                      <h3>{t("spamSources.senderDomains")}</h3>
+                      <div className="table-wrap">
+                        <table>
+                          <tbody>
+                            {d.sender_domains.slice(0, 20).map((s) => (
+                              <tr key={s.domain}>
+                                <td className="wrap">{s.domain}</td>
+                                <td className="num">
+                                  {s.count.toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+                </div>
               )}
             </div>
           )

@@ -646,6 +646,7 @@ label.check input {
 td.wrap {
   white-space: normal;
   min-width: 12rem;
+  overflow-wrap: anywhere;
 }
 
 .button-link {

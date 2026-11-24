@@ -1056,7 +1056,7 @@ export function PoliciesPage() {
                               })
                             : (p.target_name ?? "—")}
                       </td>
-                      <td>
+                      <td className="wrap">
                         {scheduleLabel(p, t)}
                         <br />
                         <span className="muted">
