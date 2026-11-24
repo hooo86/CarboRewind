@@ -6,6 +6,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Certificat HTTPS local** : sans `--tls-cert`, `install-server.sh` crée une autorité locale
+  (`tls/local-ca.crt`, à importer dans les racines de confiance des navigateurs) qui signe le
+  certificat du serveur ; `--local-ca` remplace ainsi un ancien certificat auto-signé, que
+  Chrome refuse même importé. `server.crt` contient la chaîne complète.
 - **Origine du spam** : boîtes destinataires de chaque expéditeur (migration 0024) ; un
   expéditeur vide `<>` est affiché comme avis de non-remise (rebond), avec la boîte
   concernée et l'explication (backscatter, SPF / DKIM / DMARC) — il ne peut pas être bloqué.

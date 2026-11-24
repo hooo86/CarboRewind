@@ -3,6 +3,11 @@
 #
 #   sudo ./deploy/install-server.sh --server-name carborewind.example.org \
 #        [--tls-cert fullchain.pem --tls-key privkey.pem] [--install-dir /opt/carborewind]
+#        [--local-ca]
+#
+# Without --tls-cert, a local certificate authority (tls/local-ca.crt, to import into the
+# browsers' trusted roots) signs the HTTPS certificate. --local-ca re-issues it that way
+# (e.g. to replace an older self-signed certificate that browsers refuse).
 #
 # Idempotent: re-running it upgrades the stack (rebuild + migrations) and never overwrites
 # existing secrets, TLS material or the agents' CA.
@@ -12,6 +17,7 @@ INSTALL_DIR=/opt/carborewind
 SERVER_NAME=""
 TLS_CERT=""
 TLS_KEY=""
+LOCAL_CA=0
 
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -22,7 +28,8 @@ while [ $# -gt 0 ]; do
         --tls-cert) TLS_CERT="${2:-}"; shift 2 ;;
         --tls-key) TLS_KEY="${2:-}"; shift 2 ;;
         --install-dir) INSTALL_DIR="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+        --local-ca) LOCAL_CA=1; shift ;;
+        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) die "unknown option $1" ;;
     esac
 done
@@ -94,11 +101,33 @@ if [ -n "$TLS_CERT" ]; then
     say "installing the provided TLS certificate"
     install -m 0644 "$TLS_CERT" tls/server.crt
     install -m 0600 "$TLS_KEY" tls/server.key
-elif [ ! -f tls/server.crt ]; then
-    say "no certificate given: generating a self-signed one for $SERVER_NAME (825 days)"
-    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 825 \
-        -subj "/CN=$SERVER_NAME" -addext "subjectAltName=DNS:$SERVER_NAME" \
-        -keyout tls/server.key -out tls/server.crt 2>/dev/null
+elif [ "$LOCAL_CA" = 1 ] || [ ! -f tls/server.crt ]; then
+    # A local CA (CA:TRUE, signs certificates only) and a server certificate it signs
+    # (CA:FALSE, serverAuth): browsers accept it once local-ca.crt is a trusted root, which
+    # they refuse for a self-signed certificate that is its own CA.
+    if [ ! -f tls/local-ca.key ]; then
+        say "creating the local certificate authority (tls/local-ca.crt, 10 years)"
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 3650 \
+            -subj "/CN=CarboRewind local CA ($SERVER_NAME)" \
+            -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign" \
+            -keyout tls/local-ca.key -out tls/local-ca.crt 2>/dev/null
+        chmod 600 tls/local-ca.key
+        chmod 644 tls/local-ca.crt
+    fi
+    say "issuing the HTTPS certificate of $SERVER_NAME with the local CA (825 days)"
+    ext="$(mktemp)"
+    printf '%s\n' "basicConstraints=critical,CA:FALSE" \
+        "keyUsage=critical,digitalSignature,keyEncipherment" \
+        "extendedKeyUsage=serverAuth" "subjectAltName=DNS:$SERVER_NAME" > "$ext"
+    openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+        -subj "/CN=$SERVER_NAME" -keyout tls/server.key.new -out tls/server.csr 2>/dev/null
+    openssl x509 -req -in tls/server.csr -CA tls/local-ca.crt -CAkey tls/local-ca.key \
+        -CAcreateserial -days 825 -sha256 -extfile "$ext" -out tls/server.leaf 2>/dev/null
+    rm -f "$ext" tls/server.csr
+    cat tls/server.leaf tls/local-ca.crt > tls/server.crt
+    mv tls/server.key.new tls/server.key
+    rm -f tls/server.leaf
     chmod 644 tls/server.crt
 fi
 # The nginx master process reads the key as root at startup: owner-only is enough.
@@ -148,6 +177,7 @@ Next steps (see docs/install.md):
        cd $INSTALL_DIR/deploy && docker compose -f docker-compose.prod.yml run --rm api carborewind-api create-user admin
   2. Register the agent of your Carbonio server and get its one-time token:
        docker compose -f docker-compose.prod.yml run --rm api carborewind-api agent-create mx1 mail.example.org
-  3. Copy to the Carbonio server the CA of this HTTPS certificate if it is self-signed:
-       $INSTALL_DIR/deploy/tls/server.crt   ->   /etc/carborewind/api-ca.crt
+  3. Without --tls-cert: copy the local CA to the Carbonio server, and import it into the
+     browsers' trusted roots (Windows: certutil -addstore -user Root local-ca.crt):
+       $INSTALL_DIR/deploy/tls/local-ca.crt   ->   /etc/carborewind/api-ca.crt
 EOF

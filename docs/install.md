@@ -149,6 +149,12 @@ sudo nano /etc/carborewind/carbonio-admin.password
 sudo install -m 0644 server.crt /etc/carborewind/api-ca.crt
 ```
 
+Sans `--tls-cert`, le certificat HTTPS est signé par une autorité locale propre à l'installation :
+importez `/opt/carborewind/deploy/tls/local-ca.crt` dans les racines de confiance des postes
+d'administration (Windows : `certutil -addstore -user Root local-ca.crt`). Une installation plus
+ancienne, au certificat auto-signé, passe à ce modèle avec `install-server.sh --local-ca` ; recopiez
+ensuite `server.crt` vers `/etc/carborewind/api-ca.crt` sur Carbonio.
+
 Si le certificat de Carbonio est auto-signé, renseignez `CARBOREWIND_AGENT_CARBONIO_CA_FILE`. La
 vérification TLS n'est jamais désactivée.
 
