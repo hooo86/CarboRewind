@@ -186,6 +186,9 @@ def test_filters_on_every_type(api: TestClient, engine: Engine, world: dict[str,
     assert emails(api, f=[d, "carbonio_created_at:after:2023-12-31"]) == ["ana"]
     assert emails(api, f=[d, "last_backup_at:not_set"]) == ["ben"]
     assert emails(api, f=[d, "last_backup_status:in:partial"]) == ["ana"]
+    # Only a complete snapshot protects: ana's partial one does not.
+    assert emails(api, f=[d, "protected_24h:is:false"]) == ["ana", "ben"]
+    assert emails(api, f=[d, "protected_24h:is:true"]) == []
     assert emails(api, f=[d, "last_backup_status:not_in:complete"]) == ["ana", "ben"]
     assert emails(api, f=[d, "cos:in:vip,default"]) == ["ana", "ben"]
     assert emails(api, f=[d, "is_admin:is:true"]) == ["ana"]

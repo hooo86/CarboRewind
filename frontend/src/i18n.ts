@@ -50,6 +50,7 @@ export const resources = {
         stored_bytes: "Taille sauvegardée",
         policies: "Politiques",
         has_policy: "Couvert par une politique",
+        protected_24h: "Sauvegarde réussie depuis 24 h",
       },
       filters: {
         title: "Filtres",
@@ -63,7 +64,8 @@ export const resources = {
         remove: "Retirer le filtre {{filter}}",
         presets: {
           never: "Jamais sauvegardés",
-          stale: "Pas de sauvegarde depuis 24 h",
+          stale: "Sans sauvegarde réussie depuis 24 h",
+          protected: "Sauvegarde réussie depuis 24 h",
           partial: "Dernière sauvegarde partielle",
           noPolicy: "Sans politique",
           quota80: "Quota utilisé ≥ 80 %",
@@ -238,6 +240,7 @@ export const resources = {
         confirmDelete: "Supprimer la vue « {{name}} » ?",
       },
       widgets: {
+        seeAll: "Tout voir →",
         customize: "Personnaliser",
         save: "Enregistrer",
         reset: "Disposition par défaut",
@@ -1932,6 +1935,7 @@ export const resources = {
         stored_bytes: "Backed-up size",
         policies: "Policies",
         has_policy: "Covered by a policy",
+        protected_24h: "Successful backup within 24 h",
       },
       filters: {
         title: "Filters",
@@ -1945,7 +1949,8 @@ export const resources = {
         remove: "Remove filter {{filter}}",
         presets: {
           never: "Never backed up",
-          stale: "No backup for 24 h",
+          stale: "No successful backup for 24 h",
+          protected: "Successful backup within 24 h",
           partial: "Last backup partial",
           noPolicy: "Without policy",
           quota80: "Quota used ≥ 80 %",
@@ -2115,6 +2120,7 @@ export const resources = {
         confirmDelete: 'Delete the view "{{name}}"?',
       },
       widgets: {
+        seeAll: "See all →",
         customize: "Customize",
         save: "Save",
         reset: "Default layout",

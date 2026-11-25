@@ -212,7 +212,7 @@ const DEFAULT_COLUMNS = [
 /** Ready-made filters, toggled from the "Filters" menu (Odoo-style). */
 export const PRESETS: { key: string; filters: string[] }[] = [
   { key: "never", filters: ["last_backup_at:not_set"] },
-  { key: "stale", filters: ["last_backup_at:older_days:1"] },
+  { key: "stale", filters: ["protected_24h:is:false"] },
   { key: "partial", filters: ["last_backup_status:in:partial"] },
   { key: "noPolicy", filters: ["has_policy:is:false"] },
   { key: "quota80", filters: ["usage_pct:ge:80"] },

@@ -122,6 +122,16 @@ def _snapshot_count() -> ColumnElement[Any]:
     )
 
 
+def _protected_24h() -> ColumnElement[Any]:
+    """A complete snapshot taken in the last 24 hours (the dashboard's "protected")."""
+    snap = aliased(Snapshot)
+    return exists().where(
+        snap.account_id == Account.id,
+        snap.status == SnapshotStatus.COMPLETE,
+        snap.taken_at >= func.now() - timedelta(hours=24),
+    )
+
+
 def _profile_field(name: str) -> Field:
     return Field("text", lambda s: Account.profile[name].astext)
 
@@ -157,6 +167,7 @@ FIELDS: dict[str, Field] = {
         ),
     ),
     "has_policy": Field("boolean", lambda s: exists(_covering_policies())),
+    "protected_24h": Field("boolean", lambda s: _protected_24h()),
     **{name: _profile_field(name) for name in PROFILE_FIELDS},
 }
 

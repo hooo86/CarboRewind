@@ -80,6 +80,21 @@ afterEach(() => {
 });
 
 describe("dashboard", () => {
+  it("links each figure to the list filtered on what it counts", async () => {
+    open();
+    const hrefs = async () =>
+      (await screen.findAllByRole("link")).map((a) => a.getAttribute("href"));
+    await waitFor(async () =>
+      expect(await hrefs()).toContain("/accounts?f=protected_24h:is:false"),
+    );
+    const all = await hrefs();
+    expect(all).toContain("/accounts?f=protected_24h:is:true");
+    expect(all).toContain("/accounts?f=last_backup_at:not_set");
+    expect(all).toContain("/jobs?status=failed");
+    expect(all).toContain("/accounts?sort=used_bytes&order=desc");
+    expect(all).toContain("/jobs");
+  });
+
   it("shows copy 2 and starts a manual backup of a domain", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const calls = open();

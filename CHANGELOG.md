@@ -6,6 +6,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 ## [Unreleased]
 
 ### Added
+- **Tableau de bord cliquable** : chaque chiffre ouvre la liste filtrée sur ce qu'il compte
+  (comptes sans sauvegarde réussie depuis 24 h, jamais sauvegardés, partiels, jobs en échec…),
+  et chaque widget a un lien « Tout voir » vers sa page avec ses propres filtres. Nouveau filtre
+  de comptes `protected_24h` (sauvegarde complète dans les dernières 24 h), utilisé aussi par le
+  filtre prêt à l'emploi « Sans sauvegarde réussie depuis 24 h ».
 - **Certificat HTTPS local** : sans `--tls-cert`, `install-server.sh` crée une autorité locale
   (`tls/local-ca.crt`, à importer dans les racines de confiance des navigateurs) qui signe le
   certificat du serveur ; `--local-ca` remplace ainsi un ancien certificat auto-signé, que

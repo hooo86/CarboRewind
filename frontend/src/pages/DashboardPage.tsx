@@ -36,18 +36,45 @@ function Tile({
   label,
   value,
   tone,
+  to,
 }: {
   label: string;
   value: string | number;
   tone?: string;
+  /** Page showing exactly what the figure counts (filtered list). */
+  to?: string;
 }) {
-  return (
-    <div className={`tile ${tone ?? ""}`}>
+  const body = (
+    <>
       <span className="tile-value">{value}</span>
       <span className="tile-label">{label}</span>
-    </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className={`tile tile-link ${tone ?? ""}`}>
+      {body}
+    </Link>
+  ) : (
+    <div className={`tile ${tone ?? ""}`}>{body}</div>
   );
 }
+
+/** Where each figure of the dashboard leads: the list filtered on what it counts. */
+export const LINKS = {
+  accounts: "/accounts",
+  protected: "/accounts?f=protected_24h:is:true",
+  unprotected: "/accounts?f=protected_24h:is:false",
+  never: "/accounts?f=last_backup_at:not_set",
+  partial: "/accounts?f=last_backup_status:in:partial",
+  queued: "/jobs?status=queued",
+  running: "/jobs?status=running",
+  failed: "/jobs?status=failed",
+  stored: "/accounts?sort=stored_bytes&order=desc",
+  agents: "/monitoring",
+  mail_volume: "/accounts?sort=used_bytes&order=desc",
+  quota: "/accounts?sort=quota_bytes&order=desc",
+  archived: "/archives",
+} as const;
 
 function Gauge({
   label,
@@ -105,30 +132,27 @@ function StorageOverview({ d }: { d: Dashboard }) {
   return (
     <div className="stack">
       <div className="tiles">
-        <div className="tile">
-          <span className="tile-value">{formatBytes(mail)}</span>
-          <span className="tile-label">{t("dashboard.mailVolume")}</span>
-        </div>
+        <Tile
+          label={t("dashboard.mailVolume")}
+          value={formatBytes(mail)}
+          to={LINKS.mail_volume}
+        />
         {d.mail_quota_bytes ? (
-          <div className="tile">
-            <span className="tile-value">
-              {formatBytes(d.mail_quota_bytes)}
-            </span>
-            <span className="tile-label">{t("dashboard.quotaAllocated")}</span>
-          </div>
+          <Tile
+            label={t("dashboard.quotaAllocated")}
+            value={formatBytes(d.mail_quota_bytes)}
+            to={LINKS.quota}
+          />
         ) : null}
         {d.archived_messages ? (
-          <div className="tile">
-            <span className="tile-value">
-              {formatBytes(d.archived_bytes ?? 0)}
-            </span>
-            <span className="tile-label">
-              {t("dashboard.archived", {
-                count: d.archived_messages,
-                freed: formatBytes(d.archived_removed_bytes ?? 0),
-              })}
-            </span>
-          </div>
+          <Tile
+            label={t("dashboard.archived", {
+              count: d.archived_messages,
+              freed: formatBytes(d.archived_removed_bytes ?? 0),
+            })}
+            value={formatBytes(d.archived_bytes ?? 0)}
+            to={LINKS.archived}
+          />
         ) : null}
       </div>
       {(d.mailboxes_nearly_full ?? 0) > 0 && (
@@ -383,13 +407,44 @@ export function defaultLayout(admin: boolean): Widget[] {
 const opt = <T,>(w: Widget, key: string, fallback: T): T =>
   (w.options[key] as T | undefined) ?? fallback;
 
+/** Full page behind a widget, with the widget's own filters. */
+function widgetLink(w: Widget): string | null {
+  switch (w.type) {
+    case "jobs": {
+      const q = new URLSearchParams();
+      const status = opt(w, "status", "");
+      const kind = opt(w, "kind", "");
+      if (status) q.set("status", status);
+      if (kind) q.set("kind", kind);
+      return q.size ? `/jobs?${q.toString()}` : "/jobs";
+    }
+    case "policies":
+      return "/policies";
+    case "mail_top":
+      return "/mail";
+    case "spam_sources":
+      return "/blocking?tab=spam";
+    case "blocked_ips":
+      return "/blocking?tab=ips";
+    default:
+      return null;
+  }
+}
+
 function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
   const { t } = useTranslation();
   const tiles: Record<Kpi, ReactNode> = {
-    accounts: <Tile label={t("dashboard.accounts")} value={d.accounts} />,
+    accounts: (
+      <Tile
+        label={t("dashboard.accounts")}
+        to={LINKS.accounts}
+        value={d.accounts}
+      />
+    ),
     protected: (
       <Tile
         label={t("dashboard.protected")}
+        to={LINKS.protected}
         value={d.protected_24h}
         tone="ok"
       />
@@ -397,6 +452,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
     never: (
       <Tile
         label={t("dashboard.never")}
+        to={LINKS.never}
         value={d.never_backed_up}
         tone={d.never_backed_up ? "warn" : undefined}
       />
@@ -404,26 +460,45 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
     partial: (
       <Tile
         label={t("dashboard.partial")}
+        to={LINKS.partial}
         value={d.partial_last}
         tone={d.partial_last ? "warn" : undefined}
       />
     ),
-    queued: <Tile label={t("dashboard.queued")} value={d.jobs_queued} />,
-    running: <Tile label={t("dashboard.running")} value={d.jobs_running} />,
+    queued: (
+      <Tile
+        label={t("dashboard.queued")}
+        to={LINKS.queued}
+        value={d.jobs_queued}
+      />
+    ),
+    running: (
+      <Tile
+        label={t("dashboard.running")}
+        to={LINKS.running}
+        value={d.jobs_running}
+      />
+    ),
     failed: (
       <Tile
         label={t("dashboard.failed")}
+        to={LINKS.failed}
         value={d.jobs_failed_24h}
         tone={d.jobs_failed_24h ? "bad" : undefined}
       />
     ),
     stored: (
-      <Tile label={t("dashboard.stored")} value={formatBytes(d.stored_bytes)} />
+      <Tile
+        label={t("dashboard.stored")}
+        to={LINKS.stored}
+        value={formatBytes(d.stored_bytes)}
+      />
     ),
     agents:
       d.agents_active !== null ? (
         <Tile
           label={t("dashboard.agents")}
+          to={LINKS.agents}
           value={d.agents_active}
           tone={d.agents_active ? "ok" : "bad"}
         />
@@ -431,12 +506,14 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
     mail_volume: (
       <Tile
         label={t("dashboard.mailVolume")}
+        to={LINKS.mail_volume}
         value={formatBytes(d.mail_used_bytes ?? 0)}
       />
     ),
     archived: (
       <Tile
         label={t("widgets.kpi.archived")}
+        to={LINKS.archived}
         value={formatBytes(d.archived_bytes ?? 0)}
       />
     ),
@@ -888,7 +965,7 @@ export function DashboardPage() {
             {t("alerts.unprotected", {
               count: stats.data.accounts - stats.data.protected_24h,
             })}{" "}
-            <Link to="/accounts">{t("alerts.seeAccounts")}</Link>
+            <Link to={LINKS.unprotected}>{t("alerts.seeAccounts")}</Link>
           </p>
         )}
       {error && (
@@ -946,6 +1023,11 @@ export function DashboardPage() {
             >
               <div className="widget-head">
                 <h2>{title}</h2>
+                {!editing && widgetLink(w) && (
+                  <Link to={widgetLink(w) ?? "/"} className="small">
+                    {t("widgets.seeAll")}
+                  </Link>
+                )}
                 {editing && (
                   <span className="actions">
                     <button

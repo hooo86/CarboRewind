@@ -461,6 +461,27 @@ label {
   flex-direction: column;
 }
 
+a.tile-link {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+a.tile-link:hover,
+a.tile-link:focus-visible {
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: var(--surface-2, var(--surface));
+}
+
+a.tile-link .tile-label {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
 .tile.ok {
   border-left-color: var(--ok);
 }
