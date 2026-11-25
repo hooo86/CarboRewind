@@ -5,6 +5,11 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 
 ## [Unreleased]
 
+### Fixed
+- **Agent : jeton Carbonio expiré** (`service.AUTH_EXPIRED`, `AUTH_REQUIRED`, ou cookie refusé
+  en REST) en cours de migration, de sauvegarde ou de restauration — Carbonio redémarré, jetons
+  révoqués : l'agent s'authentifie de nouveau et refait l'appel une fois, au lieu d'échouer.
+
 ### Added
 - **Tableau de bord cliquable** : chaque chiffre ouvre la liste filtrée sur ce qu'il compte
   (comptes sans sauvegarde réussie depuis 24 h, jamais sauvegardés, partiels, jobs en échec…),

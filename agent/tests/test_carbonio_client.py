@@ -85,6 +85,27 @@ def test_delegation_is_cached_and_unknown_account_fails(
         client.delegate("does-not-exist")
 
 
+def test_revoked_tokens_are_renewed(
+    client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox
+) -> None:
+    """Carbonio restarted (or the tokens were revoked) in the middle of a long job: the
+    agent authenticates again and goes on, for SOAP and REST calls alike."""
+    first = sorted(alice.items)[0]
+    client.sync(alice.id, None)
+    fake.admin_tokens.clear()
+    fake.delegated.clear()
+    assert client.fetch_raw(alice.name, alice.id, first) == EML
+    fake.delegated.clear()
+    assert client.sync(alice.id, None).token
+    fake.admin_tokens.clear()
+    fake.delegated.clear()
+    folder = client.create_folder(alice.id, 1, "After-restart")
+    fake.delegated.clear()
+    assert alice.items[client.add_message(alice.id, folder, LATIN1)].raw == LATIN1
+    fake.admin_tokens.clear()
+    assert [a.name for a in client.iter_accounts()]
+
+
 def test_initial_sync_lists_folders_and_items(client: CarbonioClient, alice: Mailbox) -> None:
     delta = client.sync(alice.id, None)
     paths = {f.path: f for f in delta.folders}

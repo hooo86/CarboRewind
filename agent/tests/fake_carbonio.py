@@ -138,6 +138,14 @@ class FakeCarbonio:
     # ------------------------------------------------------------------ HTTP dispatch
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        try:
+            return self._handle(request)
+        except _Fault as fault:  # REST call with an unknown or revoked cookie
+            if fault.code != "service.AUTH_EXPIRED":
+                raise
+            return httpx.Response(401)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
         if self.fail_next:
             return httpx.Response(self.fail_next.pop(0))
         path = request.url.path

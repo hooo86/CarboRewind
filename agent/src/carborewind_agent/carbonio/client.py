@@ -19,7 +19,7 @@ from urllib.parse import quote
 import httpx
 
 from .mime7bit import to_7bit
-from .soap import NS_ADMIN, NS_MAIL, SoapClient, SoapFaultError, content
+from .soap import NS_ADMIN, NS_MAIL, RenewableToken, SoapClient, SoapFaultError, content
 
 log = logging.getLogger(__name__)
 
@@ -145,6 +145,7 @@ class CarbonioClient:
         self._delegate_seconds = delegate_seconds
         self._admin_token: _Token | None = None
         self._delegated: dict[str, _Token] = {}
+        self._admin_token_r = RenewableToken(self._admin_auth, self._drop_admin)
         # Largest message sent inline; lowered when Carbonio answers "inline message too
         # large" (its limit is a server setting, lower than the SOAP request limit).
         self._inline_max = INLINE_MAX
@@ -164,6 +165,39 @@ class CarbonioClient:
         self._admin_token = _Token(token, time.time() + lifetime_ms / 1000)
         return token
 
+    def _drop_admin(self) -> None:
+        self._admin_token = None
+        self._delegated.clear()  # issued with the admin session
+
+    def _rest_as(
+        self,
+        account_id: str,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """REST call with the account's cookie; once more with a new token if refused."""
+        for attempt in (0, 1):
+            cookie = {"Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}"}
+            response = self._rest.request(
+                method, url, headers={**(headers or {}), **cookie}, **kwargs
+            )
+            refused = response.status_code in (401, 403) or response.text.startswith("401,")
+            if not refused or attempt:
+                return response
+            log.info("%s %s: token refused, authenticating again", method, url)
+            self._delegated.pop(account_id, None)
+        return response  # pragma: no cover
+
+    def _as(self, account_id: str) -> RenewableToken:
+        """Token acting as the account, renewed when Carbonio refuses it."""
+        return RenewableToken(
+            lambda: self.delegate(account_id),
+            lambda: self._delegated.pop(account_id, None),
+        )
+
     def delegate(self, account_id: str) -> str:
         """Short-lived token acting as the account (``DelegateAuthRequest``), cached."""
         cached = self._delegated.get(account_id)
@@ -173,7 +207,7 @@ class CarbonioClient:
             "DelegateAuth",
             NS_ADMIN,
             {"account": {"by": "id", "_content": account_id}, "duration": self._delegate_seconds},
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
         token = content(resp.get("authToken"))
         if not token:
@@ -197,7 +231,7 @@ class CarbonioClient:
             }
             if domain:
                 body["domain"] = domain
-            resp = self._admin.invoke("SearchDirectory", NS_ADMIN, body, token=self._admin_auth())
+            resp = self._admin.invoke("SearchDirectory", NS_ADMIN, body, token=self._admin_token_r)
             accounts = resp.get("account", [])
             for entry in accounts:
                 attrs = _attrs(entry)
@@ -209,7 +243,7 @@ class CarbonioClient:
 
     def cos_names(self) -> dict[str, str]:
         """Class-of-service id -> name (``GetAllCosRequest``)."""
-        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_auth())
+        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_token_r)
         return {c["id"]: c.get("name", c["id"]) for c in resp.get("cos", [])}
 
     def cos_info(self) -> dict[str, tuple[str, int | None]]:
@@ -217,7 +251,7 @@ class CarbonioClient:
 
         The quota of an account without its own ``zimbraMailQuota`` comes from its COS.
         """
-        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_auth())
+        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_token_r)
         out: dict[str, tuple[str, int | None]] = {}
         for c in resp.get("cos", []):
             quota = (_attrs(c).get("zimbraMailQuota") or [""])[0]
@@ -230,7 +264,7 @@ class CarbonioClient:
         Carbonio's stats service records this every few minutes (what ``zmcontrol status``
         shows), so it needs no shell access on the server.
         """
-        resp = self._admin.invoke("GetServiceStatus", NS_ADMIN, {}, token=self._admin_auth())
+        resp = self._admin.invoke("GetServiceStatus", NS_ADMIN, {}, token=self._admin_token_r)
         out = []
         for entry in resp.get("status", []):
             content = str(entry.get("_content", "")).strip()
@@ -247,7 +281,7 @@ class CarbonioClient:
     def mail_queue(self, server: str) -> dict[str, int]:
         """Messages per MTA queue (``GetMailQueueInfoRequest``): deferred, active, hold…"""
         resp = self._admin.invoke(
-            "GetMailQueueInfo", NS_ADMIN, {"server": {"name": server}}, token=self._admin_auth()
+            "GetMailQueueInfo", NS_ADMIN, {"server": {"name": server}}, token=self._admin_token_r
         )
         out: dict[str, int] = {}
         for srv in resp.get("server", []):
@@ -277,7 +311,7 @@ class CarbonioClient:
                     },
                 }
             },
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
         total, items, reasons = 0, [], []
         for srv in resp.get("server", []):
@@ -321,19 +355,19 @@ class CarbonioClient:
                     },
                 }
             },
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
 
     def mail_queue_flush(self, server: str) -> None:
         """Try every queued message again now (``MailQueueFlushRequest``, ``postqueue -f``)."""
         self._admin.invoke(
-            "MailQueueFlush", NS_ADMIN, {"server": {"name": server}}, token=self._admin_auth()
+            "MailQueueFlush", NS_ADMIN, {"server": {"name": server}}, token=self._admin_token_r
         )
 
     def mailbox_size(self, account_id: str) -> int:
         """Bytes used by one mailbox (``GetMailboxRequest``, exact, no cache)."""
         resp = self._admin.invoke(
-            "GetMailbox", NS_ADMIN, {"mbox": {"id": account_id}}, token=self._admin_auth()
+            "GetMailbox", NS_ADMIN, {"mbox": {"id": account_id}}, token=self._admin_token_r
         )
         boxes = resp.get("mbox") or [{}]
         return int(boxes[0].get("s", 0))
@@ -347,7 +381,7 @@ class CarbonioClient:
                 "GetQuotaUsage",
                 NS_ADMIN,
                 {"allServers": 1, "limit": page, "offset": offset, "sortBy": "totalUsed"},
-                token=self._admin_auth(),
+                token=self._admin_token_r,
             )
             accounts = resp.get("account", [])
             for entry in accounts:
@@ -365,7 +399,7 @@ class CarbonioClient:
                 "GetQuotaUsage",
                 NS_ADMIN,
                 {"allServers": 1, "limit": page, "offset": offset, "sortBy": "totalUsed"},
-                token=self._admin_auth(),
+                token=self._admin_token_r,
             )
             accounts = resp.get("account", [])
             for entry in accounts:
@@ -376,7 +410,7 @@ class CarbonioClient:
 
     def login_filter(self) -> dict[str, Any]:
         """Invalid login filter settings and trusted addresses (``GetAllConfigRequest``)."""
-        resp = self._admin.invoke("GetAllConfig", NS_ADMIN, {}, token=self._admin_auth())
+        resp = self._admin.invoke("GetAllConfig", NS_ADMIN, {}, token=self._admin_token_r)
         attrs = _attrs(resp)
         out: dict[str, Any] = {"safe_ips": attrs.get(SAFE_IPS, [])}
         for attr, key in LOGIN_FILTER.items():
@@ -391,7 +425,7 @@ class CarbonioClient:
             "ModifyConfig",
             NS_ADMIN,
             {"a": [{"n": f"{sign}{SAFE_IPS}", "_content": ip}]},
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
 
     def set_account_status(self, account_id: str, status: str) -> None:
@@ -404,7 +438,7 @@ class CarbonioClient:
             # one more wrong password would lock it again at once.
             attrs.append({"n": "zimbraPasswordLockoutFailureTime", "_content": ""})
         self._admin.invoke(
-            "ModifyAccount", NS_ADMIN, {"id": account_id, "a": attrs}, token=self._admin_auth()
+            "ModifyAccount", NS_ADMIN, {"id": account_id, "a": attrs}, token=self._admin_token_r
         )
 
     def set_quota(self, account_id: str, quota_bytes: int) -> None:
@@ -415,7 +449,7 @@ class CarbonioClient:
             "ModifyAccount",
             NS_ADMIN,
             {"id": account_id, "a": [{"n": "zimbraMailQuota", "_content": str(int(quota_bytes))}]},
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
 
     def find_account(self, by: str, value: str) -> AccountInfo | None:
@@ -427,7 +461,7 @@ class CarbonioClient:
                 "GetAccount",
                 NS_ADMIN,
                 {"account": {"by": by, "_content": value}},
-                token=self._admin_auth(),
+                token=self._admin_token_r,
             )
         except SoapFaultError as exc:
             if exc.code == "account.NO_SUCH_ACCOUNT":
@@ -449,7 +483,7 @@ class CarbonioClient:
                 "password": password,
                 "a": [{"n": k, "_content": v} for k, v in attrs.items() if v],
             },
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
         return str(resp["account"][0]["id"])
 
@@ -460,7 +494,7 @@ class CarbonioClient:
                 "GetDomain",
                 NS_ADMIN,
                 {"domain": {"by": "name", "_content": name}, "attrs": "zimbraId"},
-                token=self._admin_auth(),
+                token=self._admin_token_r,
             )
         except SoapFaultError as exc:
             if exc.code == "account.NO_SUCH_DOMAIN":
@@ -474,12 +508,12 @@ class CarbonioClient:
         attrs += [{"n": "-amavisBlacklistSender", "_content": v} for v in remove]
         if attrs:
             self._admin.invoke(
-                "ModifyDomain", NS_ADMIN, {"id": domain_id, "a": attrs}, token=self._admin_auth()
+                "ModifyDomain", NS_ADMIN, {"id": domain_id, "a": attrs}, token=self._admin_token_r
             )
 
     def delete_account(self, account_id: str) -> None:
         """Delete the account and its mailbox from Carbonio (``DeleteAccountRequest``)."""
-        self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_auth())
+        self._admin.invoke("DeleteAccount", NS_ADMIN, {"id": account_id}, token=self._admin_token_r)
 
     def get_account(self, account_id: str) -> AccountInfo:
         """All attributes of one account (``GetAccountRequest``), for recreating it later."""
@@ -487,7 +521,7 @@ class CarbonioClient:
             "GetAccount",
             NS_ADMIN,
             {"account": {"by": "id", "_content": account_id}},
-            token=self._admin_auth(),
+            token=self._admin_token_r,
         )
         entry = resp["account"][0]
         attrs = _attrs(entry)
@@ -506,7 +540,7 @@ class CarbonioClient:
         body: dict[str, Any] = {"typed": 1, "changeLimit": change_limit, "deleteLimit": 10_000}
         if token:
             body["token"] = token
-        resp = self._mail.invoke("Sync", NS_MAIL, body, token=self.delegate(account_id))
+        resp = self._mail.invoke("Sync", NS_MAIL, body, token=self._as(account_id))
         delta = SyncDelta(token=str(resp["token"]), more=bool(resp.get("more")))
         for root in resp.get("folder", []):
             self._walk_folders(root, None, "", delta)
@@ -537,7 +571,7 @@ class CarbonioClient:
     def get_folders(self, account_id: str) -> list[FolderInfo]:
         """Current folder tree of a mailbox (``GetFolderRequest`` from the root)."""
         resp = self._mail.invoke(
-            "GetFolder", NS_MAIL, {"folder": {"l": "1"}}, token=self.delegate(account_id)
+            "GetFolder", NS_MAIL, {"folder": {"l": "1"}}, token=self._as(account_id)
         )
         out: list[FolderInfo] = []
 
@@ -556,10 +590,8 @@ class CarbonioClient:
 
     def fetch_raw(self, account_name: str, account_id: str, item_id: int) -> bytes:
         """Raw content of one item via REST (``/home/<account>/?id=<n>``)."""
-        response = self._rest.get(
-            f"/home/{account_name}/",
-            params={"id": item_id},
-            headers={"Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}"},
+        response = self._rest_as(
+            account_id, "GET", f"/home/{account_name}/", params={"id": item_id}
         )
         if response.status_code == 404:
             raise SoapFaultError("mail.NO_SUCH_ITEM", f"item {item_id} not found")
@@ -569,7 +601,7 @@ class CarbonioClient:
     def get_item_meta(self, account_id: str, item_id: int) -> dict[str, Any]:
         """Flags, tags, folder, dates of one item (``GetItemRequest``)."""
         resp = self._mail.invoke(
-            "GetItem", NS_MAIL, {"item": {"id": str(item_id)}}, token=self.delegate(account_id)
+            "GetItem", NS_MAIL, {"item": {"id": str(item_id)}}, token=self._as(account_id)
         )
         for element in ITEM_ELEMENTS:
             if resp.get(element):
@@ -585,7 +617,7 @@ class CarbonioClient:
             "GetMsgMetadata",
             NS_MAIL,
             {"m": {"ids": ",".join(str(i) for i in item_ids)}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
         return {int(m["id"]): m for m in resp.get("m", []) if "id" in m}
 
@@ -600,7 +632,7 @@ class CarbonioClient:
             "Search",
             NS_MAIL,
             {"query": f'inid:{folder_id} msgid:"{escaped}"', "types": "message", "limit": 1},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
         return bool(resp.get("m"))
 
@@ -622,7 +654,7 @@ class CarbonioClient:
                 "offset": offset,
                 "limit": limit,
             },
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
         return list(resp.get("m", [])), bool(resp.get("more"))
 
@@ -634,7 +666,7 @@ class CarbonioClient:
             "MsgAction",
             NS_MAIL,
             {"action": {"op": "delete", "id": ",".join(str(i) for i in item_ids)}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
 
     def item_action(
@@ -650,7 +682,7 @@ class CarbonioClient:
             "ItemAction",
             NS_MAIL,
             {"action": {"op": op, "id": ",".join(str(i) for i in item_ids), **attrs}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
 
     def empty_folder(self, account_id: str, folder_id: int) -> None:
@@ -659,7 +691,7 @@ class CarbonioClient:
             "FolderAction",
             NS_MAIL,
             {"action": {"op": "empty", "id": str(folder_id), "recursive": 0}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
 
     # ------------------------------------------------------------------ restore primitives
@@ -671,7 +703,7 @@ class CarbonioClient:
             "CreateFolder",
             NS_MAIL,
             {"folder": {"l": str(parent_id), "name": name, "view": view, "fie": 1}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
         return int(resp["folder"][0]["id"])
 
@@ -681,7 +713,7 @@ class CarbonioClient:
             "FolderAction",
             NS_MAIL,
             {"action": {"op": "delete", "id": str(folder_id)}},
-            token=self.delegate(account_id),
+            token=self._as(account_id),
         )
 
     def add_message(
@@ -708,7 +740,7 @@ class CarbonioClient:
             text: str | None = raw.decode("utf-8")
         except UnicodeDecodeError:
             text = None
-        token = self.delegate(account_id)
+        token = self._as(account_id)
         if text is not None and len(raw) <= min(self._inline_max, INLINE_MAX):
             try:
                 resp = self._mail.invoke(
@@ -742,14 +774,15 @@ class CarbonioClient:
 
         ASSUMPTION 🔎: answer body ``200,'null','<aid>'`` as in Zimbra's FileUploadServlet.
         """
-        response = self._rest.post(
+        response = self._rest_as(
+            account_id,
+            "POST",
             "/service/upload",
             # lbfums: limited by zimbraFileUploadMaxSize; without it Carbonio applies the
             # (often smaller) MTA limit zimbraMtaMaxMessageSize to the upload.
             params={"fmt": "raw", "lbfums": "1"},
             content=data,
             headers={
-                "Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}",
                 "Content-Type": "message/rfc822",
                 "Content-Disposition": 'attachment; filename="message.eml"',
             },
@@ -776,10 +809,11 @@ class CarbonioClient:
         if fmt not in {"ics", "vcf", "tgz"}:
             raise ValueError(f"unsupported format {fmt!r}")
         segments = "/".join(quote(part, safe="") for part in folder_path.strip("/").split("/"))
-        response = self._rest.post(
+        response = self._rest_as(
+            account_id,
+            "POST",
             f"/home/{quote(account_name, safe='@')}/{segments}",
             params={"fmt": fmt, "resolve": "skip"},
             content=data,
-            headers={"Cookie": f"ZM_AUTH_TOKEN={self.delegate(account_id)}"},
         )
         response.raise_for_status()
