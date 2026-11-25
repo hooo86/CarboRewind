@@ -38,6 +38,8 @@ type Column = {
     t: (k: string, o?: Record<string, unknown>) => string,
   ) => ReactNode;
   num?: boolean;
+  /** Free text that may break over several lines (keeps the table within the page). */
+  wrap?: boolean;
 };
 
 const dash = <span className="muted">—</span>;
@@ -50,18 +52,26 @@ export const COLUMNS: Column[] = [
   },
   {
     key: "display_name",
+    wrap: true,
     sort: "display_name",
     render: (a) => a.display_name ?? dash,
   },
   {
     key: "first_name",
+    wrap: true,
     sort: "first_name",
     render: (a) => a.first_name ?? dash,
   },
-  { key: "last_name", sort: "last_name", render: (a) => a.last_name ?? dash },
+  {
+    key: "last_name",
+    sort: "last_name",
+    wrap: true,
+    render: (a) => a.last_name ?? dash,
+  },
   { key: "domain", sort: "domain", render: (a) => a.domain },
   {
     key: "aliases",
+    wrap: true,
     render: (a) => (a.aliases.length ? a.aliases.join(", ") : dash),
   },
   {
@@ -133,8 +143,8 @@ export const COLUMNS: Column[] = [
     sort: "last_backup_at",
     render: (a, t) =>
       a.last_backup_at ? (
-        <span title={formatDate(a.last_backup_at)}>
-          {formatRelative(a.last_backup_at)}{" "}
+        <span className="cell-stack" title={formatDate(a.last_backup_at)}>
+          <span>{formatRelative(a.last_backup_at)}</span>
           <StatusBadge status={a.last_backup_status} />
         </span>
       ) : (
@@ -162,6 +172,7 @@ export const COLUMNS: Column[] = [
   },
   {
     key: "policies",
+    wrap: true,
     sort: "policy",
     render: (a, t) =>
       a.policies.length ? (
@@ -576,7 +587,14 @@ function AccountTable({
                 />
               </td>
               {visible.map((c) => (
-                <td key={c.key} className={c.num ? "num" : undefined}>
+                <td
+                  key={c.key}
+                  className={
+                    [c.num && "num", c.wrap && "wrap-text"]
+                      .filter(Boolean)
+                      .join(" ") || undefined
+                  }
+                >
                   {c.render(a, t)}
                 </td>
               ))}

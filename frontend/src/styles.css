@@ -2302,3 +2302,28 @@ ul.senders li {
   flex-wrap: wrap;
   gap: 0.6rem;
 }
+
+/* ---- accounts list: many columns, kept within the page width */
+table.accounts th {
+  white-space: normal;
+  vertical-align: bottom;
+  line-height: 1.25;
+}
+table.accounts th .th-sort {
+  text-align: left;
+  white-space: normal;
+}
+table.accounts th.num .th-sort {
+  text-align: right;
+}
+table.accounts td.wrap-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 7rem;
+}
+.cell-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
