@@ -23,6 +23,17 @@ const PATHS: Record<string, string> = {
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6",
   resume: "M5 12a7 7 0 1 0 2-5M5 4v4h4M10 9l5 3-5 3z",
   block: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
+  chart: "M4 20V11M10 20V4M16 20v-7M2 20h20",
+  database:
+    "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
+  backup: "M12 3v12M7 10l5 5 5-5M4 17v3h16v-3",
+  alert: "M12 3l10 18H2zM12 10v4M12 17.5v.01",
+  check: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12l3 3 5-6",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
+  failed: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9 9l6 6M15 9l-6 6",
+  never: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12h8",
+  server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
+  gauge: "M4 18a8 8 0 1 1 16 0M12 18l4-5",
 };
 
 export type IconName = keyof typeof PATHS;

@@ -19,6 +19,7 @@ import type {
   WidgetType,
 } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { Icon, type IconName } from "../components/Icon";
 import { JobTable } from "../components/JobTable";
 import {
   BlockedIpsPanel,
@@ -37,15 +38,22 @@ function Tile({
   value,
   tone,
   to,
+  icon,
 }: {
   label: string;
   value: string | number;
   tone?: string;
   /** Page showing exactly what the figure counts (filtered list). */
   to?: string;
+  icon?: IconName;
 }) {
   const body = (
     <>
+      {icon && (
+        <span className="tile-icon">
+          <Icon name={icon} size={16} />
+        </span>
+      )}
       <span className="tile-value">{value}</span>
       <span className="tile-label">{label}</span>
     </>
@@ -136,12 +144,14 @@ function StorageOverview({ d }: { d: Dashboard }) {
           label={t("dashboard.mailVolume")}
           value={formatBytes(mail)}
           to={LINKS.mail_volume}
+          icon="mail"
         />
         {d.mail_quota_bytes ? (
           <Tile
             label={t("dashboard.quotaAllocated")}
             value={formatBytes(d.mail_quota_bytes)}
             to={LINKS.quota}
+            icon="gauge"
           />
         ) : null}
         {d.archived_messages ? (
@@ -152,6 +162,7 @@ function StorageOverview({ d }: { d: Dashboard }) {
             })}
             value={formatBytes(d.archived_bytes ?? 0)}
             to={LINKS.archived}
+            icon="archive"
           />
         ) : null}
       </div>
@@ -356,6 +367,16 @@ export const WIDGET_TYPES: WidgetType[] = [
   "spam_sources",
   "mail_top",
 ];
+const WIDGET_ICONS: Record<WidgetType, IconName> = {
+  kpis: "chart",
+  storage: "database",
+  manual_backup: "backup",
+  jobs: "jobs",
+  policies: "policy",
+  mail_top: "mail",
+  spam_sources: "alert",
+  blocked_ips: "block",
+};
 const PERIODS: MailPeriod[] = ["1h", "24h", "7d", "30d"];
 const COUNTS = [5, 10, 20, 50];
 const JOB_STATUSES = ["", "failed", "running", "queued", "succeeded"];
@@ -438,6 +459,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.accounts")}
         to={LINKS.accounts}
+        icon="users"
         value={d.accounts}
       />
     ),
@@ -445,6 +467,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.protected")}
         to={LINKS.protected}
+        icon="check"
         value={d.protected_24h}
         tone="ok"
       />
@@ -453,6 +476,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.never")}
         to={LINKS.never}
+        icon="never"
         value={d.never_backed_up}
         tone={d.never_backed_up ? "warn" : undefined}
       />
@@ -461,6 +485,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.partial")}
         to={LINKS.partial}
+        icon="alert"
         value={d.partial_last}
         tone={d.partial_last ? "warn" : undefined}
       />
@@ -469,6 +494,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.queued")}
         to={LINKS.queued}
+        icon="clock"
         value={d.jobs_queued}
       />
     ),
@@ -476,6 +502,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.running")}
         to={LINKS.running}
+        icon="play"
         value={d.jobs_running}
       />
     ),
@@ -483,6 +510,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.failed")}
         to={LINKS.failed}
+        icon="failed"
         value={d.jobs_failed_24h}
         tone={d.jobs_failed_24h ? "bad" : undefined}
       />
@@ -491,6 +519,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.stored")}
         to={LINKS.stored}
+        icon="database"
         value={formatBytes(d.stored_bytes)}
       />
     ),
@@ -499,6 +528,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
         <Tile
           label={t("dashboard.agents")}
           to={LINKS.agents}
+          icon="server"
           value={d.agents_active}
           tone={d.agents_active ? "ok" : "bad"}
         />
@@ -507,6 +537,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("dashboard.mailVolume")}
         to={LINKS.mail_volume}
+        icon="mail"
         value={formatBytes(d.mail_used_bytes ?? 0)}
       />
     ),
@@ -514,6 +545,7 @@ function KpiTiles({ d, items }: { d: Dashboard; items: Kpi[] }) {
       <Tile
         label={t("widgets.kpi.archived")}
         to={LINKS.archived}
+        icon="archive"
         value={formatBytes(d.archived_bytes ?? 0)}
       />
     ),
@@ -1022,7 +1054,15 @@ export function DashboardPage() {
               aria-label={title}
             >
               <div className="widget-head">
-                <h2>{title}</h2>
+                <h2>
+                  <span className="widget-icon">
+                    <Icon
+                      name={WIDGET_ICONS[w.type] ?? "dashboard"}
+                      size={18}
+                    />
+                  </span>
+                  {title}
+                </h2>
                 {!editing && widgetLink(w) && (
                   <Link to={widgetLink(w) ?? "/"} className="small">
                     {t("widgets.seeAll")}
