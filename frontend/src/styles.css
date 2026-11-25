@@ -504,6 +504,10 @@ a.tile-link .tile-label {
   color: var(--muted);
   opacity: 0.8;
 }
+/* Keep the label clear of the icon (top right corner). */
+.tile-icon ~ .tile-label {
+  padding-right: 1.6rem;
+}
 .tile.ok .tile-icon {
   color: var(--ok);
 }
