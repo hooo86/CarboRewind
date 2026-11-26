@@ -11,6 +11,10 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   révoqués : l'agent s'authentifie de nouveau et refait l'appel une fois, au lieu d'échouer.
 
 ### Added
+- **Expéditeurs de confiance** (Blocages → Expéditeurs de confiance) : adresses ou domaines
+  jamais classés comme spam, appliqués par l'agent dans `amavisWhitelistSender` de chaque
+  domaine local. Refusés : vos propres domaines, un grand fournisseur sans confirmation, et une
+  entrée déjà dans les expéditeurs bloqués (une entrée est dans une seule liste).
 - **Tableau de bord cliquable** : chaque chiffre ouvre la liste filtrée sur ce qu'il compte
   (comptes sans sauvegarde réussie depuis 24 h, jamais sauvegardés, partiels, jobs en échec…),
   et chaque widget a un lien « Tout voir » vers sa page avec ses propres filtres. Nouveau filtre

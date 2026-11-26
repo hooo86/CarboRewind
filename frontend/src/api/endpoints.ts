@@ -517,6 +517,15 @@ export const api = {
     }),
   unblockSender: (value: string) =>
     request<Blocklist>("POST", "/api/mail/blocklist/remove", { value }),
+  trustlist: () => request<Blocklist>("GET", "/api/mail/trustlist"),
+  trustSender: (value: string, reason?: string, force = false) =>
+    request<Blocklist>("POST", "/api/mail/trustlist", {
+      value,
+      reason: reason || null,
+      force,
+    }),
+  untrustSender: (value: string) =>
+    request<Blocklist>("POST", "/api/mail/trustlist/remove", { value }),
   spamSources: (period: MailPeriod) =>
     request<SpamSources>("GET", "/api/mail/spam-sources", undefined, {
       period,

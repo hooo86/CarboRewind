@@ -86,12 +86,21 @@ export function SenderBlockButtons({
   );
 }
 
-/** Trafic mail: the blocked senders, applied by the agent in Carbonio (Amavis). */
-export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
+/** Blocked senders (``list="block"``) or trusted senders (``list="trust"``), applied by
+ * the agent in Carbonio (Amavis black / white list of every local domain). */
+export function BlocklistPanel({
+  refresh = 0,
+  list = "block",
+}: {
+  refresh?: number;
+  list?: "block" | "trust";
+}) {
   const { t } = useTranslation();
+  const trust = list === "trust";
+  const k = trust ? "trustlist" : "blocklist";
   const [load, reload] = useLoad<Blocklist>(
-    () => api.blocklist(),
-    [refresh],
+    () => (trust ? api.trustlist() : api.blocklist()),
+    [refresh, trust],
     60000,
   );
   const [value, setValue] = useState("");
@@ -123,12 +132,16 @@ export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
     if (!v) return;
     void run(
       async () => {
-        await api.blockSender(v, reason.trim(), force);
+        await (trust ? api.trustSender : api.blockSender)(
+          v,
+          reason.trim(),
+          force,
+        );
         setValue("");
         setReason("");
         setForce(false);
       },
-      t("blocklist.blocked", { value: v }),
+      t(`${k}.blocked`, { value: v }),
     );
   };
 
@@ -137,18 +150,18 @@ export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
     <LoadView load={load} reload={reload}>
       {(d) => (
         <div className="stack">
-          <p className="muted small">{t("blocklist.help")}</p>
-          <form className="row" onSubmit={add} aria-label={t("blocklist.add")}>
+          <p className="muted small">{t(`${k}.help`)}</p>
+          <form className="row" onSubmit={add} aria-label={t(`${k}.add`)}>
             <label className="grow">
-              {t("blocklist.value")}
+              {t(`${k}.value`)}
               <input
                 value={value}
-                placeholder="spammeur@exemple.com ou exemple.com"
+                placeholder={t(`${k}.placeholder`)}
                 onChange={(e) => setValue(e.target.value)}
               />
             </label>
             <label className="grow">
-              {t("blocklist.reason")}
+              {t(`${k}.reason`)}
               <input
                 value={reason}
                 maxLength={300}
@@ -163,25 +176,25 @@ export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
                       checked={force}
                       onChange={(e) => setForce(e.target.checked)}
                     />
-                    {t("blocklist.force", { domain })}
+                    {t(`${k}.force`, { domain })}
                   </label>
                 )
               : null}
             <button type="submit" disabled={busy || !value.trim()}>
-              {t("blocklist.add")}
+              {t(`${k}.add`)}
             </button>
           </form>
           <NoticeBar notice={notice} />
           {d.entries.length === 0 ? (
-            <p className="muted">{t("blocklist.empty")}</p>
+            <p className="muted">{t(`${k}.empty`)}</p>
           ) : (
             <div className="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>{t("blocklist.value")}</th>
-                    <th>{t("blocklist.reason")}</th>
-                    <th>{t("blocklist.by")}</th>
+                    <th>{t(`${k}.value`)}</th>
+                    <th>{t(`${k}.reason`)}</th>
+                    <th>{t(`${k}.by`)}</th>
                     <th />
                   </tr>
                 </thead>
@@ -205,12 +218,15 @@ export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
                           disabled={busy}
                           onClick={() =>
                             void run(
-                              () => api.unblockSender(e.value),
-                              t("blocklist.unblocked", { value: e.value }),
+                              () =>
+                                (trust ? api.untrustSender : api.unblockSender)(
+                                  e.value,
+                                ),
+                              t(`${k}.unblocked`, { value: e.value }),
                             )
                           }
                         >
-                          {t("blocklist.unblock")}
+                          {t(`${k}.unblock`)}
                         </button>
                       </td>
                     </tr>
@@ -226,16 +242,16 @@ export function BlocklistPanel({ refresh = 0 }: { refresh?: number }) {
                 className={a.status?.error ? "bad-text small" : "muted small"}
               >
                 {a.applied
-                  ? t("blocklist.applied", {
+                  ? t(`${k}.applied`, {
                       agent: a.name,
                       domains: a.status?.domains.join(", ") || "—",
                     })
                   : a.status?.error
-                    ? t("blocklist.failed", {
+                    ? t(`${k}.failed`, {
                         agent: a.name,
                         error: a.status.error,
                       })
-                    : t("blocklist.pending", { agent: a.name })}
+                    : t(`${k}.pending`, { agent: a.name })}
               </p>
             ))}
         </div>

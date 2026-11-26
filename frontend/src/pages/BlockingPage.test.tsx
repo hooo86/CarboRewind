@@ -51,6 +51,7 @@ it("lists the locked accounts and unlocks one", async () => {
   // every blocking feature is a tab of this menu
   for (const name of [
     "Blocked senders",
+    "Trusted senders",
     "Spam origin",
     "Blocked IPs",
     "Locked accounts",
@@ -62,6 +63,39 @@ it("lists the locked accounts and unlocks one", async () => {
     "href",
     "/blocking",
   );
+});
+
+it("adds a trusted sender", async () => {
+  const list = {
+    revision: 1,
+    entries: [
+      {
+        value: "@partner.example",
+        kind: "domain",
+        by: "admin",
+        at: "2026-11-26T10:00:00Z",
+        reason: "supplier",
+      },
+    ],
+    agents: [],
+  };
+  const calls = fakeApi({
+    "GET /api/auth/me": user("super_admin"),
+    "GET /api/mail/trustlist": { ...list, revision: 0, entries: [] },
+    "POST /api/mail/trustlist": list,
+  });
+  window.history.pushState({}, "", "/blocking?tab=trusted");
+  render(<App />);
+  expect(await screen.findByText("No trusted sender.")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Address or domain"), {
+    target: { value: "partner.example" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Trust" }));
+  expect(
+    await screen.findByText(/partner.example added to the trusted senders/),
+  ).toBeInTheDocument();
+  const post = calls.find((c) => c.method === "POST");
+  expect(post?.url).toBe("/api/mail/trustlist");
 });
 
 it("is reserved to super administrators", async () => {

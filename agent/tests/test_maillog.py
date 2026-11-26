@@ -323,6 +323,21 @@ def test_monitor_applies_the_blocked_senders(setup: tuple[Any, ...]) -> None:
     assert calls[-1] == (5, [], "no local domain known yet")
 
 
+def test_monitor_applies_the_trusted_senders(setup: tuple[Any, ...]) -> None:
+    monitor, _server, fake, _log = setup
+    monitor.refresh_addresses()
+    calls: list[tuple[int, list[str], str | None]] = []
+    monitor._api.trustlist_done = lambda r, d, e: calls.append((r, d, e))  # type: ignore[method-assign]
+    monitor._api.blocklist_done = lambda r, d, e: None  # type: ignore[method-assign]
+    monitor.apply_blocklist({"revision": 1, "add": ["@partner.example"], "remove": []}, trust=True)
+    assert calls == [(1, ["lnhc.dz"], None)]
+    attrs = fake.domain_attrs["dom-lnhc.dz"]
+    assert attrs["amavisWhitelistSender"] == ["@partner.example"]
+    assert "amavisBlacklistSender" not in attrs
+    monitor.apply_blocklist({"revision": 2, "add": [], "remove": ["@partner.example"]}, trust=True)
+    assert attrs["amavisWhitelistSender"] == []
+
+
 def test_monitor_keeps_counters_when_the_server_is_down(setup: tuple[Any, ...]) -> None:
     monitor, server, _fake, log = setup
     # dated now: the watcher runs on the real clock and drops hours older than two days

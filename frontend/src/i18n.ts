@@ -352,10 +352,30 @@ export const resources = {
         trustHelp:
           "Liste zimbraHttpThrottleSafeIPs de Carbonio, modifiée par l'agent. Carbonio peut ne la relire qu'au redémarrage du service mailbox (su - zextras -c \"zmmailboxdctl restart\") ; un blocage en cours se lève de toute façon à la fin du délai.",
       },
+      trustlist: {
+        title: "Expéditeurs de confiance",
+        help: "Les messages de ces adresses ou domaines ne sont jamais classés comme spam par Carbonio (Amavis, attribut amavisWhitelistSender de chaque domaine local). Attention : n'importe qui peut usurper une adresse d'expéditeur, et ces messages passeraient aussi. Réservez cette liste à des partenaires connus, de préférence qui signent leurs messages (DKIM). Vos propres domaines et les grands fournisseurs (gmail.com, outlook.com…) sont refusés sauf confirmation.",
+        value: "Adresse ou domaine",
+        placeholder: "partenaire@exemple.com ou exemple.com",
+        reason: "Motif",
+        by: "Ajouté par",
+        add: "Faire confiance",
+        force:
+          "Faire quand même confiance à tout {{domain}} (fournisseur public)",
+        empty: "Aucun expéditeur de confiance.",
+        unblock: "Retirer",
+        blocked:
+          "{{value}} ajouté aux expéditeurs de confiance : l'agent l'applique dans Carbonio sous une minute.",
+        unblocked: "{{value}} retiré des expéditeurs de confiance.",
+        applied: "{{agent}} : appliqué ({{domains}}).",
+        pending: "{{agent}} : en attente d'application par l'agent…",
+        failed: "{{agent}} : échec — {{error}}",
+      },
       blocklist: {
         title: "Expéditeurs bloqués",
         help: "Les messages de ces adresses ou domaines sont classés comme spam par Carbonio (Amavis, attribut amavisBlacklistSender de chaque domaine local), quel que soit leur contenu. Bloquez l'adresse de l'expéditeur plutôt que le domaine d'un grand fournisseur (outlook.com, gmail.com…), qui bloquerait tous ses utilisateurs.",
         value: "Adresse ou domaine",
+        placeholder: "spammeur@exemple.com ou exemple.com",
         reason: "Motif",
         by: "Ajouté par",
         add: "Bloquer",
@@ -727,6 +747,7 @@ export const resources = {
           "Tout ce qui bloque quelque chose : expéditeurs de spam, adresses IP, comptes verrouillés, limites d'envoi et listes noires publiques.",
         tabs: {
           senders: "Expéditeurs bloqués",
+          trusted: "Expéditeurs de confiance",
           spam: "Origine du spam",
           ips: "IP bloquées",
           accounts: "Comptes verrouillés",
@@ -2232,10 +2253,29 @@ export const resources = {
         trustHelp:
           'Carbonio\'s zimbraHttpThrottleSafeIPs list, changed by the agent. Carbonio may only read it again when the mailbox service restarts (su - zextras -c "zmmailboxdctl restart"); a current block ends with the delay anyway.',
       },
+      trustlist: {
+        title: "Trusted senders",
+        help: "Messages from these addresses or domains are never classified as spam by Carbonio (Amavis, attribute amavisWhitelistSender of every local domain). Beware: anyone can forge a sender address, and such messages would get through too. Keep this list for known partners, preferably signing their messages (DKIM). Your own domains and big providers (gmail.com, outlook.com…) are refused unless confirmed.",
+        value: "Address or domain",
+        placeholder: "partner@example.com or example.com",
+        reason: "Reason",
+        by: "Added by",
+        add: "Trust",
+        force: "Trust all of {{domain}} anyway (public provider)",
+        empty: "No trusted sender.",
+        unblock: "Remove",
+        blocked:
+          "{{value}} added to the trusted senders: the agent applies it in Carbonio within a minute.",
+        unblocked: "{{value}} removed from the trusted senders.",
+        applied: "{{agent}}: applied ({{domains}}).",
+        pending: "{{agent}}: waiting for the agent…",
+        failed: "{{agent}}: failed — {{error}}",
+      },
       blocklist: {
         title: "Blocked senders",
         help: "Messages from these addresses or domains are classified as spam by Carbonio (Amavis, attribute amavisBlacklistSender of every local domain), whatever their content. Block the sender's address rather than the domain of a big provider (outlook.com, gmail.com…), which would block all its users.",
         value: "Address or domain",
+        placeholder: "spammer@example.com or example.com",
         reason: "Reason",
         by: "Added by",
         add: "Block",
@@ -2603,6 +2643,7 @@ export const resources = {
           "Everything that blocks something: spam senders, IP addresses, locked accounts, sending limits and public blacklists.",
         tabs: {
           senders: "Blocked senders",
+          trusted: "Trusted senders",
           spam: "Spam origin",
           ips: "Blocked IPs",
           accounts: "Locked accounts",

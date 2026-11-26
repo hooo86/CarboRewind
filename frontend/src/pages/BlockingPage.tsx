@@ -17,7 +17,15 @@ import {
 import { formatDate } from "../utils/format";
 import { LimitsForm } from "./MailTrafficPage";
 
-const TABS = ["senders", "spam", "ips", "accounts", "limits", "dnsbl"] as const;
+const TABS = [
+  "senders",
+  "trusted",
+  "spam",
+  "ips",
+  "accounts",
+  "limits",
+  "dnsbl",
+] as const;
 type Tab = (typeof TABS)[number];
 const PERIODS: MailPeriod[] = ["1h", "24h", "7d", "30d"];
 
@@ -88,6 +96,13 @@ export function BlockingPage() {
         <section className="card stack" aria-labelledby="blocklist-title">
           <h2 id="blocklist-title">{t("blocklist.title")}</h2>
           <BlocklistPanel refresh={tick} />
+        </section>
+      )}
+
+      {tab === "trusted" && (
+        <section className="card stack" aria-labelledby="trustlist-title">
+          <h2 id="trustlist-title">{t("trustlist.title")}</h2>
+          <BlocklistPanel list="trust" />
         </section>
       )}
 

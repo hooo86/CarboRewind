@@ -364,3 +364,42 @@ def test_blocked_senders(api: TestClient, engine: Engine) -> None:
             s.scalars(select(AuditEvent.action).where(AuditEvent.target_type == "sender"))
         )
     assert {"blocklist.add", "blocklist.remove"} <= actions
+
+
+def test_trusted_senders(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    e = accounts(agent, uuid.uuid4().hex[:6])
+    own = e["ana"].split("@")[1]
+    with Session(engine) as s, s.begin():
+        s.execute(
+            delete(AppSetting).where(AppSetting.key.in_(["sender_blocklist", "sender_trustlist"]))
+        )
+    url = "/api/mail/trustlist"
+    # Never your own domains (forged senders would get through), providers only if confirmed.
+    assert api.post(url, json={"value": own}, headers=h).status_code == 422
+    r = api.post(url, json={"value": "gmail.com"}, headers=h)
+    assert r.status_code == 422 and "public mail provider" in r.json()["detail"]
+    r = api.post(url, json={"value": "partner.example", "reason": "supplier"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert [x["value"] for x in r.json()["entries"]] == ["@partner.example"]
+    # One list at most: trusted cannot be blocked, and the other way round.
+    r = api.post("/api/mail/blocklist", json={"value": "@partner.example"}, headers=h)
+    assert r.status_code == 422 and "trusted" in r.json()["detail"]
+    api.post("/api/mail/blocklist", json={"value": "spam@bad.example"}, headers=h)
+    r = api.post(url, json={"value": "spam@bad.example"}, headers=h)
+    assert r.status_code == 422 and "blocked" in r.json()["detail"]
+
+    answer = agent.post("/mail-stats", {"hours": []}).json()
+    assert answer["trustlist"] == {"revision": 1, "add": ["@partner.example"], "remove": []}
+    assert answer["blocklist"]["add"] == ["spam@bad.example"]
+    assert agent.post("/trustlist-done", {"revision": 1, "domains": [own]}).status_code == 204
+    assert "trustlist" not in agent.post("/mail-stats", {"hours": []}).json()
+    out = api.get(url, headers=h).json()
+    mine = [a for a in out["agents"] if a["status"] and a["status"]["domains"] == [own]]
+    assert mine and mine[0]["applied"] is True
+    r = api.post(f"{url}/remove", json={"value": "partner.example"}, headers=h)
+    assert r.status_code == 200 and r.json()["entries"] == []
+    assert agent.post("/mail-stats", {"hours": []}).json()["trustlist"]["remove"] == [
+        "@partner.example"
+    ]

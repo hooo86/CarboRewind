@@ -504,8 +504,16 @@ class CarbonioClient:
 
     def update_blocked_senders(self, domain_id: str, add: list[str], remove: list[str]) -> None:
         """Add / remove values of ``amavisBlacklistSender`` on a domain (``+`` / ``-``)."""
-        attrs = [{"n": "+amavisBlacklistSender", "_content": v} for v in add]
-        attrs += [{"n": "-amavisBlacklistSender", "_content": v} for v in remove]
+        self.update_sender_list(domain_id, "amavisBlacklistSender", add, remove)
+
+    def update_sender_list(
+        self, domain_id: str, attr: str, add: list[str], remove: list[str]
+    ) -> None:
+        """Add / remove values of a multi-valued sender list of a domain (``+`` / ``-``)."""
+        if attr not in ("amavisBlacklistSender", "amavisWhitelistSender"):
+            raise ValueError(f"unsupported attribute {attr!r}")
+        attrs = [{"n": f"+{attr}", "_content": v} for v in add]
+        attrs += [{"n": f"-{attr}", "_content": v} for v in remove]
         if attrs:
             self._admin.invoke(
                 "ModifyDomain", NS_ADMIN, {"id": domain_id, "a": attrs}, token=self._admin_token_r

@@ -626,8 +626,9 @@ async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> d
         "actions": await mail_traffic.pending_actions(db),
         "ip_actions": await mail_traffic.pending_ip_actions(db),
     }
-    if (pending := await blocklist.for_agent(db, agent)) is not None:
-        answer["blocklist"] = pending
+    for which in blocklist.LISTS:
+        if (pending := await blocklist.for_agent(db, agent, which)) is not None:
+            answer[blocklist.prefix(which)] = pending
     return answer
 
 
@@ -642,21 +643,32 @@ class BlocklistDoneIn(BaseModel):
 @router.post("/blocklist-done", status_code=status.HTTP_204_NO_CONTENT)
 async def blocklist_done(body: BlocklistDoneIn, agent: CurrentAgent, db: DbSession) -> None:
     """The agent wrote the blocked senders into Carbonio (or could not)."""
+    await _sender_list_done(body, agent, db, "block")
+
+
+@router.post("/trustlist-done", status_code=status.HTTP_204_NO_CONTENT)
+async def trustlist_done(body: BlocklistDoneIn, agent: CurrentAgent, db: DbSession) -> None:
+    """The agent wrote the trusted senders into Carbonio (or could not)."""
+    await _sender_list_done(body, agent, db, "trust")
+
+
+async def _sender_list_done(body: BlocklistDoneIn, agent: Agent, db: DbSession, which: str) -> None:
+    key = blocklist.prefix(which)
     await db.refresh(agent, attribute_names=["storage"], with_for_update=True)
     storage = dict(agent.storage or {})
-    storage["blocklist_status"] = {
+    storage[f"{key}_status"] = {
         "revision": body.revision,
         "domains": body.domains[:50],
         "error": body.error,
         "at": datetime.now(UTC).isoformat(),
     }
     if not body.error:
-        storage["blocklist_revision"] = body.revision
+        storage[f"{key}_revision"] = body.revision
     agent.storage = storage
     await _audit(
         db,
         agent,
-        "blocklist.applied",
+        f"{key}.applied",
         Outcome.FAILURE if body.error else Outcome.SUCCESS,
         details={"revision": body.revision, "domains": body.domains[:50], "error": body.error},
     )

@@ -150,10 +150,14 @@ class MailMonitor:
             self.apply_ip(action)
         if isinstance(answer.get("blocklist"), dict):
             self.apply_blocklist(answer["blocklist"])
+        if isinstance(answer.get("trustlist"), dict):
+            self.apply_blocklist(answer["trustlist"], trust=True)
         return {"lines": len(lines), "actions": len(answer.get("actions", []))}
 
-    def apply_blocklist(self, data: dict[str, Any]) -> None:
-        """Blocked senders (Trafic mail): ``amavisBlacklistSender`` of every local domain."""
+    def apply_blocklist(self, data: dict[str, Any], *, trust: bool = False) -> None:
+        """Blocked senders (``amavisBlacklistSender`` of every local domain), or trusted ones
+        (``amavisWhitelistSender``) with ``trust``."""
+        attr = "amavisWhitelistSender" if trust else "amavisBlacklistSender"
         valid = re.compile(r"^[^\s@<>,;]*@[a-z0-9.-]+\.[a-z]{2,63}$")
         add = [str(v) for v in data.get("add", []) if valid.match(str(v))]
         remove = [str(v) for v in data.get("remove", []) if valid.match(str(v))]
@@ -165,18 +169,20 @@ class MailMonitor:
                 domain_id = self._carbonio.domain_id(name)
                 if domain_id is None:
                     continue  # an alias address of a domain Carbonio does not hold
-                self._carbonio.update_blocked_senders(domain_id, add, remove)
+                self._carbonio.update_sender_list(domain_id, attr, add, remove)
                 done.append(name)
             except SoapFaultError as exc:
                 error = f"{name}: {exc.code}: {exc}"[:500]
                 break
         log.warning(
-            "blocked senders revision %s applied to %s (%s)",
+            "%s senders revision %s applied to %s (%s)",
+            "trusted" if trust else "blocked",
             data.get("revision"),
             ", ".join(done) or "-",
             error or "ok",
         )
-        self._api.blocklist_done(int(data.get("revision") or 0), done, error)
+        report = self._api.trustlist_done if trust else self._api.blocklist_done
+        report(int(data.get("revision") or 0), done, error)
 
     def apply_ip(self, action: dict[str, Any]) -> None:
         """Trust (never block) or untrust an address in Carbonio's login filter."""

@@ -229,6 +229,9 @@ class AgentApi:
     def blocklist_done(self, revision: int, domains: list[str], error: str | None) -> None:
         self._post("/blocklist-done", {"revision": revision, "domains": domains, "error": error})
 
+    def trustlist_done(self, revision: int, domains: list[str], error: str | None) -> None:
+        self._post("/trustlist-done", {"revision": revision, "domains": domains, "error": error})
+
     def standby_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/standby-complete", payload)
 

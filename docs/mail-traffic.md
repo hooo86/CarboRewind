@@ -68,3 +68,20 @@ en quarantaine selon les seuils, quel que soit leur contenu.
 ```bash
 sudo su - zextras -c "zmprov gd lnhc.dz amavisBlacklistSender"
 ```
+
+
+## Expéditeurs de confiance
+
+Menu **Blocages → Expéditeurs de confiance** : l'inverse des expéditeurs bloqués. Les messages de
+ces adresses (`partenaire@exemple.com`) ou domaines (`exemple.com`) ne sont jamais classés comme
+spam : l'agent les écrit dans l'attribut `amavisWhitelistSender` de chaque domaine local de
+Carbonio (équivalent de `zmprov md <domaine> +amavisWhitelistSender @exemple.com`).
+
+N'importe qui peut usurper une adresse d'expéditeur : réservez la liste à des partenaires connus,
+de préférence qui signent leurs messages (DKIM). Vos propres domaines sont refusés, un grand
+fournisseur (gmail.com…) demande une confirmation, et une entrée ne peut pas être à la fois
+bloquée et de confiance.
+
+Si un message déjà jugé propre par Amavis (`Passed CLEAN` dans le journal) arrive malgré tout
+dans les indésirables, la liste n'y changera rien : la cause est ailleurs (en-tête `X-Spam-Flag`
+ajouté par le serveur d'origine, filtre du client de messagerie comme Outlook).

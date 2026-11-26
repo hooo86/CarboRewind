@@ -690,8 +690,9 @@ class UnblockIn(BaseModel):
     value: str = Field(min_length=3, max_length=320)
 
 
-async def _blocklist_out(db: DbSession) -> dict[str, Any]:
-    data = await blocklist.load(db)
+async def _blocklist_out(db: DbSession, which: str = "block") -> dict[str, Any]:
+    data = await blocklist.load(db, which)
+    key = blocklist.prefix(which)
     agents = await db.scalars(
         select(Agent).where(Agent.status == AgentStatus.ACTIVE).order_by(Agent.name)
     )
@@ -701,13 +702,60 @@ async def _blocklist_out(db: DbSession) -> dict[str, Any]:
         "agents": [
             {
                 "name": a.name,
-                "applied": int((a.storage or {}).get("blocklist_revision") or 0)
-                >= data["revision"],
-                "status": (a.storage or {}).get("blocklist_status"),
+                "applied": int((a.storage or {}).get(f"{key}_revision") or 0) >= data["revision"],
+                "status": (a.storage or {}).get(f"{key}_status"),
             }
             for a in agents
         ],
     }
+
+
+async def _add_sender(
+    body: BlockIn, principal: Any, db: DbSession, request: Request, which: str
+) -> dict[str, Any]:
+    try:
+        await blocklist.add(
+            db,
+            body.value,
+            by=principal.user.username,
+            reason=body.reason,
+            force=body.force,
+            which=which,
+        )
+    except blocklist.BlocklistError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    await audit.record(
+        db,
+        action=f"{blocklist.prefix(which)}.add",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="sender",
+        target_id=blocklist.normalise(body.value)[0],
+        details={"reason": body.reason, "force": body.force},
+    )
+    return await _blocklist_out(db, which)
+
+
+async def _remove_sender(
+    body: UnblockIn, principal: Any, db: DbSession, request: Request, which: str
+) -> dict[str, Any]:
+    try:
+        await blocklist.remove(db, body.value, which)
+    except blocklist.BlocklistError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    await audit.record(
+        db,
+        action=f"{blocklist.prefix(which)}.remove",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="sender",
+        target_id=blocklist.normalise(body.value)[0],
+    )
+    return await _blocklist_out(db, which)
 
 
 @router.get("/blocklist")
@@ -720,45 +768,34 @@ async def get_blocklist(principal: Admin, db: DbSession) -> dict[str, Any]:
 async def block_sender(
     body: BlockIn, principal: Admin, db: DbSession, request: Request
 ) -> dict[str, Any]:
-    try:
-        await blocklist.add(
-            db, body.value, by=principal.user.username, reason=body.reason, force=body.force
-        )
-    except blocklist.BlocklistError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
-    await audit.record(
-        db,
-        action="blocklist.add",
-        outcome=Outcome.SUCCESS,
-        actor_id=str(principal.user.id),
-        actor_name=principal.user.username,
-        source_ip=client_ip(request),
-        target_type="sender",
-        target_id=blocklist.normalise(body.value)[0],
-        details={"reason": body.reason, "force": body.force},
-    )
-    return await _blocklist_out(db)
+    return await _add_sender(body, principal, db, request, "block")
 
 
 @router.post("/blocklist/remove")
 async def unblock_sender(
     body: UnblockIn, principal: Admin, db: DbSession, request: Request
 ) -> dict[str, Any]:
-    try:
-        await blocklist.remove(db, body.value)
-    except blocklist.BlocklistError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    await audit.record(
-        db,
-        action="blocklist.remove",
-        outcome=Outcome.SUCCESS,
-        actor_id=str(principal.user.id),
-        actor_name=principal.user.username,
-        source_ip=client_ip(request),
-        target_type="sender",
-        target_id=blocklist.normalise(body.value)[0],
-    )
-    return await _blocklist_out(db)
+    return await _remove_sender(body, principal, db, request, "block")
+
+
+@router.get("/trustlist")
+async def get_trustlist(principal: Admin, db: DbSession) -> dict[str, Any]:
+    """Trusted senders (never classified as spam) and whether the agents applied the list."""
+    return await _blocklist_out(db, "trust")
+
+
+@router.post("/trustlist")
+async def trust_sender(
+    body: BlockIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    return await _add_sender(body, principal, db, request, "trust")
+
+
+@router.post("/trustlist/remove")
+async def untrust_sender(
+    body: UnblockIn, principal: Admin, db: DbSession, request: Request
+) -> dict[str, Any]:
+    return await _remove_sender(body, principal, db, request, "trust")
 
 
 @router.post("/alerts/{alert_id}/ack", status_code=status.HTTP_204_NO_CONTENT)
