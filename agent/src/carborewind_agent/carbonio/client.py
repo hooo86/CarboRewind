@@ -41,6 +41,10 @@ INVENTORY_ATTRS = (
     "zimbraIsAdminAccount",
     "zimbraLastLogonTimestamp",
     "zimbraCreateTimestamp",
+    # Password age (the maximum age usually comes from the class of service).
+    "zimbraPasswordModifiedTime",
+    "zimbraPasswordMaxAgeDays",
+    "zimbraPasswordMustChange",
     # Profile (LDAP / Carbonio admin console "contact" fields).
     "title",
     "company",
@@ -440,6 +444,44 @@ class CarbonioClient:
         self._admin.invoke(
             "ModifyAccount", NS_ADMIN, {"id": account_id, "a": attrs}, token=self._admin_token_r
         )
+
+    def set_password(self, account_id: str, password: str, *, must_change: bool) -> None:
+        """New password (``SetPasswordRequest``: Carbonio applies its password policy and
+        answers ``account.INVALID_PASSWORD`` when it is too weak); with ``must_change`` the
+        user has to choose another one at the next login."""
+        self._admin.invoke(
+            "SetPassword",
+            NS_ADMIN,
+            {"id": account_id, "newPassword": password},
+            token=self._admin_token_r,
+        )
+        self._admin.invoke(
+            "ModifyAccount",
+            NS_ADMIN,
+            {
+                "id": account_id,
+                "a": [
+                    {
+                        "n": "zimbraPasswordMustChange",
+                        "_content": "TRUE" if must_change else "FALSE",
+                    }
+                ],
+            },
+            token=self._admin_token_r,
+        )
+
+    def cos_password_max_age(self) -> dict[str, int]:
+        """Class-of-service id (and ``"default"``: the COS of accounts without one) ->
+        maximum password age in days (0: never expires)."""
+        resp = self._admin.invoke("GetAllCos", NS_ADMIN, {}, token=self._admin_token_r)
+        out: dict[str, int] = {}
+        for c in resp.get("cos", []):
+            days = (_attrs(c).get("zimbraPasswordMaxAgeDays") or [""])[0]
+            value = int(days) if days.isdigit() else 0
+            out[c["id"]] = value
+            if c.get("name") == "default":
+                out["default"] = value
+        return out
 
     def set_quota(self, account_id: str, quota_bytes: int) -> None:
         """Set the mail quota of an account (``zimbraMailQuota``, bytes; 0 = unlimited)."""

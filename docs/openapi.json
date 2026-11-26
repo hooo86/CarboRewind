@@ -43,6 +43,35 @@
               }
             ]
           },
+          "password_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Changed At"
+          },
+          "password_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Expires At"
+          },
+          "password_must_change": {
+            "default": false,
+            "title": "Password Must Change",
+            "type": "boolean"
+          },
           "quota_bytes": {
             "anyOf": [
               {
@@ -218,6 +247,42 @@
               }
             ],
             "title": "Last Name"
+          },
+          "password_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Changed At"
+          },
+          "password_max_age_days": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Max Age Days"
+          },
+          "password_must_change": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Must Change"
           },
           "profile": {
             "anyOf": [
@@ -413,6 +478,35 @@
               }
             ],
             "title": "Last Seen At"
+          },
+          "password_changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Changed At"
+          },
+          "password_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password Expires At"
+          },
+          "password_must_change": {
+            "default": false,
+            "title": "Password Must Change",
+            "type": "boolean"
           },
           "policies": {
             "items": {
@@ -2763,6 +2857,23 @@
             "title": "Partial Last",
             "type": "integer"
           },
+          "password_alert_days": {
+            "default": 0,
+            "title": "Password Alert Days",
+            "type": "integer"
+          },
+          "password_filter": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Password Filter",
+            "type": "array"
+          },
+          "passwords_expiring": {
+            "default": 0,
+            "title": "Passwords Expiring",
+            "type": "integer"
+          },
           "protected_24h": {
             "title": "Protected 24H",
             "type": "integer"
@@ -2983,6 +3094,7 @@
               "last_backup_at",
               "last_login_at",
               "carbonio_created_at",
+              "password_expires_at",
               "company",
               "department",
               "title",
@@ -5770,6 +5882,39 @@
         "title": "PasswordChange",
         "type": "object"
       },
+      "PasswordIn": {
+        "additionalProperties": false,
+        "properties": {
+          "must_change": {
+            "default": true,
+            "title": "Must Change",
+            "type": "boolean"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "PasswordIn",
+        "type": "object"
+      },
       "PauseIn": {
         "additionalProperties": false,
         "properties": {
@@ -7604,6 +7749,13 @@
             "maximum": 100.0,
             "minimum": 0.0,
             "title": "Mailbox Alert Percent",
+            "type": "integer"
+          },
+          "password_alert_days": {
+            "default": 7,
+            "maximum": 365.0,
+            "minimum": 0.0,
+            "title": "Password Alert Days",
             "type": "integer"
           },
           "replica_max_lag_hours": {
@@ -9731,6 +9883,13 @@
             "title": "Mailbox Alert Percent",
             "type": "integer"
           },
+          "password_alert_days": {
+            "default": 7,
+            "maximum": 365.0,
+            "minimum": 0.0,
+            "title": "Password Alert Days",
+            "type": "integer"
+          },
           "replica_max_lag_hours": {
             "default": 24,
             "maximum": 1440.0,
@@ -11649,6 +11808,41 @@
           }
         },
         "summary": "Storage Status",
+        "tags": [
+          "agent protocol"
+        ]
+      }
+    },
+    "/api/agent/trustlist-done": {
+      "post": {
+        "description": "The agent wrote the trusted senders into Carbonio (or could not).",
+        "operationId": "trustlist_done_api_agent_trustlist_done_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlocklistDoneIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trustlist Done",
         "tags": [
           "agent protocol"
         ]
@@ -14044,6 +14238,60 @@
         ]
       }
     },
+    "/api/mail/accounts/{account_id}/password": {
+      "post": {
+        "description": "New password for a mailbox, applied by the agent within a minute. The password is kept\nencrypted only until the agent applies it, and never written to a log.",
+        "operationId": "reset_password_api_mail_accounts__account_id__password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Account Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Password",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
     "/api/mail/accounts/{account_id}/{action}": {
       "post": {
         "description": "Lock or unlock an account by hand (the agent applies it within a minute).",
@@ -14560,6 +14808,114 @@
           }
         },
         "summary": "Spam Sources",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/trustlist": {
+      "get": {
+        "description": "Trusted senders (never classified as spam) and whether the agents applied the list.",
+        "operationId": "get_trustlist_api_mail_trustlist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Trustlist Api Mail Trustlist Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Trustlist",
+        "tags": [
+          "mail traffic"
+        ]
+      },
+      "post": {
+        "operationId": "trust_sender_api_mail_trustlist_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trust Sender Api Mail Trustlist Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trust Sender",
+        "tags": [
+          "mail traffic"
+        ]
+      }
+    },
+    "/api/mail/trustlist/remove": {
+      "post": {
+        "operationId": "untrust_sender_api_mail_trustlist_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnblockIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Untrust Sender Api Mail Trustlist Remove Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Untrust Sender",
         "tags": [
           "mail traffic"
         ]

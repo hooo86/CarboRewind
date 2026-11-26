@@ -315,6 +315,12 @@ class Account(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     carbonio_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Password (inventory): last change, maximum age (0: never expires) and the resulting
+    # expiry; must_change = the user has to choose a new one at the next login.
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_max_age_days: Mapped[int | None] = mapped_column(Integer)
+    password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_must_change: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # Profile from Carbonio (title, company, department, phones, address, notes…).
     profile: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = _created_at()
@@ -328,6 +334,7 @@ class Account(Base):
             postgresql_where=text("status <> 'deleted'"),
         ),
         Index("ix_accounts_domain_id", "domain_id"),
+        Index("ix_accounts_password_expires_at", "password_expires_at"),
     )
 
 
@@ -945,8 +952,10 @@ class AccountAction(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
-    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete | quota
+    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete | quota | password
     value: Mapped[int | None] = mapped_column(BigInteger)  # quota: bytes, 0 = unlimited
+    # password: the new one, Fernet-encrypted, erased as soon as the agent reports back.
+    secret: Mapped[str | None] = mapped_column(Text)
     reason: Mapped[str | None] = mapped_column(Text)
     alert_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("mail_alerts.id", ondelete="SET NULL")
@@ -960,7 +969,9 @@ class AccountAction(Base):
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        CheckConstraint("action IN ('lock', 'unlock', 'delete', 'quota')", name="action_known"),
+        CheckConstraint(
+            "action IN ('lock', 'unlock', 'delete', 'quota', 'password')", name="action_known"
+        ),
         CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
         Index(
             "ix_account_actions_pending", "created_at", postgresql_where=text("status = 'pending'")

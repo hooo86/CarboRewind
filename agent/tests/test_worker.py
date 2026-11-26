@@ -248,9 +248,14 @@ def test_inventory_carries_carbonio_attributes(
         "carbonio_created_at": "2025-01-02T03:04:05+00:00",
         "used_bytes": len(b"Subject: x\r\n\r\n12345"),
         "profile": {},
+        # never changed: since the creation; the vip COS has no maximum age
+        "password_changed_at": "2025-01-02T03:04:05+00:00",
+        "password_max_age_days": 0,
+        "password_must_change": False,
     }
     bad = accounts[other.name]
     assert (bad["quota_bytes"], bad["cos"], bad["last_login_at"]) == (None, "gone", None)
+    assert bad["password_max_age_days"] == 90  # unknown COS: the default one
     # Quota usage refused (restricted admin): each mailbox is measured instead.
     fake.quota_denied = True
     worker.sync_inventory()

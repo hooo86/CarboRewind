@@ -552,6 +552,12 @@ export const api = {
       `/api/mail/accounts/${accountId}/${action}`,
       { reason: reason ?? null },
     ),
+  resetPassword: (accountId: string, password: string, mustChange: boolean) =>
+    request<{ id: string | null; action: string; queued: boolean }>(
+      "POST",
+      `/api/mail/accounts/${accountId}/password`,
+      { password, must_change: mustChange },
+    ),
   storageSettings: () =>
     request<StorageSettings>("GET", "/api/settings/storage"),
   saveStorageSettings: (body: StorageSettingsInput) =>

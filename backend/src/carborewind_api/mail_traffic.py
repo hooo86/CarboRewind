@@ -17,6 +17,7 @@ administrator.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import asdict, dataclass, field
 
@@ -24,11 +25,12 @@ __all__ = ["asdict"]
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import audit
+from .config import Settings
 from .db.models import (
     Account,
     AccountAction,
@@ -42,7 +44,7 @@ from .db.models import (
     Outcome,
     SpamSender,
 )
-from .notifications import notify
+from .notifications import SecretKeyError, decrypt, notify
 
 LIMITS_KEY = "mail_limits"
 METRICS = (
@@ -302,17 +304,22 @@ async def _raise(
 async def queue_action(
     db: AsyncSession,
     account_id: uuid.UUID,
-    action: Literal["lock", "unlock", "delete", "quota"],
+    action: Literal["lock", "unlock", "delete", "quota", "password"],
     reason: str | None,
     *,
     alert_id: uuid.UUID | None = None,
     user_id: uuid.UUID | None = None,
     value: int | None = None,
+    secret: str | None = None,
 ) -> AccountAction | None:
-    """Queue a lock/unlock/delete or a quota change for the agent (None if the same one is
-    already pending). A quota change and a status change do not replace each other."""
+    """Queue a lock/unlock/delete, a quota change or a password reset for the agent (None if
+    the same one is already pending). Quota, password and status changes do not replace each
+    other; a new password replaces a pending one."""
+    separate = ("quota", "password")
     family = (
-        AccountAction.action == "quota" if action == "quota" else AccountAction.action != "quota"
+        AccountAction.action == action
+        if action in separate
+        else AccountAction.action.not_in(separate)
     )
     pending = await db.scalar(
         select(AccountAction).where(
@@ -322,9 +329,9 @@ async def queue_action(
         )
     )
     if pending is not None:
-        if pending.action == action and pending.value == value:
+        if pending.action == action and pending.value == value and action != "password":
             return None
-        pending.status, pending.error = "failed", "superseded"
+        pending.status, pending.error, pending.secret = "failed", "superseded", None
     row = AccountAction(
         account_id=account_id,
         action=action,
@@ -332,13 +339,31 @@ async def queue_action(
         reason=(reason or "")[:500] or None,
         alert_id=alert_id,
         created_by=user_id,
+        secret=secret,
     )
     db.add(row)
     await db.flush()
     return row
 
 
-async def pending_actions(db: AsyncSession) -> list[dict[str, Any]]:
+PASSWORD_TTL = timedelta(hours=1)  # a password not applied by then is dropped
+
+
+async def pending_actions(
+    db: AsyncSession, settings: Settings | None = None
+) -> list[dict[str, Any]]:
+    """Actions for the agent. A password reset carries the new password, decrypted for this
+    answer only (mutual TLS); one waiting for more than an hour is dropped, password erased."""
+    now = datetime.now(UTC)
+    await db.execute(
+        update(AccountAction)
+        .where(
+            AccountAction.action == "password",
+            AccountAction.status == "pending",
+            AccountAction.created_at < now - PASSWORD_TTL,
+        )
+        .values(status="failed", error="expired: not applied within an hour", secret=None)
+    )
     rows = await db.execute(
         select(AccountAction, Account)
         .join(Account, Account.id == AccountAction.account_id)
@@ -346,17 +371,28 @@ async def pending_actions(db: AsyncSession) -> list[dict[str, Any]]:
         .order_by(AccountAction.created_at)
         .limit(100)
     )
-    return [
-        {
+    out: list[dict[str, Any]] = []
+    for a, acc in rows.tuples():
+        item: dict[str, Any] = {
             "id": str(a.id),
             "action": a.action,
             "carbonio_id": acc.carbonio_id,
             "email": acc.email,
             "reason": a.reason,
-            **({"value": a.value} if a.action == "quota" else {}),
         }
-        for a, acc in rows
-    ]
+        if a.action == "quota":
+            item["value"] = a.value
+        if a.action == "password":
+            try:
+                if settings is None or a.secret is None:
+                    raise SecretKeyError("no password to send")
+                item.update(json.loads(decrypt(settings, a.secret)))
+            except (SecretKeyError, ValueError) as exc:
+                a.status, a.error, a.secret = "failed", str(exc)[:500], None
+                a.done_at = now
+                continue
+        out.append(item)
+    return out
 
 
 async def pending_ip_actions(db: AsyncSession) -> list[dict[str, Any]]:

@@ -42,6 +42,7 @@ class SettingsIn(BaseModel):
     mailbox_alert_gb: float = Field(default=0.0, ge=0, le=100_000)
     service_down_reports: int = Field(default=2, ge=1, le=60)
     mail_queue_alert: int = Field(default=200, ge=0, le=1_000_000)
+    password_alert_days: int = Field(default=7, ge=0, le=365)
 
     @field_validator("integrity_cron")
     @classmethod
@@ -123,6 +124,7 @@ async def overview(principal: Admin, db: DbSession, settings: AppSettings) -> Ov
             cfg.stale_hours,
             quota_percent=cfg.mailbox_alert_percent,
             quota_gb=cfg.mailbox_alert_gb,
+            password_days=cfg.password_alert_days,
         ),
         replica=await monitoring.replica_status(db, cfg.replica_max_lag_hours),
         integrity=await monitoring.integrity_status(db),

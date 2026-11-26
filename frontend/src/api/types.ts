@@ -100,6 +100,9 @@ export interface AccountDetail {
   last_snapshot: Snapshot | null;
   quota_bytes?: number | null;
   used_bytes?: number | null;
+  password_changed_at?: string | null;
+  password_expires_at?: string | null;
+  password_must_change?: boolean;
 }
 
 export interface QuotaResult {
@@ -131,6 +134,9 @@ export interface Job {
 }
 
 export interface Dashboard {
+  passwords_expiring?: number;
+  password_alert_days?: number;
+  password_filter?: string[];
   accounts: number;
   protected_24h: number;
   never_backed_up: number;
@@ -304,6 +310,9 @@ export interface AccountItem {
   last_login_at: string | null;
   carbonio_created_at: string | null;
   last_seen_at: string | null;
+  password_changed_at?: string | null;
+  password_expires_at?: string | null;
+  password_must_change?: boolean;
   last_backup_at: string | null;
   last_backup_status: SnapshotStatus | null;
   last_backup_type: BackupType | null;
@@ -699,6 +708,7 @@ export interface MonitoringSettings {
   mailbox_alert_gb: number;
   service_down_reports: number;
   mail_queue_alert: number;
+  password_alert_days?: number;
 }
 
 export interface ServiceState {

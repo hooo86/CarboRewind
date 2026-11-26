@@ -213,6 +213,9 @@ class AccountIn(BaseModel):
     last_login_at: datetime | None = None
     carbonio_created_at: datetime | None = None
     profile: dict[str, str] | None = None
+    password_changed_at: datetime | None = None
+    password_max_age_days: int | None = Field(default=None, ge=0, le=100_000)
+    password_must_change: bool | None = None
 
     @field_validator("profile")
     @classmethod
@@ -239,6 +242,14 @@ class AccountIn(BaseModel):
             out["used_bytes"] = self.used_bytes
         if self.profile is not None:  # older agents do not send it
             out["profile"] = self.profile
+        if "password_changed_at" in self.model_fields_set:
+            changed, days = self.password_changed_at, self.password_max_age_days
+            out["password_changed_at"] = changed
+            out["password_max_age_days"] = days
+            out["password_expires_at"] = (
+                changed + timedelta(days=days) if changed is not None and days else None
+            )
+            out["password_must_change"] = bool(self.password_must_change)
         return out
 
 
@@ -597,7 +608,9 @@ async def services(body: ServicesIn, agent: CurrentAgent, db: DbSession) -> dict
 
 
 @router.post("/mail-stats")
-async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> dict[str, Any]:
+async def mail_stats(
+    body: MailStatsIn, agent: CurrentAgent, db: DbSession, settings: AppSettings
+) -> dict[str, Any]:
     """Hourly mail counters from the MTA log; answers with the account actions to apply."""
     now = datetime.now(UTC)
     if agent.role == standby.STANDBY:
@@ -623,7 +636,7 @@ async def mail_stats(body: MailStatsIn, agent: CurrentAgent, db: DbSession) -> d
         },
     }
     answer: dict[str, Any] = {
-        "actions": await mail_traffic.pending_actions(db),
+        "actions": await mail_traffic.pending_actions(db, settings),
         "ip_actions": await mail_traffic.pending_ip_actions(db),
     }
     for which in blocklist.LISTS:
@@ -722,9 +735,15 @@ async def account_action_done(
     account = await db.get(Account, action.account_id)
     action.done_at = datetime.now(UTC)
     action.status, action.error = ("failed", body.error) if body.error else ("done", None)
+    action.secret = None  # a new password is never kept once applied (or refused)
     if account is not None and not body.error:
         if action.action == "quota":
             account.quota_bytes = action.value or None  # 0: unlimited
+        elif action.action == "password":
+            now = datetime.now(UTC)
+            account.password_changed_at = now
+            days = account.password_max_age_days
+            account.password_expires_at = now + timedelta(days=days) if days else None
         else:
             account.status = {
                 "lock": AccountStatus.LOCKED,

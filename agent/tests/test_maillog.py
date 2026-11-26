@@ -323,6 +323,49 @@ def test_monitor_applies_the_blocked_senders(setup: tuple[Any, ...]) -> None:
     assert calls[-1] == (5, [], "no local domain known yet")
 
 
+def test_monitor_resets_a_password(setup: tuple[Any, ...]) -> None:
+    monitor, server, fake, _log = setup
+    cy = fake.add_mailbox("cy@lnhc.dz")
+    ana = next(m for m in fake.mailboxes.values() if m.name == "ana@lnhc.dz")
+    server.actions = [
+        {
+            "id": "p1",
+            "action": "password",
+            "carbonio_id": cy.id,
+            "email": cy.name,
+            "password": "N3w-Secret-Pass",
+            "must_change": True,
+        },
+        {
+            "id": "p2",
+            "action": "password",
+            "carbonio_id": cy.id,
+            "email": cy.name,
+            "password": "short",
+            "must_change": False,
+        },
+        {
+            "id": "p3",
+            "action": "password",
+            "carbonio_id": ana.id,
+            "email": ana.name,
+            "password": "Whatever-123",
+        },
+        {"id": "p4", "action": "password", "carbonio_id": cy.id, "email": cy.name},
+    ]
+    monitor.tick(NOW)
+    done = {p: b for p, b in server.calls if p.startswith("/account-actions/p")}
+    assert done["/account-actions/p1/done"] == {"error": None}
+    assert fake.passwords[cy.id] == "N3w-Secret-Pass"
+    assert cy.attrs["zimbraPasswordMustChange"] == "TRUE"
+    # Carbonio's policy refuses it: reported, without the password.
+    assert "INVALID_PASSWORD" in done["/account-actions/p2/done"]["error"]
+    assert "short" not in done["/account-actions/p2/done"]["error"].replace("too short", "")
+    assert "protected" in done["/account-actions/p3/done"]["error"]
+    assert ana.id not in fake.passwords
+    assert done["/account-actions/p4/done"]["error"] == "invalid password request"
+
+
 def test_monitor_applies_the_trusted_senders(setup: tuple[Any, ...]) -> None:
     monitor, _server, fake, _log = setup
     monitor.refresh_addresses()

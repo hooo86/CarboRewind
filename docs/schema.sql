@@ -820,4 +820,24 @@ ALTER TABLE spam_senders ADD COLUMN rcpts JSONB DEFAULT '[]'::jsonb NOT NULL;
 
 UPDATE alembic_version SET version_num='0024' WHERE alembic_version.version_num = '0023';
 
+-- Running upgrade 0024 -> 0025
+
+ALTER TABLE accounts ADD COLUMN password_changed_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN password_max_age_days INTEGER;
+
+ALTER TABLE accounts ADD COLUMN password_expires_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN password_must_change BOOLEAN DEFAULT false NOT NULL;
+
+CREATE INDEX ix_accounts_password_expires_at ON accounts (password_expires_at);
+
+ALTER TABLE account_actions ADD COLUMN secret TEXT;
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete', 'quota', 'password'));
+
+UPDATE alembic_version SET version_num='0025' WHERE alembic_version.version_num = '0024';
+
 COMMIT;

@@ -403,3 +403,107 @@ def test_trusted_senders(api: TestClient, engine: Engine) -> None:
     assert agent.post("/mail-stats", {"hours": []}).json()["trustlist"]["remove"] == [
         "@partner.example"
     ]
+
+
+def test_password_expiry_and_reset(api: TestClient, engine: Engine) -> None:
+    h = login(api, engine)
+    agent = enroll(api, h)
+    tag = uuid.uuid4().hex[:6]
+    now = datetime.now(UTC)
+    ana, ben, cy = (f"{k}{tag}@example.com" for k in ("ana", "ben", "cy"))
+    agent.post(
+        "/inventory",
+        {
+            "accounts": [
+                # 90 days, changed 87 days ago: expires in 3 days
+                {
+                    "carbonio_id": f"ana-{tag}",
+                    "email": ana,
+                    "status": "active",
+                    "password_changed_at": (now - timedelta(days=87)).isoformat(),
+                    "password_max_age_days": 90,
+                    "password_must_change": False,
+                },
+                # never expires
+                {
+                    "carbonio_id": f"ben-{tag}",
+                    "email": ben,
+                    "status": "active",
+                    "password_changed_at": (now - timedelta(days=400)).isoformat(),
+                    "password_max_age_days": 0,
+                },
+                # expired 10 days ago
+                {
+                    "carbonio_id": f"cy-{tag}",
+                    "email": cy,
+                    "status": "active",
+                    "password_changed_at": (now - timedelta(days=100)).isoformat(),
+                    "password_max_age_days": 90,
+                },
+            ]
+        },
+    )
+    with Session(engine) as s:
+        rows = {
+            a.email: a for a in s.scalars(select(Account).where(Account.email.in_([ana, ben, cy])))
+        }
+        assert rows[ben].password_expires_at is None
+        left = rows[ana].password_expires_at - now  # type: ignore[operator]
+        assert timedelta(days=2) < left < timedelta(days=4)
+        ana_id = rows[ana].id
+    # The dashboard counts them and gives the filter of the accounts list.
+    d = api.get("/api/dashboard", headers=h).json()
+    assert d["passwords_expiring"] >= 2 and d["password_alert_days"] == 7
+    listed = api.get(
+        "/api/accounts",
+        params={"f": [*d["password_filter"], f"email:contains:{tag}"]},
+        headers=h,
+    ).json()["items"]
+    assert sorted(a["email"] for a in listed) == [ana, cy]
+    assert listed[0]["password_expires_at"]
+
+    # Reset: refused too short; queued encrypted; handed to the agent; erased once applied.
+    url = f"/api/mail/accounts/{ana_id}/password"
+    assert api.post(url, json={"password": "short"}, headers=h).status_code == 422
+    assert api.post(url, json={"password": " spaced-out "}, headers=h).status_code == 422
+    r = api.post(url, json={"password": "Brand-New-Pass-42", "must_change": True}, headers=h)
+    assert r.status_code == 200 and r.json()["queued"] is True, r.text
+    with Session(engine) as s:
+        row = s.scalars(
+            select(AccountAction).where(
+                AccountAction.account_id == ana_id, AccountAction.action == "password"
+            )
+        ).one()
+        assert row.secret and "Brand-New-Pass-42" not in row.secret
+        action_id = row.id
+    actions = agent.post("/mail-stats", {"hours": []}).json()["actions"]
+    mine = next(a for a in actions if a["id"] == str(action_id))
+    assert mine["password"] == "Brand-New-Pass-42" and mine["must_change"] is True
+    agent.post(f"/account-actions/{action_id}/done", {"error": None})
+    with Session(engine) as s:
+        row2 = s.get(AccountAction, action_id)
+        assert row2 is not None and row2.status == "done" and row2.secret is None
+        account = s.get(Account, ana_id)
+        assert account is not None and account.password_expires_at is not None
+        assert account.password_expires_at > now + timedelta(days=80)
+        audit_details = s.scalars(
+            select(AuditEvent.details).where(AuditEvent.target_id == ana)
+        ).all()
+    assert all("Brand-New-Pass-42" not in str(d) for d in audit_details)
+    # Never applied within an hour: dropped, password erased.
+    api.post(url, json={"password": "Another-Pass-77"}, headers=h)
+    with Session(engine) as s, s.begin():
+        s.execute(
+            update(AccountAction)
+            .where(AccountAction.account_id == ana_id, AccountAction.status == "pending")
+            .values(created_at=now - timedelta(hours=2))
+        )
+    actions = agent.post("/mail-stats", {"hours": []}).json()["actions"]
+    assert not any(a.get("password") for a in actions)
+    with Session(engine) as s:
+        late = s.scalars(
+            select(AccountAction).where(
+                AccountAction.account_id == ana_id, AccountAction.error.like("expired%")
+            )
+        ).one()
+        assert late.secret is None

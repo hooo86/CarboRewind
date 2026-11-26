@@ -94,6 +94,7 @@ def account_payload(
     cos: dict[str, tuple[str, int | None]] | dict[str, str],
     used: dict[str, int] | None,
     limits: dict[str, int] | None = None,
+    password_age: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Inventory entry sent to the API (see ``AccountIn``).
 
@@ -130,6 +131,21 @@ def account_payload(
             if (value := _first(a.attrs, attr))
         },
     }
+    # Password: its own maximum age, else its class of service's (0: never expires).
+    own_age = _first(a.attrs, "zimbraPasswordMaxAgeDays")
+    if own_age and own_age.isdigit():
+        max_age: int | None = int(own_age)
+    elif password_age is not None:
+        max_age = password_age.get(cos_id or "default", password_age.get("default", 0))
+    else:
+        max_age = None
+    changed = _first(a.attrs, "zimbraPasswordModifiedTime") or _first(
+        a.attrs, "zimbraCreateTimestamp"
+    )
+    payload["password_changed_at"] = _generalized_time(changed)
+    if max_age is not None:
+        payload["password_max_age_days"] = max_age
+    payload["password_must_change"] = _first(a.attrs, "zimbraPasswordMustChange") == "TRUE"
     if used is not None and a.id in used:
         payload["used_bytes"] = used[a.id]
     return payload
@@ -262,7 +278,12 @@ class Worker:
                 except SoapFaultError as exc:
                     log.debug("no mailbox size for %s: %s", info.name, exc)
             self._size_cursor = start + MAX_SIZE_LOOKUPS
-        accounts = [account_payload(a, cos, used, limits) for a in infos]
+        password_age: dict[str, int] | None = None
+        try:
+            password_age = self._carbonio.cos_password_max_age()
+        except SoapFaultError as exc:
+            log.warning("cannot read the password policy of the classes of service: %s", exc)
+        accounts = [account_payload(a, cos, used, limits, password_age) for a in infos]
         return self._api.inventory(accounts, complete=True, storage=self.storage_report())
 
     def space_floor(self, path: Path) -> int:

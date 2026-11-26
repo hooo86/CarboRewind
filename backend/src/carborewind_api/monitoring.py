@@ -21,7 +21,7 @@ __all__ = ["asdict", "storage_settings"]
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -69,6 +69,8 @@ class MonitoringSettings:
     # minute); mail queue (deferred + active + incoming + hold) alert from this size (0 = off).
     service_down_reports: int = 2
     mail_queue_alert: int = 200
+    # Mailbox passwords expiring within this many days (or expired) are reported (0 = off).
+    password_alert_days: int = 7
 
     @classmethod
     def from_json(cls, data: dict[str, Any] | None) -> MonitoringSettings:
@@ -487,7 +489,7 @@ def _covered() -> Any:
 
 def nearly_full(percent: int, gb: float) -> Any:
     """Condition on Account: over ``percent`` of its quota, or over ``gb`` GB."""
-    from sqlalchemy import Float, cast, false
+    from sqlalchemy import Float, cast
 
     conditions = []
     if percent > 0:
@@ -504,12 +506,29 @@ def nearly_full(percent: int, gb: float) -> Any:
     return or_(*conditions) if conditions else false()
 
 
+def password_expiring(days: int, now: datetime) -> Any:
+    """Accounts whose password expires within ``days`` days, or has expired."""
+    if days <= 0:
+        return false()
+    return and_(
+        Account.password_expires_at.is_not(None),
+        Account.password_expires_at < now + timedelta(days=days),
+    )
+
+
+def password_filter(days: int, now: datetime) -> list[str]:
+    """The accounts list filter showing the same accounts (whole days)."""
+    limit = (now + timedelta(days=days + 1)).date().isoformat()
+    return [f"password_expires_at:before:{limit}"] if days > 0 else []
+
+
 async def accounts_at_risk(
     db: AsyncSession,
     stale_hours: int,
     limit: int = 20,
     quota_percent: int = 0,
     quota_gb: float = 0.0,
+    password_days: int = 0,
 ) -> dict[str, dict[str, Any]]:
     snap = aliased(Snapshot)
     last_ok = (
@@ -543,6 +562,10 @@ async def accounts_at_risk(
         "quota": (
             nearly_full(quota_percent, quota_gb),
             [f"usage_pct:ge:{quota_percent}"] if quota_percent and not quota_gb else [],
+        ),
+        "password": (
+            password_expiring(password_days, datetime.now(UTC)),
+            password_filter(password_days, datetime.now(UTC)),
         ),
     }
     out: dict[str, dict[str, Any]] = {}
@@ -689,7 +712,8 @@ async def enqueue_verify(db: AsyncSession, now: datetime) -> list[uuid.UUID]:
 
 
 async def periodic_alerts(db: AsyncSession, now: datetime) -> int:
-    """Copy 2 late, storage full soon, mailboxes nearly full (once a day each)."""
+    """Copy 2 late, storage full soon, mailboxes nearly full, passwords expiring (once a day
+    each)."""
     cfg = await load_settings(db)
     queued = 0
     day = f"{now:%Y-%m-%d}"
@@ -717,6 +741,33 @@ async def periodic_alerts(db: AsyncSession, now: datetime) -> int:
                 "mailbox_quota",
                 dedup_key=f"mailbox_quota:{day}",
                 count=len(rows),
+                list="\n".join(lines),
+            )
+    if cfg.password_alert_days > 0:
+        expiring = (
+            await db.execute(
+                select(Account.email, Account.password_expires_at)
+                .where(
+                    Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED]),
+                    password_expiring(cfg.password_alert_days, now),
+                )
+                .order_by(Account.password_expires_at)
+            )
+        ).all()
+        if expiring:
+            lines = [
+                f"- {email} : {'expiré le' if when <= now else 'expire le'} {when:%Y-%m-%d}"
+                for email, when in expiring[:200]
+                if when is not None
+            ]
+            if len(expiring) > 200:
+                lines.append(f"… (+{len(expiring) - 200})")
+            queued += await notify(
+                db,
+                "password_expiring",
+                dedup_key=f"password_expiring:{day}",
+                count=len(expiring),
+                days=cfg.password_alert_days,
                 list="\n".join(lines),
             )
     replica = await replica_status(db, cfg.replica_max_lag_hours)

@@ -50,6 +50,9 @@ export const resources = {
         stored_bytes: "Taille sauvegardée",
         policies: "Politiques",
         has_policy: "Couvert par une politique",
+        password_expires_at: "Expiration du mot de passe",
+        password_changed_at: "Mot de passe changé le",
+        password_must_change: "Mot de passe à changer",
         protected_24h: "Sauvegarde réussie depuis 24 h",
       },
       filters: {
@@ -69,6 +72,7 @@ export const resources = {
           partial: "Dernière sauvegarde partielle",
           noPolicy: "Sans politique",
           quota80: "Quota utilisé ≥ 80 %",
+          password7: "Mot de passe expiré ou expirant sous 7 jours",
           admins: "Administrateurs",
           inactive: "Sans connexion depuis 90 jours",
           locked: "Verrouillés ou fermés",
@@ -411,6 +415,24 @@ export const resources = {
           "<> = message sans expéditeur : un avis de non-remise (rebond) renvoyé par un serveur. On ne peut pas bloquer <> sans bloquer tous les avis de non-remise. La boîte concernée est le destinataire (→) : soit elle a envoyé des messages refusés, soit des spammeurs ont usurpé son adresse (backscatter). Dans ce cas, vérifiez SPF, DKIM et DMARC du domaine, et changez le mot de passe de la boîte si elle a envoyé du spam.",
         spamCount_one: "{{count}} spam",
         spamCount_other: "{{count}} spams",
+      },
+      password: {
+        title: "Mot de passe",
+        help: "Nouveau mot de passe de la boîte, appliqué par l'agent dans la minute. Carbonio applique sa propre politique (longueur, types de caractères) et peut le refuser : l'erreur s'affiche alors dans le journal des actions. Le mot de passe n'est conservé, chiffré, que le temps que l'agent l'applique, et n'apparaît dans aucun journal. Transmettez-le à l'utilisateur par un autre canal que sa messagerie.",
+        new: "Nouveau mot de passe",
+        again: "Confirmer",
+        generate: "Générer",
+        show: "Afficher",
+        mismatch: "Les deux saisies sont différentes.",
+        tooShort: "8 caractères au minimum.",
+        mustChange: "L'utilisateur devra le changer à sa prochaine connexion",
+        mustChangeShort: "à changer à la connexion",
+        submit: "Réinitialiser le mot de passe",
+        queued:
+          "Nouveau mot de passe de {{email}} : l'agent l'applique dans la minute.",
+        expires: "Expiration du mot de passe",
+        never: "n'expire pas",
+        expired: "expiré {{when}}",
       },
       quota: {
         title: "Modifier le quota",
@@ -900,6 +922,8 @@ export const resources = {
           storage_full: "Stockage plein dans moins de 14 jours (prévision)",
           mailbox_quota:
             "Boîtes mail proches de la saturation (récapitulatif quotidien)",
+          password_expiring:
+            "Mots de passe expirés ou bientôt expirés (récapitulatif quotidien)",
           archive_report: "Compte rendu d'un passage d'archivage",
           service_down: "Service Carbonio arrêté (Amavis, MTA, antispam…)",
           service_up: "Service Carbonio rétabli",
@@ -1181,6 +1205,8 @@ export const resources = {
         serviceReports: "Alerte après N relevés en panne (1 par minute)",
         queueAlert:
           "Alerte file d'attente à partir de (messages, 0 = désactivée)",
+        passwordDays:
+          "Alerte d'expiration des mots de passe (jours avant, 0 = désactivée)",
         servicesHelp:
           "Un service arrêté déclenche un e-mail (et un autre quand il redémarre). La file d'attente est signalée au plus toutes les 3 heures.",
         settings: "Réglages de la supervision",
@@ -1219,6 +1245,7 @@ export const resources = {
           no_policy: "Couverts par aucune politique active",
           quota:
             "Boîtes proches de la saturation (≥ {{pct}} % du quota ou ≥ {{gb}} Go)",
+          password: "Mot de passe expiré ou expirant sous {{days}} jours",
         },
         copy2: "Copie 2",
         lastCopy: "Dernière mise à jour réussie {{when}}.",
@@ -1800,6 +1827,10 @@ export const resources = {
         blacklisted:
           "Adresse(s) du serveur en liste noire : {{list}}. Des destinataires peuvent refuser vos messages.",
         seeAccounts: "Voir les comptes",
+        passwords_one:
+          "{{count}} boîte a un mot de passe expiré ou qui expire dans les {{days}} jours.",
+        passwords_other:
+          "{{count}} boîtes ont un mot de passe expiré ou qui expire dans les {{days}} jours.",
         ipBlocked_one:
           "Carbonio bloque en ce moment une adresse IP après des connexions échouées : {{list}}.",
         ipBlocked_other:
@@ -1956,6 +1987,9 @@ export const resources = {
         stored_bytes: "Backed-up size",
         policies: "Policies",
         has_policy: "Covered by a policy",
+        password_expires_at: "Password expiry",
+        password_changed_at: "Password changed on",
+        password_must_change: "Password to change",
         protected_24h: "Successful backup within 24 h",
       },
       filters: {
@@ -1975,6 +2009,7 @@ export const resources = {
           partial: "Last backup partial",
           noPolicy: "Without policy",
           quota80: "Quota used ≥ 80 %",
+          password7: "Password expired or expiring within 7 days",
           admins: "Administrators",
           inactive: "No login for 90 days",
           locked: "Locked or closed",
@@ -2311,6 +2346,24 @@ export const resources = {
           "<> = message without sender: a non-delivery report (bounce) sent back by a server. <> cannot be blocked without blocking every bounce. The mailbox concerned is the recipient (→): either it sent messages that were refused, or spammers forged its address (backscatter). Then check SPF, DKIM and DMARC of the domain, and change the mailbox password if it sent spam.",
         spamCount_one: "{{count}} spam",
         spamCount_other: "{{count}} spams",
+      },
+      password: {
+        title: "Password",
+        help: "New password of the mailbox, applied by the agent within a minute. Carbonio applies its own policy (length, character classes) and may refuse it: the error then shows in the action log. The password is kept, encrypted, only until the agent applies it, and never appears in a log. Give it to the user through another channel than their mailbox.",
+        new: "New password",
+        again: "Confirm",
+        generate: "Generate",
+        show: "Show",
+        mismatch: "The two entries differ.",
+        tooShort: "At least 8 characters.",
+        mustChange: "The user must change it at the next login",
+        mustChangeShort: "to change at login",
+        submit: "Reset the password",
+        queued:
+          "New password of {{email}}: the agent applies it within a minute.",
+        expires: "Password expiry",
+        never: "never expires",
+        expired: "expired {{when}}",
       },
       quota: {
         title: "Change quota",
@@ -2791,6 +2844,8 @@ export const resources = {
           replica_lag: "Copy 2 is late",
           storage_full: "Storage full in less than 14 days (forecast)",
           mailbox_quota: "Mailboxes nearly full (daily summary)",
+          password_expiring:
+            "Passwords expired or expiring soon (daily summary)",
           archive_report: "Report of an archive run",
           service_down: "Carbonio service down (Amavis, MTA, antispam…)",
           service_up: "Carbonio service back",
@@ -3061,6 +3116,7 @@ export const resources = {
         downSince: "Down since {{date}}",
         serviceReports: "Alert after N reports down (1 a minute)",
         queueAlert: "Mail queue alert from (messages, 0 = off)",
+        passwordDays: "Password expiry alert (days before, 0 = off)",
         servicesHelp:
           "A service going down sends an e-mail (and another one when it is back). The queue is reported at most every 3 hours.",
         settings: "Monitoring settings",
@@ -3098,6 +3154,7 @@ export const resources = {
           partial: "Last backup partial",
           no_policy: "Covered by no enabled policy",
           quota: "Mailboxes nearly full (≥ {{pct}} % of quota or ≥ {{gb}} GB)",
+          password: "Password expired or expiring within {{days}} days",
         },
         copy2: "Copy 2",
         lastCopy: "Last successful refresh {{when}}.",
@@ -3672,6 +3729,10 @@ export const resources = {
         blacklisted:
           "Server address(es) blacklisted: {{list}}. Recipients may refuse your messages.",
         seeAccounts: "See accounts",
+        passwords_one:
+          "{{count}} mailbox has a password expired or expiring within {{days}} days.",
+        passwords_other:
+          "{{count}} mailboxes have a password expired or expiring within {{days}} days.",
         ipBlocked_one:
           "Carbonio is blocking an IP address after failed logins: {{list}}.",
         ipBlocked_other:

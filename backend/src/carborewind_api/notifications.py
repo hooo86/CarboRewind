@@ -62,6 +62,7 @@ EVENTS = (
     "replica_lag",
     "storage_full",
     "mailbox_quota",
+    "password_expiring",
     "archive_report",
     "service_down",
     "service_up",
@@ -305,6 +306,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota_body": (
             "{count} boîte(s) ont atteint le seuil d'alerte (Supervision → Réglages) :\n\n{list}\n"
         ),
+        "password_expiring": "[CarboRewind] {count} mot(s) de passe expire(nt) bientôt",
+        "password_expiring_body": (
+            "{count} boîte(s) ont un mot de passe expiré ou qui expire dans les {days} jours. "
+            "Prévenez les utilisateurs, ou réinitialisez le mot de passe depuis la fiche du "
+            "compte dans CarboRewind :\n\n{list}\n"
+        ),
         "restore_test_failed": "[CarboRewind] Test de restauration en échec ({source})",
         "restore_test_failed_body": (
             "Le test de restauration automatique de {source} (sauvegarde n° {seq}) vers {target} "
@@ -477,6 +484,12 @@ TEXTS: dict[str, dict[str, str]] = {
         "mailbox_quota": "[CarboRewind] {count} mailbox(es) nearly full",
         "mailbox_quota_body": (
             "{count} mailbox(es) reached the alert threshold (Monitoring → Settings):\n\n{list}\n"
+        ),
+        "password_expiring": "[CarboRewind] {count} password(s) expiring soon",
+        "password_expiring_body": (
+            "{count} mailbox(es) have a password expired or expiring within {days} days. "
+            "Warn the users, or reset the password from the account page in CarboRewind:"
+            "\n\n{list}\n"
         ),
         "restore_test_failed": "[CarboRewind] Restore test failed ({source})",
         "restore_test_failed_body": (

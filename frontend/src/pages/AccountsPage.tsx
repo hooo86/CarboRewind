@@ -14,6 +14,7 @@ import type {
   SavedView,
 } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { PasswordExpiry } from "../components/PasswordExpiry";
 import { QuotaForm } from "../components/QuotaForm";
 import {
   LoadView,
@@ -139,6 +140,21 @@ export const COLUMNS: Column[] = [
     render: (a) => formatDate(a.last_seen_at),
   },
   {
+    key: "password_expires_at",
+    sort: "password_expires_at",
+    render: (a) => (
+      <PasswordExpiry
+        at={a.password_expires_at ?? null}
+        mustChange={a.password_must_change ?? false}
+      />
+    ),
+  },
+  {
+    key: "password_changed_at",
+    sort: "password_changed_at",
+    render: (a) => formatDate(a.password_changed_at),
+  },
+  {
     key: "last_backup_at",
     sort: "last_backup_at",
     render: (a, t) =>
@@ -220,6 +236,11 @@ const DEFAULT_COLUMNS = [
   "policies",
 ];
 
+/** ISO date (YYYY-MM-DD) ``days`` days from today. */
+function inDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 /** Ready-made filters, toggled from the "Filters" menu (Odoo-style). */
 export const PRESETS: { key: string; filters: string[] }[] = [
   { key: "never", filters: ["last_backup_at:not_set"] },
@@ -227,6 +248,7 @@ export const PRESETS: { key: string; filters: string[] }[] = [
   { key: "partial", filters: ["last_backup_status:in:partial"] },
   { key: "noPolicy", filters: ["has_policy:is:false"] },
   { key: "quota80", filters: ["usage_pct:ge:80"] },
+  { key: "password7", filters: [`password_expires_at:before:${inDays(8)}`] },
   { key: "admins", filters: ["is_admin:is:true"] },
   { key: "inactive", filters: ["last_login_at:older_days:90"] },
   { key: "locked", filters: ["status:in:locked,closed"] },

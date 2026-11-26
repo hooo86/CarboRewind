@@ -27,7 +27,15 @@ import { NoticeBar, type Notice } from "../components/notices";
 import { formatBytes, formatDate, formatRelative } from "../utils/format";
 import { TimezoneSelect } from "../components/TimezoneSelect";
 
-const RISKS = ["never", "stale", "failed", "partial", "no_policy", "quota"];
+const RISKS = [
+  "never",
+  "stale",
+  "failed",
+  "partial",
+  "no_policy",
+  "quota",
+  "password",
+];
 const DAY = 86400;
 
 function duration(seconds: number, t: TFunction) {
@@ -293,6 +301,16 @@ export function MonitoringSettingsForm({
             min={0}
             value={form.mail_queue_alert}
             onChange={(e) => set("mail_queue_alert", Number(e.target.value))}
+          />
+        </label>
+        <label>
+          {t("monitoring.passwordDays")}
+          <input
+            type="number"
+            min={0}
+            max={365}
+            value={form.password_alert_days ?? 7}
+            onChange={(e) => set("password_alert_days", Number(e.target.value))}
           />
         </label>
       </div>
@@ -594,6 +612,7 @@ export function MonitoringPage() {
                               hours: d.settings.stale_hours,
                               pct: d.settings.mailbox_alert_percent,
                               gb: d.settings.mailbox_alert_gb,
+                              days: d.settings.password_alert_days ?? 7,
                             })}
                           </td>
                           <td className={`num ${cat.count ? "bad-text" : ""}`}>

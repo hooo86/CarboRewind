@@ -58,6 +58,9 @@ class AccountDetail(BaseModel):
     last_snapshot: SnapshotOut | None
     quota_bytes: int | None = None  # None or 0: unlimited
     used_bytes: int | None = None
+    password_changed_at: datetime | None = None
+    password_expires_at: datetime | None = None  # None: never expires (or unknown)
+    password_must_change: bool = False
 
 
 class Dashboard(BaseModel):
@@ -79,6 +82,10 @@ class Dashboard(BaseModel):
     # Mailboxes over the alert threshold (Monitoring settings).
     mailboxes_nearly_full: int = 0
     mailbox_alert_percent: int = 0
+    # Passwords expired or expiring within password_alert_days, and the list filter for them.
+    passwords_expiring: int = 0
+    password_alert_days: int = 0
+    password_filter: list[str] = Field(default_factory=list)
     # Archive: messages kept in the repository, and what left the mailboxes.
     archived_messages: int = 0
     archived_bytes: int = 0
@@ -145,6 +152,9 @@ async def get_account(
         domain=domain.name if domain else "",
         quota_bytes=account.quota_bytes,
         used_bytes=account.used_bytes,
+        password_changed_at=account.password_changed_at,
+        password_expires_at=account.password_expires_at,
+        password_must_change=account.password_must_change,
         last_seen_at=account.last_seen_at,
         snapshot_count=count or 0,
         last_snapshot=snapshot_out(last) if last else None,
@@ -288,8 +298,22 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
             Account.domain_id,
         )
     )
+    expiring = await db.scalar(
+        scoped(
+            select(func.count())
+            .select_from(Account)
+            .where(
+                Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED]),
+                monitoring.password_expiring(cfg.password_alert_days, now),
+            ),
+            Account.domain_id,
+        )
+    )
     archive = await summary_for(db, scope)
     return Dashboard(
+        passwords_expiring=int(expiring or 0),
+        password_alert_days=cfg.password_alert_days,
+        password_filter=monitoring.password_filter(cfg.password_alert_days, now),
         services_down=services_down,
         blacklisted=listed,
         mail_queue_total=queue_total,

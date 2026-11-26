@@ -215,6 +215,29 @@ class MailMonitor:
                 error = f"{exc.code}: {exc}"[:500]
             self._api.mail_action_done(str(action["id"]), error)
             return
+        if kind == "password":
+            if protected:
+                error = "protected account (used by CarboRewind itself): password not changed"
+            else:
+                try:
+                    password = str(action["password"])
+                    if not 1 <= len(password) <= 128:
+                        raise ValueError("bad length")
+                    self._carbonio.set_password(
+                        str(action["carbonio_id"]),
+                        password,
+                        must_change=bool(action.get("must_change", True)),
+                    )
+                    # Never the password itself in the logs.
+                    log.warning("account %s: password reset", action.get("email"))
+                except (KeyError, TypeError, ValueError):
+                    error = "invalid password request"
+                except SoapFaultError as exc:
+                    error = f"{exc.code}: {exc.reason}"[:500]
+                finally:
+                    action.pop("password", None)
+            self._api.mail_action_done(str(action["id"]), error)
+            return
         if kind == "delete":
             if protected:
                 error = "protected account (used by CarboRewind itself): not deleted"

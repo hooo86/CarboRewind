@@ -9,6 +9,7 @@ be locked or unlocked by hand (the agent applies it within a minute).
 from __future__ import annotations
 
 import ipaddress
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -36,7 +37,8 @@ from ..db.models import (
     SnapshotStatus,
     SpamSender,
 )
-from .deps import DbSession, Principal, client_ip, require
+from ..notifications import SecretKeyError, encrypt
+from .deps import AppSettings, DbSession, Principal, client_ip, require
 
 router = APIRouter(prefix="/api/mail", tags=["mail traffic"])
 
@@ -942,6 +944,65 @@ async def set_quota(body: QuotaIn, principal: Admin, db: DbSession, request: Req
             },
         )
     return out
+
+
+class PasswordIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Carbonio applies its own policy (length, character classes) and may still refuse it.
+    password: str = Field(min_length=8, max_length=128)
+    must_change: bool = True  # the user chooses another one at the next login
+    reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("password")
+    @classmethod
+    def _printable(cls, value: str) -> str:
+        if value != value.strip() or any(ord(c) < 32 for c in value):
+            raise ValueError("no leading or trailing space, no control character")
+        return value
+
+
+@router.post("/accounts/{account_id}/password", response_model=ActionOut)
+async def reset_password(
+    account_id: uuid.UUID,
+    body: PasswordIn,
+    principal: Admin,
+    db: DbSession,
+    settings: AppSettings,
+    request: Request,
+) -> ActionOut:
+    """New password for a mailbox, applied by the agent within a minute. The password is kept
+    encrypted only until the agent applies it, and never written to a log."""
+    account = await db.get(Account, account_id)
+    if account is None or account.status == AccountStatus.DELETED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+    try:
+        secret = encrypt(
+            settings, json.dumps({"password": body.password, "must_change": body.must_change})
+        )
+    except SecretKeyError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    queued = await mail_traffic.queue_action(
+        db,
+        account.id,
+        "password",
+        body.reason or f"by {principal.user.username}",
+        user_id=principal.user.id,
+        secret=secret,
+    )
+    await audit.record(
+        db,
+        action="account.password_request",
+        outcome=Outcome.SUCCESS,
+        actor_id=str(principal.user.id),
+        actor_name=principal.user.username,
+        source_ip=client_ip(request),
+        target_type="account",
+        target_id=account.email,
+        domain_id=account.domain_id,
+        details={"must_change": body.must_change, "reason": body.reason},
+    )
+    return ActionOut(id=queued.id if queued else None, action="password", queued=queued is not None)
 
 
 @router.post("/accounts/{account_id}/{action}", response_model=ActionOut)

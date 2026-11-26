@@ -34,6 +34,7 @@ export const EVENTS = [
   "replica_lag",
   "storage_full",
   "mailbox_quota",
+  "password_expiring",
   "service_down",
   "service_up",
   "mail_queue",

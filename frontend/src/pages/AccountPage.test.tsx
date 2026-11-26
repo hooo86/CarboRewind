@@ -52,6 +52,12 @@ function open(over: Partial<AccountDetail> = {}, role = user("super_admin")) {
       posted.delete = c.body;
       return { body: { id: "a2", action: "delete", queued: true } };
     },
+    [`POST /api/mail/accounts/${ACCOUNT_ID}/password`]: (c: {
+      body: unknown;
+    }) => {
+      posted.password = c.body;
+      return { body: { id: "a3", action: "password", queued: true } };
+    },
     [`POST /api/archives/accounts/${ACCOUNT_ID}/legal-hold`]: (c: {
       body: unknown;
     }) => {
@@ -173,4 +179,40 @@ it("does not offer mailbox management to domain administrators", async () => {
   expect(
     screen.queryByRole("button", { name: "Delete the mailbox" }),
   ).toBeNull();
+});
+
+it("shows the password expiry and resets the password", async () => {
+  const soon = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  const { posted } = open({ password_expires_at: soon });
+  expect(await screen.findByText("Password expiry")).toBeInTheDocument();
+  expect(screen.getByText("in 3 days")).toHaveClass("warn-text");
+  fireEvent.click(screen.getByRole("button", { name: "Password" }));
+  const form = screen.getByRole("form", { name: "Password" });
+  const submit = within(form).getByRole("button", {
+    name: "Reset the password",
+  });
+  fireEvent.change(within(form).getByLabelText("New password"), {
+    target: { value: "Secret-Pass-1" },
+  });
+  fireEvent.change(within(form).getByLabelText("Confirm"), {
+    target: { value: "Secret-Pass-2" },
+  });
+  expect(within(form).getByText("The two entries differ.")).toBeInTheDocument();
+  expect(submit).toBeDisabled();
+  // Generated: both fields filled with the same strong password, shown.
+  fireEvent.click(within(form).getByRole("button", { name: "Generate" }));
+  const generated = (
+    within(form).getByLabelText("New password") as HTMLInputElement
+  ).value;
+  expect(generated).toHaveLength(16);
+  expect(generated).toMatch(/[A-Z]/);
+  expect(generated).toMatch(/[a-z]/);
+  expect(generated).toMatch(/[0-9]/);
+  fireEvent.click(submit);
+  expect(
+    await screen.findByText(
+      "New password of h.badi@lnhc.dz: the agent applies it within a minute.",
+    ),
+  ).toBeInTheDocument();
+  expect(posted.password).toEqual({ password: generated, must_change: true });
 });

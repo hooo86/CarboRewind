@@ -991,6 +991,24 @@ export function DashboardPage() {
           <Link to="/policies">{t("alerts.createPolicy")}</Link>
         </p>
       )}
+      {stats.state === "ready" && (stats.data.passwords_expiring ?? 0) > 0 && (
+        <p role="alert" className="alert warn">
+          {t("alerts.passwords", {
+            count: stats.data.passwords_expiring,
+            days: stats.data.password_alert_days,
+          })}{" "}
+          <Link
+            to={
+              "/accounts?" +
+              new URLSearchParams(
+                (stats.data.password_filter ?? []).map((f) => ["f", f]),
+              ).toString()
+            }
+          >
+            {t("alerts.seeAccounts")}
+          </Link>
+        </p>
+      )}
       {stats.state === "ready" &&
         stats.data.accounts - stats.data.protected_24h > 0 && (
           <p role="alert" className="alert warn">

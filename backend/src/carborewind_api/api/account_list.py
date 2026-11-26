@@ -152,6 +152,9 @@ FIELDS: dict[str, Field] = {
     "last_login_at": Field("date", lambda s: Account.last_login_at),
     "carbonio_created_at": Field("date", lambda s: Account.carbonio_created_at),
     "last_seen_at": Field("date", lambda s: Account.last_seen_at),
+    "password_changed_at": Field("date", lambda s: Account.password_changed_at),
+    "password_expires_at": Field("date", lambda s: Account.password_expires_at),
+    "password_must_change": Field("boolean", lambda s: Account.password_must_change),
     "last_backup_at": Field("date", lambda s: s.taken_at),
     "last_backup_status": Field("choice", lambda s: s.status),
     "last_backup_type": Field("choice", lambda s: s.backup_type),
@@ -260,6 +263,9 @@ class AccountListItem(BaseModel):
     last_login_at: datetime | None
     carbonio_created_at: datetime | None
     last_seen_at: datetime | None
+    password_changed_at: datetime | None = None
+    password_expires_at: datetime | None = None
+    password_must_change: bool = False
     last_backup_at: datetime | None
     last_backup_status: SnapshotStatus | None
     last_backup_type: BackupType | None
@@ -357,6 +363,9 @@ async def list_all_accounts(
                 last_login_at=account.last_login_at,
                 carbonio_created_at=account.carbonio_created_at,
                 last_seen_at=account.last_seen_at,
+                password_changed_at=account.password_changed_at,
+                password_expires_at=account.password_expires_at,
+                password_must_change=account.password_must_change,
                 last_backup_at=s.taken_at if s else None,
                 last_backup_status=s.status if s else None,
                 last_backup_type=s.backup_type if s else None,
@@ -382,6 +391,7 @@ GROUPABLE = [
     "last_backup_at",
     "last_login_at",
     "carbonio_created_at",
+    "password_expires_at",
     "company",
     "department",
     "title",

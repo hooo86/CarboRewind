@@ -11,6 +11,14 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
   révoqués : l'agent s'authentifie de nouveau et refait l'appel une fois, au lieu d'échouer.
 
 ### Added
+- **Mots de passe des boîtes** : l'inventaire relève la date du dernier changement et la durée
+  maximale (`zimbraPasswordModifiedTime`, `zimbraPasswordMaxAgeDays` du compte ou de sa classe
+  de service) ; colonne « Expiration du mot de passe », filtre prêt à l'emploi, alerte du
+  tableau de bord, ligne de la Supervision et notification quotidienne `password_expiring`
+  (seuil réglable, 7 jours par défaut, migration 0025). **Réinitialisation** depuis la fiche du
+  compte (génération d'un mot de passe robuste, changement obligatoire à la connexion) :
+  appliquée par l'agent (`SetPasswordRequest`), le mot de passe n'est conservé que chiffré, le
+  temps que l'agent l'applique (une heure au plus), et n'apparaît dans aucun journal.
 - **Expéditeurs de confiance** (Blocages → Expéditeurs de confiance) : adresses ou domaines
   jamais classés comme spam, appliqués par l'agent dans `amavisWhitelistSender` de chaque
   domaine local. Refusés : vos propres domaines, un grand fournisseur sans confirmation, et une

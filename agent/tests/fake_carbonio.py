@@ -102,6 +102,7 @@ class FakeCarbonio:
         self.admin_tokens: set[str] = set()
         self.delegated: dict[str, str] = {}  # token -> account id
         self.uploads: dict[str, bytes] = {}
+        self.passwords: dict[str, str] = {}  # account id -> password set by SetPassword
         self.domain_attrs: dict[str, dict[str, list[str]]] = {}  # ModifyDomain
         self.calls: list[str] = []
         self.fail_next: list[int] = []  # HTTP statuses to return before answering
@@ -254,7 +255,10 @@ class FakeCarbonio:
                 {
                     "id": "cos-default",
                     "name": "default",
-                    "a": [{"n": "zimbraMailQuota", "_content": "0"}],
+                    "a": [
+                        {"n": "zimbraMailQuota", "_content": "0"},
+                        {"n": "zimbraPasswordMaxAgeDays", "_content": "90"},
+                    ],
                 },
                 {
                     "id": "cos-vip",
@@ -386,6 +390,16 @@ class FakeCarbonio:
                 values.remove(value)
             else:
                 self.config[name] = [value]
+        return {}
+
+    def _SetPasswordRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        if len(body["newPassword"]) < 8:
+            raise _Fault("account.INVALID_PASSWORD", "too short")
+        self.passwords[mbox.id] = body["newPassword"]
         return {}
 
     def _ModifyAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:

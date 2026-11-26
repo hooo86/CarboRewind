@@ -182,3 +182,24 @@ systemctl is-enabled carborewind-cert.path
 ```bash
 sudo cat /var/lib/carborewind/cert/status.json
 ```
+
+## Mots de passe des boîtes
+
+L'inventaire relève, pour chaque boîte, la date du dernier changement de mot de passe
+(`zimbraPasswordModifiedTime`, à défaut la date de création) et la durée maximale
+(`zimbraPasswordMaxAgeDays` du compte, sinon de sa classe de service ; 0 = n'expire jamais).
+CarboRewind en déduit la date d'expiration, affichée sur la fiche du compte et dans la colonne
+« Expiration du mot de passe » de la liste des comptes.
+
+Les boîtes dont le mot de passe est expiré, ou expire dans les **N jours** (Supervision →
+Réglages, 7 par défaut, 0 = désactivé), apparaissent dans les comptes à risque, en alerte sur le
+tableau de bord (avec le lien vers la liste filtrée) et dans une notification quotidienne
+(`password_expiring`).
+
+**Réinitialisation** : fiche du compte → Mot de passe. Saisissez ou générez un mot de passe
+(16 caractères aléatoires) ; cochez « L'utilisateur devra le changer à sa prochaine connexion »
+pour qu'il en choisisse un lui-même (`zimbraPasswordMustChange`). L'agent l'applique dans la
+minute avec `SetPasswordRequest`, et Carbonio vérifie sa politique de mots de passe (une erreur
+`account.INVALID_PASSWORD` s'affiche dans le journal des actions). Le mot de passe est conservé
+chiffré (`CARBOREWIND_SECRET_KEY`) uniquement jusqu'à ce que l'agent l'applique (une heure au
+plus), puis effacé ; il n'apparaît dans aucun journal ni dans l'audit.
