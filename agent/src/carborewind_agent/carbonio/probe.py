@@ -95,3 +95,34 @@ def run_probe(client: CarbonioClient, account: str | None = None) -> ProbeReport
 
 def _first_message(delta: SyncDelta) -> int | None:
     return next((iid for kind, iid, _, _ in delta.changed if kind == "message"), None)
+
+
+def quota_report(client: CarbonioClient, account: str) -> list[str]:
+    """Every source of the quota / usage figures for one account, for diagnosis."""
+    from .soap import SoapFaultError
+
+    info = next((a for a in client.iter_accounts() if a.name == account.lower()), None)
+    if info is None:
+        return [f"{account}: not found by SearchDirectoryRequest"]
+    lines = [f"account {info.name} (id {info.id})"]
+    lines.append(
+        f"  zimbraMailQuota on the account: {info.attrs.get('zimbraMailQuota', ['(none)'])[0]}"
+    )
+    cos_id = (info.attrs.get("zimbraCOSId") or [""])[0]
+    try:
+        cos = client.cos_info()
+        name, quota = cos.get(cos_id, ("(default COS)", None))
+        lines.append(f"  class of service: {name} {cos_id or ''}, zimbraMailQuota: {quota}")
+    except SoapFaultError as exc:
+        lines.append(f"  GetAllCosRequest refused: {exc}")
+    try:
+        usage = client.quota_usage_detail()
+        lines.append(f"  GetQuotaUsageRequest: {len(usage)} account(s) listed")
+        lines.append(f"    this account: (used, limit) = {usage.get(info.id, 'NOT LISTED')}")
+    except SoapFaultError as exc:
+        lines.append(f"  GetQuotaUsageRequest refused: {exc}")
+    try:
+        lines.append(f"  GetMailboxRequest size: {client.mailbox_size(info.id)} bytes")
+    except SoapFaultError as exc:
+        lines.append(f"  GetMailboxRequest refused: {exc}")
+    return lines

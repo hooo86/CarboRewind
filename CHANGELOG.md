@@ -5,7 +5,277 @@ Format : [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) · Versionnage
 
 ## [Unreleased]
 
+### Fixed
+- **Agent : jeton Carbonio expiré** (`service.AUTH_EXPIRED`, `AUTH_REQUIRED`, ou cookie refusé
+  en REST) en cours de migration, de sauvegarde ou de restauration — Carbonio redémarré, jetons
+  révoqués : l'agent s'authentifie de nouveau et refait l'appel une fois, au lieu d'échouer.
+
 ### Added
+- **Mots de passe des boîtes** : l'inventaire relève la date du dernier changement et la durée
+  maximale (`zimbraPasswordModifiedTime`, `zimbraPasswordMaxAgeDays` du compte ou de sa classe
+  de service) ; colonne « Expiration du mot de passe », filtre prêt à l'emploi, alerte du
+  tableau de bord, ligne de la Supervision et notification quotidienne `password_expiring`
+  (seuil réglable, 7 jours par défaut, migration 0025). **Réinitialisation** depuis la fiche du
+  compte (génération d'un mot de passe robuste, changement obligatoire à la connexion) :
+  appliquée par l'agent (`SetPasswordRequest`), le mot de passe n'est conservé que chiffré, le
+  temps que l'agent l'applique (une heure au plus), et n'apparaît dans aucun journal.
+- **Expéditeurs de confiance** (Blocages → Expéditeurs de confiance) : adresses ou domaines
+  jamais classés comme spam, appliqués par l'agent dans `amavisWhitelistSender` de chaque
+  domaine local. Refusés : vos propres domaines, un grand fournisseur sans confirmation, et une
+  entrée déjà dans les expéditeurs bloqués (une entrée est dans une seule liste).
+- **Tableau de bord cliquable** : chaque chiffre ouvre la liste filtrée sur ce qu'il compte
+  (comptes sans sauvegarde réussie depuis 24 h, jamais sauvegardés, partiels, jobs en échec…),
+  et chaque widget a un lien « Tout voir » vers sa page avec ses propres filtres. Nouveau filtre
+  de comptes `protected_24h` (sauvegarde complète dans les dernières 24 h), utilisé aussi par le
+  filtre prêt à l'emploi « Sans sauvegarde réussie depuis 24 h ».
+- **Certificat HTTPS local** : sans `--tls-cert`, `install-server.sh` crée une autorité locale
+  (`tls/local-ca.crt`, à importer dans les racines de confiance des navigateurs) qui signe le
+  certificat du serveur ; `--local-ca` remplace ainsi un ancien certificat auto-signé, que
+  Chrome refuse même importé. `server.crt` contient la chaîne complète.
+- **Origine du spam** : boîtes destinataires de chaque expéditeur (migration 0024) ; un
+  expéditeur vide `<>` est affiché comme avis de non-remise (rebond), avec la boîte
+  concernée et l'explication (backscatter, SPF / DKIM / DMARC) — il ne peut pas être bloqué.
+- **Menu « Blocages »** : tout ce qui bloque est regroupé en onglets — expéditeurs bloqués,
+  origine du spam, IP bloquées et adresses de confiance, comptes verrouillés (avec
+  déblocage), limites d'envoi, listes noires (DNSBL). Ces sections quittent Trafic mail et
+  Paramètres.
+- **Expéditeurs bloqués** (Trafic mail) : « Origine du spam » affiche les adresses
+  d'expéditeur derrière chaque réseau, avec « Bloquer l'adresse » / « Bloquer le domaine »
+  (pas pour les grands fournisseurs : outlook.com, gmail.com…). La liste est appliquée par
+  l'agent à `amavisBlacklistSender` de chaque domaine local de Carbonio (messages classés
+  en spam) ; débloquer la retire.
+- **Certificat TLS** (Supervision, Paramètres → Agent) : date d'expiration lue toutes les
+  heures sur 443, 993, 25 et 587 pour le nom du serveur choisi ; alerte toutes les heures
+  sous N jours (7 par défaut) ; renouvellement Let's Encrypt automatique à N jours ou
+  « Renouveler maintenant » (service root `carborewind-cert.path` : certbot renew,
+  zmcertmgr deploycrt, redémarrage du proxy et du MTA).
+- **Serveur de secours** (page « Serveur de secours », docs/standby.md) : une VM clone du
+  serveur Carbonio, avec une autre IP, est tenue à jour à partir des sauvegardes. Son agent
+  a le rôle « secours » (`agent-create … --role standby`) : il ne sauvegarde rien et
+  rejoue le dernier instantané de chaque boîte (comptes créés si absents, messages
+  ajoutés / supprimés / déplacés, drapeaux, contacts et agendas, dossiers). Retard réglable
+  (5 à 1440 min), état et boîtes en échec, « Synchroniser maintenant », bascule avec
+  confirmation (le secours devient principal). Migration 0023.
+- **Quotas** : modifier le quota d'une boîte (fiche du compte → Gestion de la boîte → « Modifier
+  le quota ») ou de plusieurs à la fois (page Comptes : cocher les comptes → « Modifier le
+  quota »), en Go ou illimité, avec motif facultatif. L'agent l'applique dans Carbonio
+  (`zimbraMailQuota`) dans la minute ; demande et résultat sont audités (migration 0022).
+- **Redémarrage automatique de Carbonio** (Paramètres → Agent, désactivé par défaut) : si le
+  MTA, le LMTP, l'annuaire ou le serveur de boîtes restent arrêtés N minutes (5 par défaut),
+  l'agent fait lancer `zmcontrol start` par un service root dédié
+  (`carborewind-control.path`, commande fixe). Jamais pendant apt / dpkg ni quand il est suspendu
+  depuis la Supervision, au plus 3 fois en 6 h. Puis **test d'envoi automatique** vers une adresse
+  interne et une adresse externe, suivi dans le journal du MTA (distribué / différé / refusé,
+  avec la raison). Bouton « Tester l'envoi maintenant », alertes e-mail et Telegram.
+- **Fuseau horaire** : liste déroulante au lieu d'un champ texte.
+
+### Fixed
+- **Sauvegarde incrémentale** : l'arborescence des dossiers est relue entière ; les dossiers
+  supprimés n'y restaient plus, et un nouveau sous-dossier avait un chemin incomplet.
+- **Migration / restauration : « inline message too large »** : Carbonio refusait les messages
+  envoyés dans la requête au-delà de sa limite (bien en dessous de 4 Mo). Ils passent désormais
+  par le téléversement (`/service/upload`), la limite apprise est retenue pour les suivants ; les
+  messages en échec sont repris à la copie suivante du lot.
+- **Sauvegardes** : pause des lectures quand moins de 10 % de la RAM est disponible.
+- **Mise à jour pendant des sauvegardes** : à l'arrêt, l'agent rend ses jobs en cours au
+  serveur avec leur point de reprise. Ils reprennent dès le redémarrage, sans attendre 5 minutes
+  et sans consommer de tentative. Pendant la mise à jour du serveur, l'agent réessaie ses appels
+  pendant environ 2 min 30.
+
+### Added
+- Supervision → **File d'attente des e-mails** (super-administrateurs) : nombre de messages par
+  file, liste des messages différés et en attente (« hold ») avec expéditeur, destinataires,
+  ancienneté et raison, résumé des raisons, actualisée toutes les 20 secondes. Actions :
+  **Renvoyer**, **Mettre en attente** / **Libérer**, **Supprimer** (confirmation en tapant le
+  nombre de messages) et **Tout renvoyer maintenant** (`postqueue -f`). Les actions passent
+  par l'agent au relevé suivant (moins d'une minute), sont tracées dans l'audit et leur
+  résultat s'affiche (« Dernières actions »). La file est lue même quand la liste des services
+  Carbonio est indisponible (par exemple `zimbraLogHostname` non configuré).
+
+### Added
+- Supervision → **envoi des e-mails par Postfix** : en plus des services et des ports, l'agent
+  vérifie que Postfix peut réellement distribuer (lu dans le journal du MTA, sans droit
+  supplémentaire) :
+  - **circuit antivirus** (Postfix → Amavis → Postfix) : en panne sur « connect to transport
+    private/smtp-amavis… refused » ou « mail transport unavailable » — le cas d'une mise à jour
+    de Carbonio qui remet le `master.cf` d'origine —, rétabli dès qu'un message repasse par
+    Amavis ;
+  - **milter** et **serveur de politique** (cbpolicyd, 10031) injoignables ;
+  - **garde master.cf** : état du script de garde quand il est installé (lignes amavis,
+    `dpkg-divert` en place, dernière réparation automatique, nouveau `master.cf` livré par une
+    mise à jour à comparer) ;
+  - ports surveillés par défaut : 587, 465 et 10025 en plus (ajoutés une fois aux réglages
+    déjà enregistrés) ;
+  - alerte e-mail / Telegram avec un libellé clair (« circuit antivirus de Postfix (envoi
+    bloqué : vérifier master.cf) ») et bandeau dédié dans la page Supervision.
+
+### Added
+- Fiche d'un compte → **Gestion de la boîte** (super-administrateurs) :
+  - **Débloquer le compte** quand il est verrouillé (y compris « lockout » après trop de mots de
+    passe erronés : le compteur d'échecs est remis à zéro) ;
+  - **Archiver la boîte**, éventuellement seulement les messages de plus de N jours, et
+    **supprimer les messages de la boîte après archivage** (seulement une fois archivés, relus
+    et vérifiés ; confirmation en retapant l'adresse). Aussi dans Archives → Conservation légale ;
+  - **Supprimer la boîte** de Carbonio : refusé sans sauvegarde existante ou si un job de la
+    boîte est en cours, confirmation en retapant l'adresse, motif tracé dans l'audit ; le compte
+    reste restaurable depuis ses sauvegardes. Migration 0021.
+
+### Added
+- Sauvegardes programmées : planification **par jour de la semaine** (mode par défaut) —
+  pour chaque jour, complète, incrémentale ou aucune, à une heure choisie (par ex. complète
+  le vendredi, incrémentale les autres jours). Affichée « complète : vendredi · incrémentale :
+  lundi, mardi… — 02:00 ».
+
+### Added
+- Alerte **« Adresse IP bloquée par Carbonio »** (e-mail et Telegram, activée par défaut) à
+  chaque nouveau blocage après des connexions échouées, avec les comptes visés ; bandeau sur le
+  tableau de bord tant qu'une adresse est bloquée.
+- Sauvegardes programmées : boutons d'action en icônes (historique, exécuter, modifier,
+  suspendre / réactiver, supprimer), libellé au survol.
+
+### Added
+- IP bloquées : bouton **Débloquer** (l'agent ajoute l'adresse aux adresses de confiance de
+  Carbonio, `zimbraHttpThrottleSafeIPs` : elle n'est plus jamais bloquée), « Retirer la
+  confiance », liste des adresses de confiance avec ajout d'une adresse ou d'un réseau, règle
+  de blocage de Carbonio (N échecs → blocage X minutes) et heure approximative de levée du
+  blocage. Filtre « Seulement les IP bloquées ». Migration 0019.
+- L'agent indique s'il peut lire `mailbox.log` : message précis (agent trop ancien, droit
+  manquant, fichier absent) au lieu de « Aucune donnée reçue ». Quand rien n'est bloqué : « Aucune
+  adresse IP bloquée sur la période ».
+
+### Added
+- **Tableau de bord personnalisable** (bouton « Personnaliser ») : ajouter, retirer, déplacer
+  les widgets, choisir leur largeur (pleine ou demi), leur titre et les données affichées
+  (chiffres clés au choix, nombre de lignes, filtres d'état et de type des jobs, période…).
+  Widgets : chiffres clés, stockage, sauvegarde manuelle, derniers jobs, sauvegardes
+  programmées, IP bloquées, origine du spam, principaux expéditeurs. Disposition propre à
+  chaque utilisateur, retour à la disposition par défaut en un clic. Migration 0018.
+- **IP bloquées par Carbonio** après des connexions échouées : l'agent lit `mailbox.log`
+  (« Access to IP … suspended, for repeated failed login », « authentication failed for … »
+  avec l'IP d'origine `oip`) et les échecs SASL du journal MTA. Trafic mail → « Connexions
+  échouées et IP bloquées » : IP, nom DNS inverse, état (bloquée, nombre de blocages), échecs
+  webmail/IMAP et SMTP, comptes visés. Voir `docs/security-logins.md`.
+- **Origine du spam** : adresses IP des serveurs envoyeurs regroupées par le domaine de leur
+  nom DNS inverse, avec les domaines d'expéditeur (Trafic mail et widget).
+
+### Added
+- Sauvegardes programmées : une même politique peut combiner une sauvegarde incrémentale (par
+  ex. chaque nuit) et une **complète** (chaque semaine, chaque mois ou cron) ; quand les deux
+  tombent au même moment, seule la complète est lancée. Migration 0017.
+- Pour chaque politique : volume protégé (dernières sauvegardes des comptes couverts), données
+  écrites, nombre de comptes, résultat de la dernière exécution, et **historique des exécutions**
+  (date, planifiée ou manuelle, type, comptes réussis / en échec, durée, volumes lus et écrits).
+- Comptes : **regrouper par** un champ comme dans Odoo (domaine, état, classe de service,
+  administrateur, politique, état et type de la dernière sauvegarde, dates par mois, société,
+  service, fonction, ville…), avec effectif et volumes par groupe, ouverture d'un groupe et
+  « voir tous les comptes du groupe ».
+- **Favoris** : enregistrer la recherche actuelle (filtres, regroupement, tri) sous un nom,
+  personnelle ou partagée avec les autres utilisateurs.
+
+### Added
+- Journaux dans l'interface (menu Configuration → Journaux, super-administrateurs) : API et
+  planificateur CarboRewind, agent, MTA Carbonio et mailbox.log lus par l'agent ; nombre de lignes,
+  niveau, filtre texte, actualisation automatique, téléchargement ; chaque lecture est auditée.
+  Voir `docs/logs.md`.
+- Débit des sauvegardes (Mo/s et volume lu) dans les listes de jobs.
+- Jobs : filtres par type et par compte, tri par colonne, pagination (25 à 200 par page).
+- Archives : vue « Par boîte » (messages, volume, période, conservation légale) et restauration
+  complète d'une boîte archivée en un clic (dans la boîte d'origine ou une autre, par lots de 5000).
+
+### Fixed
+- IP bloquées : « Dernier échec » affichait une heure future (fin de l'heure en cours) ;
+  l'agent envoie maintenant l'heure exacte du dernier échec (migration 0020). Bouton « Toujours
+  autoriser » / « Débloquer » pour chaque adresse, y compris dans le widget. Reconnaissance des
+  lignes de blocage plus tolérante (variantes du message de Carbonio).
+- Page Sauvegardes en erreur (HTTP 500) dès qu'une exécution lisait plus de 2 Go : les
+  volumes sont additionnés en entiers 64 bits. Une erreur sans détail affiche désormais son
+  code HTTP au lieu d'un message vide.
+- Widget « IP bloquées » : affiche par défaut toutes les adresses en échec, et signale les
+  échecs sans blocage quand il est limité aux IP bloquées.
+- Une boîte ne peut plus être sauvegardée deux fois en même temps : une nouvelle demande est
+  refusée tant qu'une sauvegarde de la boîte est en attente ou en cours (index unique en base,
+  migration 0016 qui annule les doublons déjà en file).
+- Sauvegarde des grosses boîtes (plus d'environ 11 000 messages) en échec « HTTP 500 » à la fin :
+  l'enregistrement du catalogue est désormais fait par lots (limite de 65 535 paramètres de
+  PostgreSQL). Les caractères NUL présents dans certains sujets sont retirés.
+
+### Changed
+- Le menu « Politiques » s'appelle désormais « Sauvegardes ».
+
+### Added (suite)
+- Alertes Telegram (bot gratuit, groupes détectés automatiquement, choix des alertes, test),
+  indépendantes de la messagerie. Migration 0015.
+- Test de restauration automatique : messages tirés au hasard réellement restaurés dans une boîte
+  de test, dossier nettoyé ensuite, alerte en cas d'échec, historique dans la Supervision.
+- Serveur SMTP de secours pour les notifications (bascule automatique, test dédié).
+- Surveillance des listes noires (DNSBL) des adresses publiques du serveur de messagerie, avec
+  alerte à l'inscription et au retrait, tableau dans la Supervision, bandeau sur le tableau de
+  bord et métrique Prometheus.
+- Paramètres → Agent : boîtes sauvegardées en parallèle, débit, pause selon la charge, garde-fou
+  disque, surveillance des services et du journal MTA, appliqués par l'agent sans redémarrage.
+  Voir `docs/agent-settings.md`.
+- Sauvegardes plus rapides : jobs en parallèle, métadonnées lues par lots de 200, synchronisation
+  des répertoires du NAS une fois par point de reprise.
+- Conservation légale d'une boîte entière depuis l'écran Archives (tous les dossiers, rien retiré
+  de la boîte, jamais supprimée par la durée de conservation jusqu'à sa levée). Migration 0014.
+- Interface : menu du compte en haut à droite (rôle, langue, thème Clair / Sombre / Auto, mot de
+  passe et double authentification, Paramètres, déconnexion) ; thème clair ; tous les réglages
+  regroupés dans Paramètres en onglets (Notifications, Stockage, Supervision, Limites d'envoi,
+  Sécurité) ; autocomplétion de la boîte pour la conservation légale ; police plus grande ; plus de
+  débordement horizontal des formulaires et tableaux.
+- Archivage des e-mails : politiques (domaines, comptes, âge, dossiers exclus, drapeaux, non lus,
+  administrateurs), modes simulation / copie seule / archivage complet avec **simulation
+  obligatoire** avant toute suppression ; l'agent relit chaque message archivé, l'indexe avant de
+  le supprimer et vérifie la copie 2 ; écran **Archives** (recherche, lecture en texte seul,
+  téléchargement .eml, restauration), conservation et purge, compte rendu par e-mail. Migration
+  0013. Voir `docs/archives.md`.
+- Surveillance des services Carbonio (amavis, antispam, mta, mailbox, opendkim…) et des ports
+  essentiels chaque minute, avec alerte e-mail quand un service tombe et quand il revient ;
+  alerte sur la taille de la file d'attente mail ; bandeau sur le tableau de bord, bloc dans la
+  Supervision, métriques Prometheus.
+- Tableau de bord : stockage global des e-mails (volume des boîtes, quotas attribués), jauges
+  d'occupation du disque du serveur Carbonio et du NAS de sauvegarde (copie 1 et 2) avec la part des
+  e-mails sur chacun ; alerte quand une boîte atteint un seuil réglable (% du quota ou taille en Go),
+  événement de notification `mailbox_quota`, métrique `carborewind_mailboxes_used_bytes`.
+- Logo (favicon, menu, page de connexion, README).
+- Double authentification TOTP : enrôlement par QR code, codes de secours, connexion en deux étapes,
+  politique « obligatoire pour les administrateurs / pour tous » ; page **Mon compte** (mot de passe,
+  2FA). Migration 0012.
+- Gestion des comptes d'accès dans l'interface : création (local/LDAP), rôles par domaine,
+  réinitialisation du mot de passe et de la 2FA, déblocage, désactivation, suppression.
+- Supervision : évolution du stockage (copie 1 et 2) et prévision de saturation, comptes à risque,
+  retard de la copie 2, vérification d'intégrité planifiée (job `verify`, échantillon ou complète,
+  copie 1 et 2), agents ; alertes e-mail associées ; métriques Prometheus métier sur `/metrics`
+  (jeton `CARBOREWIND_METRICS_TOKEN`), règles d'alerte et tableau de bord Grafana dans
+  `deploy/monitoring/`. Migration 0011. Voir `docs/monitoring.md`.
+- Garde-fous : arrêt des sauvegardes avant de remplir le disque (local : max(20 Gio, 15 %) ; partage :
+  2 Gio), copie 2 qui ne remplit pas son partage ; verrouillages automatiques jamais sur un compte
+  administrateur ni sur le compte technique de CarboRewind, plafonnés par heure ; mesure de la taille
+  des boîtes limitée à 200 appels par inventaire.
+- Trafic mail : messages et destinataires envoyés par boîte (par heure et par jour), spams reçus,
+  expéditeurs de spams (avec IP), spams émis par une boîte locale, lus dans le journal du MTA par
+  l'agent ; limites d'envoi avec alerte e-mail ou verrouillage automatique de la boîte, exemptions,
+  verrouillage/déverrouillage manuel. Écran **Trafic mail**, migration 0010. Voir `docs/mail-traffic.md`.
+- Stockage depuis l'interface (Paramètres) : copie 1 sur disque local ou NAS (SMB/CIFS), copie 2 sur
+  un deuxième NAS (réplique du dépôt, job `replicate`, mise à jour automatique et à la demande), état
+  et erreurs d'application affichés ; service root `carborewind-storage.path` dans le paquet de l'agent.
+  Migrations 0008.
+- Sauvegarde manuelle : « Sauvegarde manuelle » au tableau de bord (tous les comptes ou un domaine,
+  incrémentale ou complète) et « Exécuter maintenant » sur une politique.
+- Profil des comptes (fonction, société, service, téléphones, adresse, description, notes, matricule) :
+  colonnes, recherche, filtres et tri. Migration 0009.
+- Menu de navigation à gauche ; les pages occupent toute la largeur.
+
+### Fixed
+- Quota et espace utilisé : quota hérité de la classe de service ou limite effective de Carbonio,
+  espace mesuré boîte par boîte (`GetMailboxRequest`) quand `GetQuotaUsage` ne liste pas un compte,
+  au lieu d'afficher 0. Diagnostic : `carborewind-agent carbonio quota <adresse>`.
+- Migrations IMAP vers Carbonio : serveurs sources (TLS vérifié, mot de passe par boîte ou compte
+  maître), lots avec options (dossier racine, exclusions, dates), import Excel/CSV ou saisie manuelle,
+  association automatique (même adresse, alias, même nom avant le @ dans le domaine choisi), test de
+  connexion, copie incrémentale reprenable sans doublon (UIDVALIDITY/UID, Message-ID), arrêt, oubli des
+  mots de passe, notification de fin de lot. Écran **Migrations**, permission `migrations:manage`,
+  migration 0007. Voir `docs/migrations.md`.
 - Liste des comptes : détails Carbonio (nom, prénom, alias, classe de service, quota, espace utilisé, admin,
   dernière connexion, création) et de sauvegarde ; choix des colonnes ; filtres à la Odoo (prédéfinis et
   personnalisés sur tous les champs) ; tri ; sélection multiple → sauvegarde groupée ou politique sur la

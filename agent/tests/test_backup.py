@@ -11,7 +11,7 @@ import pytest
 from carborewind_agent.backup import AccountBackup, BackupResult, extract_metadata
 from carborewind_agent.carbonio import CarbonioClient, SoapFaultError
 from carborewind_agent.repository import Repository, generate_key
-from carborewind_agent.throttle import Throttle
+from carborewind_agent.throttle import Throttle, available_memory
 
 from .fake_carbonio import FakeCarbonio, Mailbox
 from .test_carbonio_client import _settings
@@ -164,6 +164,8 @@ def test_resume_after_interruption(
     with pytest.raises(RuntimeError, match="killed"):
         engine.run(alice.id, alice.name, "s1", 1, checkpoint=checkpoints.append)
     assert len(checkpoints) == 2  # after 5 and 10 items
+    progress = checkpoints[-1]["progress"]
+    assert progress["items"] == 10 and progress["total"] >= 10 and progress["bytes"] > 0
     state = json.loads(json.dumps(checkpoints[-1]))  # survives a JSON round-trip (API storage)
 
     calls["n"] = 100  # no more crash
@@ -218,7 +220,13 @@ def test_item_deleted_between_sync_and_read(
             raise SoapFaultError("mail.NO_SUCH_ITEM", "gone")
         return real_meta(account_id, item_id)
 
+    real_batch = client.messages_meta
+
+    def batch_without_target(account_id: str, ids: list[int]) -> dict[int, dict[str, Any]]:
+        return {k: v for k, v in real_batch(account_id, ids).items() if k != target}
+
     monkeypatch.setattr(client, "get_item_meta", vanishing)
+    monkeypatch.setattr(client, "messages_meta", batch_without_target)
     result = _full(AccountBackup(client, repo), alice)
     assert not result.partial
     assert result.item_count == 4
@@ -288,4 +296,53 @@ def test_load_backoff() -> None:
     assert slept == [5.0, 5.0]
     stuck = Throttle(0, max_load=1.0, sleep=lambda _: None, loadavg=lambda: 9.0)
     stuck.consume(1)  # gives up waiting after max_wait instead of blocking forever
-    assert stuck.waited == 300.0
+    assert stuck.waited == 900.0
+
+
+def test_memory_backoff(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    frees = iter([0.04, 0.08, 0.30])
+    slept: list[float] = []
+    throttle = Throttle(0, 0, sleep=slept.append, mem_free=lambda: next(frees))
+    throttle.consume(1)
+    assert slept == [5.0, 5.0]  # paused while less than 10 % of the RAM was available
+    unknown = Throttle(0, 0, sleep=slept.append, mem_free=lambda: None)
+    unknown.consume(1)
+    assert slept == [5.0, 5.0]
+    meminfo = tmp_path / "meminfo"
+    meminfo.write_text("MemTotal:  1000 kB\nMemFree: 10 kB\nMemAvailable:  250 kB\n")
+    assert available_memory(str(meminfo)) == 0.25
+    assert available_memory(str(tmp_path / "missing")) is None
+
+
+def test_full_backup_reads_message_metadata_in_batches(
+    client: CarbonioClient, repo: Repository, fake: FakeCarbonio
+) -> None:
+    box = fake.add_mailbox("many@example.test")
+    for n in range(450):
+        box.add("m", 2, eml(f"Message {n}"), flags="u" if n % 2 else "")
+    fake.calls.clear()
+    result = AccountBackup(client, repo).run(box.id, box.name, "s1", 1)
+    assert result.item_count == 450
+    assert fake.calls.count("GetMsgMetadataRequest") == 3  # 200 + 200 + 50
+    assert fake.calls.count("GetItemRequest") == 0
+    manifest = repo.get_manifest(box.id, "s1")
+    flags = {json.loads(repo.get(e["meta_blob"]))["flags"] for e in manifest["items"].values()}
+    assert flags == {"", "u"}
+
+
+def test_backup_falls_back_when_batched_metadata_is_refused(
+    client: CarbonioClient, repo: Repository, fake: FakeCarbonio, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from carborewind_agent.carbonio import SoapFaultError
+
+    box = fake.add_mailbox("old@example.test")
+    for n in range(3):
+        box.add("m", 2, eml(f"Message {n}"))
+
+    def refuse(*_: object) -> None:
+        raise SoapFaultError("service.UNKNOWN_DOCUMENT", "unknown request")
+
+    monkeypatch.setattr(client, "messages_meta", refuse)
+    fake.calls.clear()
+    result = AccountBackup(client, repo).run(box.id, box.name, "s1", 1)
+    assert result.item_count == 3 and fake.calls.count("GetItemRequest") == 3

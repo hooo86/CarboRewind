@@ -8,6 +8,8 @@ Wants=network-online.target
 Type=simple
 User=carborewind
 Group=carborewind
+# Read the MTA log (/var/log/carbonio.log, root:adm or syslog:adm 0640) for mail statistics.
+SupplementaryGroups=adm
 EnvironmentFile=/etc/carborewind/agent.env
 ExecStart=/usr/bin/carborewind-agent run
 Restart=on-failure

@@ -6,6 +6,8 @@ import { api } from "../api/endpoints";
 import type { AccountDetail, Job, Page, Snapshot } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { BackupButtons } from "../components/BackupButtons";
+import { MailboxActions } from "../components/MailboxActions";
+import { PasswordExpiry } from "../components/PasswordExpiry";
 import { JobTable } from "../components/JobTable";
 import { LoadView, StatusBadge, useLoad } from "../components/common";
 import { formatBytes, formatDate } from "../utils/format";
@@ -74,7 +76,7 @@ function SnapshotTable({
 export function AccountPage() {
   const { id = "" } = useParams();
   const { t } = useTranslation();
-  const { canRunBackup, canRestore } = useAuth();
+  const { canRunBackup, canRestore, canManageSettings } = useAuth();
   const [account, reloadAccount] = useLoad<AccountDetail>(
     () => api.account(id),
     [id],
@@ -144,7 +146,19 @@ export function AccountPage() {
                 <dt>{t("account.snapshotCount")}</dt>
                 <dd>{a.snapshot_count}</dd>
               </div>
+              <div>
+                <dt>{t("password.expires")}</dt>
+                <dd>
+                  <PasswordExpiry
+                    at={a.password_expires_at ?? null}
+                    mustChange={a.password_must_change ?? false}
+                  />
+                </dd>
+              </div>
             </dl>
+            {canManageSettings && a.status !== "deleted" && (
+              <MailboxActions account={a} onChange={reloadAccount} />
+            )}
           </>
         )}
       </LoadView>

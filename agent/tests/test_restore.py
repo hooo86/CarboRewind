@@ -304,3 +304,48 @@ def test_worker_runs_restore_jobs(
     api = FakeApi([job])
     Worker(AgentApi(settings, http=api.client()), client, AccountBackup(client, repo)).run_once()
     assert api.calls[-1][0] == "/jobs/r-1/fail"
+
+
+def test_restore_test_job_cleans_its_folder(
+    tmp_path: Path,
+    fake: FakeCarbonio,
+    client: CarbonioClient,
+    repo: Repository,
+    alice: Mailbox,
+    snapshot: dict[int, bytes],
+) -> None:
+    probe = fake.add_mailbox("restore-test@example.test")
+    messages = [i for i, item in alice.items.items() if item.kind == "m"][:2]
+    job = {
+        "job_id": "t-1",
+        "kind": "restore",
+        "attempt": 1,
+        "lease_seconds": 30,
+        "params": {
+            "source_carbonio_id": alice.id,
+            "snapshot_id": "s1",
+            "mode": "new_folder",
+            "label": "Test de restauration 2026-11-21 03.45",
+            "item_ids": messages,
+            "test": True,
+            "cleanup": True,
+        },
+        "checkpoint": None,
+        "carbonio_id": probe.id,
+        "account_email": probe.name,
+    }
+    api = FakeApi([job])
+    worker = Worker(
+        AgentApi(_settings(tmp_path), http=api.client()),
+        client,
+        AccountBackup(client, repo),
+        AccountRestore(client, repo),
+        repo,
+        sleep=lambda _: True,
+    )
+    assert worker.run_once()
+    path, body = api.calls[-1]
+    assert path == "/jobs/t-1/restore-complete"
+    assert body["restored"] == 2 and body["cleaned"] is True
+    assert not any(f.name.startswith("Test de restauration") for f in probe.folders.values())
+    assert not probe.items  # the restored copies went with the folder

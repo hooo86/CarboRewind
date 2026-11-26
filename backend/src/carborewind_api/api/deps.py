@@ -16,6 +16,7 @@ from ..auth.sessions import resolve_session
 from ..authz import Access, Permission
 from ..config import Settings
 from ..db.models import Outcome, User, UserSession
+from ..security import policy as security_policy
 
 SESSION_COOKIE = "__Host-carborewind_session"
 CSRF_COOKIE = "__Host-carborewind_csrf"
@@ -82,6 +83,10 @@ async def current_principal(request: Request, db: DbSession, settings: AppSettin
         sent = request.headers.get(CSRF_HEADER, "")
         if not secrets.compare_digest(sent.encode(), session.csrf_token.encode()):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid CSRF token")
+    if not user.totp_enabled and not request.url.path.startswith("/api/auth/"):
+        policy = await security_policy.load(db)
+        if policy.requires_2fa(user):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "2fa_enrollment_required")
     return Principal(user=user, session=session, access=Access.from_assignments(user.roles))
 
 

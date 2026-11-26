@@ -30,6 +30,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
@@ -128,6 +129,11 @@ class JobKind(enum.StrEnum):
     CONFIG_BACKUP = "config_backup"
     VERIFY = "verify"
     PURGE = "purge"
+    MIGRATE = "migrate"  # copy a mailbox from a remote IMAP server
+    REPLICATE = "replicate"  # mirror the repository onto copy 02
+    ARCHIVE = "archive"  # move old messages of one account into the archive
+    FETCH = "fetch"  # read one archived message for the interface
+    STANDBY_SYNC = "standby_sync"  # replay a snapshot into the standby Carbonio
 
 
 class JobStatus(enum.StrEnum):
@@ -156,6 +162,18 @@ class NotificationStatus(enum.StrEnum):
     PENDING = "pending"
     SENT = "sent"
     FAILED = "failed"
+
+
+class ImapSecurity(enum.StrEnum):
+    SSL = "ssl"  # implicit TLS (993)
+    STARTTLS = "starttls"  # 143 + STARTTLS
+    NONE = "none"  # clear text: only on a trusted network
+
+
+class MigrationAuth(enum.StrEnum):
+    PASSWORD = "password"  # noqa: S105 - each mailbox's own password (a mode, not a secret)
+    MASTER_PLAIN = "master_plain"  # AUTHENTICATE PLAIN, admin acting for the mailbox
+    MASTER_LOGIN = "master_login"  # LOGIN mailbox<separator>master (Dovecot master user)
 
 
 class ActorType(enum.StrEnum):
@@ -189,6 +207,16 @@ class User(Base):
     failed_logins: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-factor authentication (TOTP). The secret is Fernet-encrypted; it is set during
+    # enrolment and only active once confirmed with a first code (totp_enabled).
+    totp_secret_enc: Mapped[str | None] = mapped_column(Text)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
+    # SHA-256 of the unused one-time recovery codes.
+    recovery_codes: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Personal dashboard layout (widgets, their order, size and options); NULL = default.
+    dashboard: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
 
     roles: Mapped[list[RoleAssignment]] = relationship(
@@ -287,6 +315,14 @@ class Account(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     carbonio_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Password (inventory): last change, maximum age (0: never expires) and the resulting
+    # expiry; must_change = the user has to choose a new one at the next login.
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_max_age_days: Mapped[int | None] = mapped_column(Integer)
+    password_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_must_change: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Profile from Carbonio (title, company, department, phones, address, notes…).
+    profile: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -298,6 +334,7 @@ class Account(Base):
             postgresql_where=text("status <> 'deleted'"),
         ),
         Index("ix_accounts_domain_id", "domain_id"),
+        Index("ix_accounts_password_expires_at", "password_expires_at"),
     )
 
 
@@ -320,7 +357,13 @@ class Agent(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Repository location and free space, reported with each inventory.
     storage: Mapped[dict[str, Any] | None]
+    # Carbonio services and mail queue, reported every minute (see monitoring.record_services).
+    services: Mapped[dict[str, Any] | None]
+    # "primary": the Carbonio backed up; "standby": the clone kept in line for a disaster.
+    role: Mapped[str] = mapped_column(String(16), server_default=text("'primary'"))
     created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (CheckConstraint("role IN ('primary', 'standby')", name="role_known"),)
 
 
 # --------------------------------------------------------------------------- policies & jobs
@@ -349,6 +392,10 @@ class Policy(Base):
     timezone: Mapped[str] = mapped_column(String(64), server_default=text("'UTC'"))
     # Last schedule slot already turned into jobs (missed slots are caught up once).
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Optional second schedule running full backups (e.g. incremental daily, full on
+    # Sundays). When both fall at once the full backup wins.
+    full_schedule: Mapped[str | None] = mapped_column(String(128))
+    full_last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
@@ -429,6 +476,13 @@ class Job(Base):
         ),
         Index("ix_jobs_lease", "lease_expires_at", postgresql_where=text("status = 'running'")),
         Index("ix_jobs_account_created", "account_id", "created_at"),
+        # One backup of a mailbox at a time: a second request is refused, not queued.
+        Index(
+            "uq_jobs_one_backup_per_account",
+            "account_id",
+            unique=True,
+            postgresql_where=text("kind = 'backup' AND status IN ('queued', 'running')"),
+        ),
     )
 
 
@@ -564,6 +618,389 @@ class ItemVersion(Base):
     )
 
 
+# --------------------------------------------------------------------------- migrations
+
+
+class MigrationSource(Base):
+    """Remote IMAP server mailboxes are copied from. Passwords are Fernet-encrypted."""
+
+    __tablename__ = "migration_sources"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    host: Mapped[str] = mapped_column(String(253))
+    port: Mapped[int] = mapped_column(Integer)
+    security: Mapped[ImapSecurity] = mapped_column(_enum(ImapSecurity, "imap_security"))
+    verify_tls: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    auth_mode: Mapped[MigrationAuth] = mapped_column(_enum(MigrationAuth, "migration_auth"))
+    master_username: Mapped[str | None] = mapped_column(String(320))
+    master_password_enc: Mapped[str | None] = mapped_column(Text)
+    master_separator: Mapped[str] = mapped_column(String(8), server_default=text("'*'"))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (CheckConstraint("port BETWEEN 1 AND 65535", name="port_range"),)
+
+
+class MigrationBatch(Base):
+    """A set of mailboxes copied from one source with the same options."""
+
+    __tablename__ = "migration_batches"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("migration_sources.id", ondelete="RESTRICT")
+    )
+    # root folder, excluded folders, date range (validated by the API).
+    options: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+
+class MigrationMailbox(Base):
+    """One source mailbox -> one Carbonio account. A source may appear several times
+    (copied into several accounts) and several sources may target one account."""
+
+    __tablename__ = "migration_mailboxes"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("migration_batches.id", ondelete="CASCADE")
+    )
+    source_email: Mapped[str] = mapped_column(String(320))
+    # IMAP login when it differs from the address.
+    source_login: Mapped[str | None] = mapped_column(String(320))
+    password_enc: Mapped[str | None] = mapped_column(Text)
+    target_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    # How the target was chosen: exact, alias, local_part, manual (NULL: no match yet).
+    match: Mapped[str | None] = mapped_column(String(16))
+    # Folder below which this mailbox is copied (overrides the batch option).
+    root: Mapped[str | None] = mapped_column(String(128))
+    last_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL")
+    )
+    # Incremental state written by the agent: per folder UIDVALIDITY / last UID / failed UIDs.
+    state: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    stats: Mapped[dict[str, Any] | None]
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "batch_id",
+            "source_email",
+            "target_account_id",
+            name="uq_migration_mailboxes_pair",
+            postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_migration_mailboxes_batch_id", "batch_id"),
+        Index("ix_migration_mailboxes_target", "target_account_id"),
+    )
+
+
+# --------------------------------------------------------------------------- archiving
+
+
+class ArchivePolicy(Base):
+    """Which old messages leave the mailboxes for the archive, and when.
+
+    ``mode``: ``simulate`` (count only), ``copy`` (archive, keep in the mailbox) or
+    ``archive`` (archive, verify, then delete from the mailbox). ``archive`` is only accepted
+    once a simulation finished after the last change of the selection criteria.
+    """
+
+    __tablename__ = "archive_policies"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str] = mapped_column(String(255), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    mode: Mapped[str] = mapped_column(String(16), server_default=text("'simulate'"))
+    # Scope: empty lists = every domain / every account of these domains.
+    domain_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    account_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    exclude_account_ids: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+    older_than_days: Mapped[int] = mapped_column(Integer, server_default=text("365"))
+    # Folder paths left alone (with their sub-folders), on top of Trash, Junk and Drafts.
+    exclude_folders: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    keep_flagged: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    keep_unread: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    include_admins: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    max_per_run: Mapped[int] = mapped_column(Integer, server_default=text("5000"))
+    schedule: Mapped[str] = mapped_column(String(128), server_default=text("'30 1 * * *'"))
+    timezone: Mapped[str] = mapped_column(String(64), server_default=text("'UTC'"))
+    # 0 = archives kept forever.
+    retention_days: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    criteria_changed_at: Mapped[datetime] = _created_at()
+    simulated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("mode IN ('simulate', 'copy', 'archive')", name="mode_valid"),
+        CheckConstraint("older_than_days >= 1", name="age_positive"),
+        CheckConstraint("max_per_run BETWEEN 1 AND 50000", name="max_per_run_bounded"),
+        CheckConstraint("retention_days >= 0", name="retention_positive"),
+    )
+
+
+class ArchivedMessage(Base):
+    """One message kept in the archive (content in the repository, metadata here)."""
+
+    __tablename__ = "archived_messages"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    policy_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("archive_policies.id", ondelete="SET NULL")
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    carbonio_item_id: Mapped[int] = mapped_column(Integer)
+    folder_path: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(Text)
+    sender: Mapped[str | None] = mapped_column(Text)
+    recipients: Mapped[str | None] = mapped_column(Text)
+    item_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    size: Mapped[int] = mapped_column(BigInteger)
+    has_attachments: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    flags: Mapped[str] = mapped_column(String(32), server_default=text("''"))
+    content_blob_id: Mapped[str] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    meta_blob_id: Mapped[str | None] = mapped_column(ForeignKey("blobs.id", ondelete="RESTRICT"))
+    archived_at: Mapped[datetime] = _created_at()
+    # Set once the message was deleted from the mailbox (NULL: copy only, still there).
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Legal hold: kept whatever the policies' retention says, until explicitly released.
+    legal_hold: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id", "carbonio_item_id", "content_blob_id", name="uq_archived_messages_item"
+        ),
+        Index("ix_archived_messages_account_date", "account_id", "item_date"),
+        Index("ix_archived_messages_archived_at", "archived_at"),
+        Index("ix_archived_messages_job_id", "job_id"),
+        Index("ix_archived_messages_content_blob", "content_blob_id"),
+        Index("ix_archived_messages_meta_blob", "meta_blob_id"),
+        Index(
+            "ix_archived_messages_subject_trgm",
+            "subject",
+            postgresql_using="gin",
+            postgresql_ops={"subject": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_archived_messages_sender_trgm",
+            "sender",
+            postgresql_using="gin",
+            postgresql_ops={"sender": "gin_trgm_ops"},
+        ),
+    )
+
+
+class FetchedContent(Base):
+    """Archived message read by the agent for the interface; encrypted, kept one hour."""
+
+    __tablename__ = "fetched_contents"
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = _created_at()
+
+
+# --------------------------------------------------------------------------- monitoring
+
+
+class StorageSample(Base):
+    """Space of copy 1 / copy 2 as reported by an agent, one sample per hour (trend)."""
+
+    __tablename__ = "storage_samples"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True
+    )
+    target: Mapped[str] = mapped_column(String(16), primary_key=True)  # primary | replica
+    total_bytes: Mapped[int] = mapped_column(BigInteger)
+    free_bytes: Mapped[int] = mapped_column(BigInteger)
+
+    __table_args__ = (Index("ix_storage_samples_hour", "hour"),)
+
+
+# --------------------------------------------------------------------------- mail traffic
+
+
+class MailStat(Base):
+    """Mail sent and spam per account and UTC hour, from the MTA log (absolute counters)."""
+
+    __tablename__ = "mail_stats"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    sent_messages: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    sent_recipients: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    spam_received: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    spam_sent: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+
+    __table_args__ = (
+        Index("ix_mail_stats_hour", "hour"),
+        Index("ix_mail_stats_account_hour", "account_id", "hour"),
+    )
+
+
+class SpamSender(Base):
+    """Senders of spam received, per UTC hour, with the client IPs seen."""
+
+    __tablename__ = "spam_senders"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    sender: Mapped[str] = mapped_column(String(320), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    ips: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # Local recipients (for a bounce, sender "<>", the mailbox concerned).
+    rcpts: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    __table_args__ = (Index("ix_spam_senders_hour", "hour"),)
+
+
+class LoginFailure(Base):
+    """Failed logins and suspensions by Carbonio's invalid login filter, per UTC hour and
+    client IP (from mailbox.log and the SASL lines of the MTA log)."""
+
+    __tablename__ = "login_failures"
+
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    ip: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failed_mailbox: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    failed_smtp: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    suspended: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    last_suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accounts: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+
+    __table_args__ = (Index("ix_login_failures_hour", "hour"),)
+
+
+class MailAlert(Base):
+    """A sending limit was reached (once per account, metric and window)."""
+
+    __tablename__ = "mail_alerts"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    email: Mapped[str] = mapped_column(String(320))
+    # sent_messages_hour, sent_messages_day, sent_recipients_hour, sent_recipients_day,
+    # spam_sent_day
+    metric: Mapped[str] = mapped_column(String(32))
+    value: Mapped[int] = mapped_column(Integer)
+    threshold: Mapped[int] = mapped_column(Integer)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    action: Mapped[str] = mapped_column(String(16))  # alert | lock
+    created_at: Mapped[datetime] = _created_at()
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("email", "metric", "window_start", name="uq_mail_alerts_window"),
+        Index(
+            "ix_mail_alerts_open", "created_at", postgresql_where=text("acknowledged_at IS NULL")
+        ),
+    )
+
+
+class IpAction(Base):
+    """Add an IP address to (``trust``) or remove it from (``untrust``) Carbonio's trusted
+    addresses (``zimbraHttpThrottleSafeIPs``), carried out by the agent's mail watcher. A
+    trusted address is never blocked by the invalid login filter."""
+
+    __tablename__ = "ip_actions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    ip: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(16))  # trust | untrust
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("action IN ('trust', 'untrust')", name="action_known"),
+        CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
+    )
+
+
+class AccountAction(Base):
+    """Lock, unlock, delete a Carbonio account or set its quota, carried out by the agent's
+    mail watcher."""
+
+    __tablename__ = "account_actions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(16))  # lock | unlock | delete | quota | password
+    value: Mapped[int | None] = mapped_column(BigInteger)  # quota: bytes, 0 = unlimited
+    # password: the new one, Fernet-encrypted, erased as soon as the agent reports back.
+    secret: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    alert_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("mail_alerts.id", ondelete="SET NULL")
+    )
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'pending'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('lock', 'unlock', 'delete', 'quota', 'password')", name="action_known"
+        ),
+        CheckConstraint("status IN ('pending', 'done', 'failed')", name="status_known"),
+        Index(
+            "ix_account_actions_pending", "created_at", postgresql_where=text("status = 'pending'")
+        ),
+    )
+
+
+class StandbyState(Base):
+    """What the standby Carbonio holds of each account: the last snapshot replayed there."""
+
+    __tablename__ = "standby_states"
+
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("snapshots.id", ondelete="SET NULL")
+    )
+    snapshot_taken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), server_default=text("'ok'"))
+    error: Mapped[str | None] = mapped_column(Text)
+    stats: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('ok', 'partial', 'failed')", name="status_known"),
+    )
+
+
 # --------------------------------------------------------------------------- audit
 
 
@@ -619,6 +1056,8 @@ class Notification(Base):
     subject: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     recipients: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # "email" or "telegram" (recipients are then chat ids).
+    channel: Mapped[str] = mapped_column(String(16), server_default=text("'email'"))
     status: Mapped[NotificationStatus] = mapped_column(
         _enum(NotificationStatus, "notification_status"),
         server_default=NotificationStatus.PENDING.value,
@@ -634,3 +1073,23 @@ class Notification(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (Index("ix_notifications_pending", "status", "next_attempt_at"),)
+
+
+class SavedView(Base):
+    """A named search of a list page (filters, grouping, sort), personal or shared."""
+
+    __tablename__ = "saved_views"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    page: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(100))
+    # The page's URL query string (validated again by the list endpoint when applied).
+    query: Mapped[str] = mapped_column(String(4000))
+    shared: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("owner_id", "page", "name", name="uq_saved_views_owner_page_name"),
+        Index("ix_saved_views_page", "page"),
+    )

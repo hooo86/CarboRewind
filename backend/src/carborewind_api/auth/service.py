@@ -1,4 +1,4 @@
-"""Login logic: local or LDAP credentials, account lockout, audit."""
+"""Login logic: local or LDAP credentials, second factor (TOTP), account lockout, audit."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from .. import audit
 from ..config import Settings
 from ..db.models import AuthSource, Outcome, User
+from ..security import totp
 from ..security.passwords import hash_password, needs_rehash, verify_password
 from .ldap import LdapAuthenticator
 
@@ -23,6 +24,8 @@ class LoginFailure(enum.StrEnum):
     LOCKED = "locked"
     INACTIVE = "inactive"
     NO_ROLE = "no_role"
+    OTP_REQUIRED = "otp_required"  # password right, second factor missing: ask for it
+    BAD_OTP = "bad_otp"
 
 
 @dataclass
@@ -48,6 +51,7 @@ async def authenticate(
     username: str,
     password: str,
     source_ip: str | None,
+    otp: str | None = None,
 ) -> LoginResult:
     """Check credentials and record the attempt in the audit trail.
 
@@ -67,9 +71,9 @@ async def authenticate(
         await audit.record(
             db,
             action="auth.login",
-            outcome=Outcome.DENIED
-            if reason is not LoginFailure.BAD_CREDENTIALS
-            else Outcome.FAILURE,
+            outcome=Outcome.FAILURE
+            if reason in (LoginFailure.BAD_CREDENTIALS, LoginFailure.BAD_OTP)
+            else Outcome.DENIED,
             actor_id=str(target.id) if target else None,
             actor_name=login,
             source_ip=source_ip,
@@ -103,20 +107,29 @@ async def authenticate(
     else:
         verify_password(None, password)
 
+    def count_failure(target: User | None) -> None:
+        if target is not None:
+            target.failed_logins += 1
+            if target.failed_logins >= settings.login_max_failures:
+                target.locked_until = now + _lock_duration(settings, target.failed_logins)
+
     if not ok:
-        if user is not None:
-            user.failed_logins += 1
-            if user.failed_logins >= settings.login_max_failures:
-                user.locked_until = now + _lock_duration(settings, user.failed_logins)
+        count_failure(user)
         return await fail(LoginFailure.BAD_CREDENTIALS, user)
 
     assert user is not None  # noqa: S101 - ok implies a user
-    user.failed_logins = 0
-    user.locked_until = None
     if not user.is_active:
         return await fail(LoginFailure.INACTIVE, user)
     if not user.roles:
         return await fail(LoginFailure.NO_ROLE, user)
+    if user.totp_enabled:
+        if not otp:
+            return await fail(LoginFailure.OTP_REQUIRED, user)  # not a failure: next step
+        if not check_second_factor(settings, user, otp):
+            count_failure(user)  # the counter is only reset after both factors
+            return await fail(LoginFailure.BAD_OTP, user)
+    user.failed_logins = 0
+    user.locked_until = None
 
     user.last_login_at = now
     await audit.record(
@@ -129,3 +142,27 @@ async def authenticate(
         details={"auth_source": AuthSource(user.auth_source).value},
     )
     return LoginResult(user)
+
+
+def check_second_factor(settings: Settings, user: User, code: str) -> bool:
+    """A TOTP code (never replayed) or one of the unused recovery codes (consumed)."""
+    from ..notifications import SecretKeyError, decrypt
+
+    code = code.strip()
+    if any(c.isalpha() for c in code):  # recovery code
+        digest = totp.hash_recovery(code)
+        if digest in (user.recovery_codes or []):
+            user.recovery_codes = [c for c in user.recovery_codes if c != digest]
+            return True
+        return False
+    if not user.totp_secret_enc:
+        return False
+    try:
+        secret = decrypt(settings, user.totp_secret_enc)
+    except SecretKeyError:
+        return False
+    step = totp.verify(secret, code, user.totp_last_step)
+    if step is None:
+        return False
+    user.totp_last_step = step
+    return True

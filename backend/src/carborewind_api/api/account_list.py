@@ -27,6 +27,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from pydantic import Field as PydanticField
 from sqlalchemy import (
     Boolean,
     ColumnElement,
@@ -58,6 +59,7 @@ from ..db.models import (
     TargetType,
 )
 from .accounts import latest_snapshots
+from .agent import PROFILE_FIELDS
 from .deps import DbSession, Principal, require
 from .schemas import MAX_PAGE, Page
 
@@ -120,6 +122,20 @@ def _snapshot_count() -> ColumnElement[Any]:
     )
 
 
+def _protected_24h() -> ColumnElement[Any]:
+    """A complete snapshot taken in the last 24 hours (the dashboard's "protected")."""
+    snap = aliased(Snapshot)
+    return exists().where(
+        snap.account_id == Account.id,
+        snap.status == SnapshotStatus.COMPLETE,
+        snap.taken_at >= func.now() - timedelta(hours=24),
+    )
+
+
+def _profile_field(name: str) -> Field:
+    return Field("text", lambda s: Account.profile[name].astext)
+
+
 FIELDS: dict[str, Field] = {
     "email": Field("text", lambda s: Account.email),
     "display_name": Field("text", lambda s: Account.display_name),
@@ -136,6 +152,9 @@ FIELDS: dict[str, Field] = {
     "last_login_at": Field("date", lambda s: Account.last_login_at),
     "carbonio_created_at": Field("date", lambda s: Account.carbonio_created_at),
     "last_seen_at": Field("date", lambda s: Account.last_seen_at),
+    "password_changed_at": Field("date", lambda s: Account.password_changed_at),
+    "password_expires_at": Field("date", lambda s: Account.password_expires_at),
+    "password_must_change": Field("boolean", lambda s: Account.password_must_change),
     "last_backup_at": Field("date", lambda s: s.taken_at),
     "last_backup_status": Field("choice", lambda s: s.status),
     "last_backup_type": Field("choice", lambda s: s.backup_type),
@@ -151,6 +170,8 @@ FIELDS: dict[str, Field] = {
         ),
     ),
     "has_policy": Field("boolean", lambda s: exists(_covering_policies())),
+    "protected_24h": Field("boolean", lambda s: _protected_24h()),
+    **{name: _profile_field(name) for name in PROFILE_FIELDS},
 }
 
 OPERATORS: dict[FieldType, set[str]] = {
@@ -242,12 +263,40 @@ class AccountListItem(BaseModel):
     last_login_at: datetime | None
     carbonio_created_at: datetime | None
     last_seen_at: datetime | None
+    password_changed_at: datetime | None = None
+    password_expires_at: datetime | None = None
+    password_must_change: bool = False
     last_backup_at: datetime | None
     last_backup_status: SnapshotStatus | None
     last_backup_type: BackupType | None
     snapshot_count: int
     stored_bytes: int | None
     policies: list[str]
+    # Carbonio profile: title, company, department, phone, mobile, city…
+    profile: dict[str, str] = PydanticField(default_factory=dict)
+
+
+def _conditions(principal: Principal, q: str | None, f: list[str]) -> list[ColumnElement[bool]]:
+    """WHERE clauses shared by the list and the groups: scope, search, filters."""
+    now = datetime.now(UTC)
+    where: list[ColumnElement[bool]] = []
+    scope = principal.access.domains(Permission.INVENTORY_READ)
+    if scope is not None:
+        where.append(Account.domain_id.in_(scope))
+    if not any(item.startswith("status:") for item in f):
+        where.append(Account.status != AccountStatus.DELETED)  # unless asked for explicitly
+    if q:
+        pattern = _like_literal(q)
+        where.append(
+            or_(
+                func.lower(Account.email).like(pattern, escape="\\"),
+                func.lower(func.coalesce(Account.display_name, "")).like(pattern, escape="\\"),
+                func.lower(cast(Account.aliases, Text)).like(pattern, escape="\\"),
+                func.lower(cast(Account.profile, Text)).like(pattern, escape="\\"),
+            )
+        )
+    where.extend(parse_filter(item, Snapshot, now) for item in f)
+    return where
 
 
 @router.get("/api/accounts", response_model=Page[AccountListItem])
@@ -266,28 +315,11 @@ async def list_all_accounts(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Page[AccountListItem]:
-    f = f or []
-    now = datetime.now(UTC)
-    latest = latest_snapshots().subquery()
-    snap = Snapshot
-    where: list[ColumnElement[bool]] = []
-    scope = principal.access.domains(Permission.INVENTORY_READ)
-    if scope is not None:
-        where.append(Account.domain_id.in_(scope))
-    if not any(item.startswith("status:") for item in f):
-        where.append(Account.status != AccountStatus.DELETED)  # unless asked for explicitly
-    if q:
-        pattern = _like_literal(q)
-        where.append(
-            or_(
-                func.lower(Account.email).like(pattern, escape="\\"),
-                func.lower(func.coalesce(Account.display_name, "")).like(pattern, escape="\\"),
-                func.lower(cast(Account.aliases, Text)).like(pattern, escape="\\"),
-            )
-        )
-    where.extend(parse_filter(item, snap, now) for item in f)
+    where = _conditions(principal, q, f or [])
     if sort not in FIELDS:
         raise _bad(f"cannot sort on {sort!r}")
+    snap = Snapshot
+    latest = latest_snapshots().subquery()
     sort_col = FIELDS[sort].expr(snap)
     ordering = sort_col.desc().nulls_last() if order == "desc" else sort_col.asc().nulls_last()
 
@@ -331,21 +363,99 @@ async def list_all_accounts(
                 last_login_at=account.last_login_at,
                 carbonio_created_at=account.carbonio_created_at,
                 last_seen_at=account.last_seen_at,
+                password_changed_at=account.password_changed_at,
+                password_expires_at=account.password_expires_at,
+                password_must_change=account.password_must_change,
                 last_backup_at=s.taken_at if s else None,
                 last_backup_status=s.status if s else None,
                 last_backup_type=s.backup_type if s else None,
                 snapshot_count=int(count or 0),
                 stored_bytes=s.size_bytes if s else None,
                 policies=sorted(p for p in (policies or []) if p),
+                profile=dict(account.profile or {}),
             )
         )
     return Page(items=items, total=total or 0, limit=limit, offset=offset)
+
+
+# Fields the list can be grouped by (Odoo "Group by"); dates are grouped by month.
+GROUPABLE = [
+    "domain",
+    "status",
+    "cos",
+    "is_admin",
+    "has_policy",
+    "policy",
+    "last_backup_status",
+    "last_backup_type",
+    "last_backup_at",
+    "last_login_at",
+    "carbonio_created_at",
+    "password_expires_at",
+    "company",
+    "department",
+    "title",
+    "city",
+    "state",
+    "country",
+]
+
+
+class AccountGroup(BaseModel):
+    value: str | None
+    count: int
+    used_bytes: int
+    stored_bytes: int
+
+
+@router.get("/api/accounts/groups", response_model=list[AccountGroup])
+async def account_groups(
+    principal: Reader,
+    db: DbSession,
+    group_by: Annotated[str, Query(max_length=64)],
+    q: Annotated[str | None, Query(max_length=320)] = None,
+    f: Annotated[list[str] | None, Query(max_length=50)] = None,
+) -> list[AccountGroup]:
+    """Accounts counted per value of one field, with the same search and filters as the
+    list. A date is grouped by month ("2026-03"); an empty value is ``null``."""
+    if group_by not in GROUPABLE:
+        raise _bad(f"cannot group by {group_by!r}")
+    field = FIELDS[group_by]
+    col = field.expr(Snapshot)
+    if field.type == "date":
+        key: ColumnElement[Any] = func.to_char(func.date_trunc("month", col), "YYYY-MM")
+    elif field.type == "text":
+        key = func.nullif(cast(col, Text), "")
+    else:
+        key = cast(col, Text)
+    latest = latest_snapshots().subquery()
+    query = (
+        select(
+            key.label("value"),
+            func.count(),
+            func.coalesce(func.sum(Account.used_bytes), 0),
+            func.coalesce(func.sum(Snapshot.size_bytes), 0),
+        )
+        .select_from(Account)
+        .join(Domain, Domain.id == Account.domain_id)
+        .outerjoin(latest, latest.c.account_id == Account.id)
+        .outerjoin(Snapshot, and_(Snapshot.account_id == Account.id, Snapshot.seq == latest.c.seq))
+        .where(*_conditions(principal, q, f or []))
+        .group_by(key)
+        .order_by(key.asc().nulls_last())
+        .limit(500)
+    )
+    return [
+        AccountGroup(value=v, count=n, used_bytes=int(used), stored_bytes=int(stored))
+        for v, n, used, stored in await db.execute(query)
+    ]
 
 
 class Facets(BaseModel):
     domains: list[dict[str, Any]]
     cos: list[str]
     fields: dict[str, FieldType]
+    groupable: list[str] = GROUPABLE
 
 
 @router.get("/api/accounts/facets", response_model=Facets)

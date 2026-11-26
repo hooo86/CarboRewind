@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, select
 
+from .. import blacklist, monitoring
 from ..authz import Permission
 from ..db.models import (
     Account,
@@ -26,6 +27,7 @@ from ..db.models import (
     Snapshot,
     SnapshotStatus,
 )
+from .archives import summary_for
 from .deps import DbSession, Principal, deny, require
 from .schemas import MAX_PAGE, Page
 
@@ -54,6 +56,11 @@ class AccountDetail(BaseModel):
     last_seen_at: datetime | None
     snapshot_count: int
     last_snapshot: SnapshotOut | None
+    quota_bytes: int | None = None  # None or 0: unlimited
+    used_bytes: int | None = None
+    password_changed_at: datetime | None = None
+    password_expires_at: datetime | None = None  # None: never expires (or unknown)
+    password_must_change: bool = False
 
 
 class Dashboard(BaseModel):
@@ -69,6 +76,25 @@ class Dashboard(BaseModel):
     last_agent_heartbeat: datetime | None
     # Repository location and free space per active agent (global readers only).
     storage: list[dict[str, Any]] = Field(default_factory=list)
+    # Total size of the live mailboxes (from Carbonio) and their quotas (0/None = unlimited).
+    mail_used_bytes: int = 0
+    mail_quota_bytes: int = 0
+    # Mailboxes over the alert threshold (Monitoring settings).
+    mailboxes_nearly_full: int = 0
+    mailbox_alert_percent: int = 0
+    # Passwords expired or expiring within password_alert_days, and the list filter for them.
+    passwords_expiring: int = 0
+    password_alert_days: int = 0
+    password_filter: list[str] = Field(default_factory=list)
+    # Archive: messages kept in the repository, and what left the mailboxes.
+    archived_messages: int = 0
+    archived_bytes: int = 0
+    archived_removed_bytes: int = 0
+    # Carbonio services down and size of the mail queue (global readers only).
+    services_down: list[str] = Field(default_factory=list)
+    mail_queue_total: int | None = None
+    # Public addresses found in a blacklist (global readers only): "ip (zone)".
+    blacklisted: list[str] = Field(default_factory=list)
 
 
 def snapshot_out(s: Snapshot) -> SnapshotOut:
@@ -124,6 +150,11 @@ async def get_account(
         status=account.status,
         domain_id=account.domain_id,
         domain=domain.name if domain else "",
+        quota_bytes=account.quota_bytes,
+        used_bytes=account.used_bytes,
+        password_changed_at=account.password_changed_at,
+        password_expires_at=account.password_expires_at,
+        password_must_change=account.password_must_change,
         last_seen_at=account.last_seen_at,
         snapshot_count=count or 0,
         last_snapshot=snapshot_out(last) if last else None,
@@ -220,7 +251,21 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
     )
     agents_active = last_heartbeat = None
     storage: list[dict[str, Any]] = []
+    services_down: list[str] = []
+    queue_total: int | None = None
+    listed: list[str] = []
     if scope is None:
+        listed = [
+            f"{r['ip']} ({r['zone']})" for r in blacklist.listed(await blacklist.load_status(db))
+        ]
+        now = datetime.now(UTC)
+        for a in await db.scalars(select(Agent).where(Agent.status == AgentStatus.ACTIVE)):
+            view = monitoring.services_view(a, now)
+            if view is None or view["stale"]:
+                continue
+            services_down += view["down"]
+            if view["queue_total"] is not None:
+                queue_total = (queue_total or 0) + int(view["queue_total"])
         agents_active = await db.scalar(
             select(func.count()).select_from(Agent).where(Agent.status == AgentStatus.ACTIVE)
         )
@@ -233,7 +278,52 @@ async def dashboard(principal: Reader, db: DbSession) -> Dashboard:
                 )
             )
         ]
+    mail_used, mail_quota = (
+        await db.execute(
+            scoped(
+                select(
+                    func.coalesce(func.sum(Account.used_bytes), 0),
+                    func.coalesce(func.sum(Account.quota_bytes), 0),
+                ).where(live),
+                Account.domain_id,
+            )
+        )
+    ).one()
+    cfg = await monitoring.load_settings(db)
+    nearly_full = await db.scalar(
+        scoped(
+            select(func.count())
+            .select_from(Account)
+            .where(live, monitoring.nearly_full(cfg.mailbox_alert_percent, cfg.mailbox_alert_gb)),
+            Account.domain_id,
+        )
+    )
+    expiring = await db.scalar(
+        scoped(
+            select(func.count())
+            .select_from(Account)
+            .where(
+                Account.status.in_([AccountStatus.ACTIVE, AccountStatus.LOCKED]),
+                monitoring.password_expiring(cfg.password_alert_days, now),
+            ),
+            Account.domain_id,
+        )
+    )
+    archive = await summary_for(db, scope)
     return Dashboard(
+        passwords_expiring=int(expiring or 0),
+        password_alert_days=cfg.password_alert_days,
+        password_filter=monitoring.password_filter(cfg.password_alert_days, now),
+        services_down=services_down,
+        blacklisted=listed,
+        mail_queue_total=queue_total,
+        archived_messages=archive.messages,
+        archived_bytes=archive.bytes,
+        archived_removed_bytes=archive.removed_bytes,
+        mail_used_bytes=int(mail_used or 0),
+        mail_quota_bytes=int(mail_quota or 0),
+        mailboxes_nearly_full=int(nearly_full or 0),
+        mailbox_alert_percent=cfg.mailbox_alert_percent,
         accounts=accounts or 0,
         protected_24h=protected or 0,
         never_backed_up=never or 0,

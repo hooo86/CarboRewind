@@ -67,6 +67,18 @@ echo "==> filesystem layout"
 install -D -m 0755 "$HERE/carborewind-agent.sh" "$STAGE/usr/bin/carborewind-agent"
 install -D -m 0644 "$HERE/carborewind-agent.service" \
     "$STAGE/lib/systemd/system/carborewind-agent.service"
+install -D -m 0644 "$HERE/carborewind-storage.path" \
+    "$STAGE/lib/systemd/system/carborewind-storage.path"
+install -D -m 0644 "$HERE/carborewind-storage.service" \
+    "$STAGE/lib/systemd/system/carborewind-storage.service"
+install -D -m 0644 "$HERE/carborewind-control.path" \
+    "$STAGE/lib/systemd/system/carborewind-control.path"
+install -D -m 0644 "$HERE/carborewind-control.service" \
+    "$STAGE/lib/systemd/system/carborewind-control.service"
+install -D -m 0644 "$HERE/carborewind-cert.path" \
+    "$STAGE/lib/systemd/system/carborewind-cert.path"
+install -D -m 0644 "$HERE/carborewind-cert.service" \
+    "$STAGE/lib/systemd/system/carborewind-cert.service"
 install -D -m 0640 "$HERE/agent.env" "$STAGE/etc/carborewind/agent.env"
 install -D -m 0644 "$ROOT/docs/install.md" "$STAGE/usr/share/doc/carborewind-agent/INSTALL.md"
 install -D -m 0644 "$ROOT/LICENSE" "$STAGE/usr/share/doc/carborewind-agent/copyright"

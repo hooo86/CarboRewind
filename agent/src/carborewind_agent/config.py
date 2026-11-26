@@ -38,6 +38,47 @@ class AgentSettings(BaseSettings):
 
     # Backup repository (local disk or NFS mount point).
     repository_path: Path = Path("/var/lib/carborewind/repository")
+    # Carbonio's data (mail store, database, indexes): its file system is reported so that
+    # the interface compares the mail volume with the server's disk.
+    mail_store_path: Path = Path("/opt/zextras")
+    # Disk guard: backups stop before the repository's file system gets too full. On a
+    # local disk (shared with Carbonio), max(min_free_gb_local, min_free_percent_local % of
+    # the disk) must stay free; on a network share, min_free_gb_network.
+    min_free_gb_local: float = Field(default=20.0, ge=0)
+    min_free_percent_local: float = Field(default=15.0, ge=0, le=90)
+    min_free_gb_network: float = Field(default=2.0, ge=0)
+    # Mail traffic statistics (sending limits, spam) read from the MTA log.
+    mail_monitor: bool = True
+    mail_logs: list[Path] = Field(
+        default_factory=lambda: [
+            Path("/var/log/carbonio.log"),
+            Path("/var/log/zimbra.log"),
+            Path("/var/log/mail.log"),
+        ]
+    )
+    mail_state_file: Path = Path("/var/lib/carborewind/mail-stats.json")
+    # Carbonio services: status read every minute (admin API + local ports), alerts on the
+    # server. Ports probed on this host; an empty map disables the probes.
+    service_monitor: bool = True
+    service_ports: dict[str, int] = Field(
+        default_factory=lambda: {
+            "mta": 25,
+            "submission": 587,
+            "smtps": 465,
+            "amavis": 10024,
+            "amavis_return": 10025,
+            "lmtp": 7025,
+            "ldap": 389,
+        }
+    )
+    # Status file written by the optional Postfix guard (root script restoring master.cf).
+    postfix_guard_status: Path = Path("/var/lib/postfix-guard/status.json")
+    # Copy 02: mirror of the repository on a second share (set by `storage apply`).
+    replica_path: Path | None = None
+    # Hand-off with the root helper applying the storage settings of the interface.
+    storage_dir: Path = Path("/var/lib/carborewind/storage")
+    # Standby server: what was applied of each account (see standby.py).
+    standby_dir: Path = Path("/var/lib/carborewind/standby")
     # KEK protecting the repository master key: base64 of 32 bytes, file mode 0600/0400.
     repository_key_file: Path = Path("/etc/carborewind/repository.key")
 

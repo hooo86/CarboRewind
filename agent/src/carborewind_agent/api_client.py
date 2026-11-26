@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import ssl
+import time
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,10 @@ from cryptography.x509.oid import NameOID
 
 from . import __version__
 from .config import AgentSettings
+
+# Seconds to wait between attempts while the server is unreachable (about 2.5 minutes in
+# all: the time an update takes to restart the server's containers).
+RETRY_DELAYS = (3, 6, 12, 24, 45, 60)
 
 
 class ApiError(Exception):
@@ -104,11 +110,25 @@ class AgentApi:
             verify=tls_context(server_ca, (settings.tls_cert, settings.tls_key)),
         )
 
-    def _post(self, path: str, body: Any = None) -> httpx.Response:
-        response = self._http.post(f"/api/agent{path}", json=body)
-        if response.status_code >= 400:
-            raise ApiError(response.status_code, response.text[:200])
-        return response
+    def _post(self, path: str, body: Any = None, retry: bool = True) -> httpx.Response:
+        """POST to the agent API. While the server is being updated (containers restarted),
+        it is unreachable or answers 502/503/504 for a minute or two: wait and try again
+        rather than lose a finished job's result."""
+        delays = list(RETRY_DELAYS) if retry else []
+        while True:
+            try:
+                response = self._http.post(f"/api/agent{path}", json=body)
+            except httpx.TransportError as exc:
+                if not delays:
+                    raise ApiError(0, f"server unreachable: {exc}") from exc
+                time.sleep(delays.pop(0))
+                continue
+            if response.status_code in (502, 503, 504) and delays:
+                time.sleep(delays.pop(0))
+                continue
+            if response.status_code >= 400:
+                raise ApiError(response.status_code, response.text[:200])
+            return response
 
     def inventory(
         self,
@@ -130,9 +150,17 @@ class AgentApi:
         return job
 
     def heartbeat(
-        self, job_id: str, checkpoint: dict[str, Any] | None, progress: dict[str, Any] | None = None
+        self,
+        job_id: str,
+        checkpoint: dict[str, Any] | None,
+        progress: dict[str, Any] | None = None,
+        retry: bool = True,
     ) -> None:
-        self._post(f"/jobs/{job_id}/heartbeat", {"checkpoint": checkpoint, "progress": progress})
+        self._post(
+            f"/jobs/{job_id}/heartbeat",
+            {"checkpoint": checkpoint, "progress": progress},
+            retry=retry,
+        )
 
     def complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/complete", payload)
@@ -142,6 +170,100 @@ class AgentApi:
 
     def restore_complete(self, job_id: str, payload: dict[str, Any]) -> None:
         self._post(f"/jobs/{job_id}/restore-complete", payload)
+
+    def storage_config(self) -> dict[str, Any] | None:
+        """Storage settings chosen in the interface (with the share passwords)."""
+        response = self._http.get("/api/agent/storage")
+        if response.status_code == 204:
+            return None
+        if response.status_code >= 400:
+            raise ApiError(response.status_code, response.text[:200])
+        result: dict[str, Any] = response.json()
+        return result
+
+    def agent_config(self) -> dict[str, Any] | None:
+        """Tuning chosen in Settings → Agent; None until saved once."""
+        response = self._http.get("/api/agent/config")
+        if response.status_code == 204:
+            return None
+        if response.status_code >= 400:
+            raise ApiError(response.status_code, response.text[:200])
+        result: dict[str, Any] = response.json()
+        return result
+
+    def storage_status(self, storage: dict[str, Any]) -> None:
+        self._post("/storage-status", storage)
+
+    def mail_stats(
+        self,
+        hours: list[dict[str, Any]],
+        log_path: str | None,
+        security: list[dict[str, Any]] | None = None,
+        mailbox_log: dict[str, Any] | None = None,
+        login_filter: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Hourly mail counters (absolute values), and failed logins / blocked IPs per hour;
+        the answer lists account actions."""
+        body: dict[str, Any] = {"hours": hours, "log": log_path}
+        if security:
+            body["security"] = security
+        if mailbox_log is not None:
+            body["mailbox_log"] = mailbox_log
+        if login_filter is not None:
+            body["login_filter"] = login_filter
+        result: dict[str, Any] = self._post("/mail-stats", body).json()
+        return result
+
+    def ip_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/ip-actions/{action_id}/done", {"error": error})
+
+    def mail_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/account-actions/{action_id}/done", {"error": error})
+
+    def verify_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/verify-complete", payload)
+
+    def replicate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/replicate-complete", payload)
+
+    def blocklist_done(self, revision: int, domains: list[str], error: str | None) -> None:
+        self._post("/blocklist-done", {"revision": revision, "domains": domains, "error": error})
+
+    def trustlist_done(self, revision: int, domains: list[str], error: str | None) -> None:
+        self._post("/trustlist-done", {"revision": revision, "domains": domains, "error": error})
+
+    def standby_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/standby-complete", payload)
+
+    def migrate_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/migrate-complete", payload)
+
+    def services(self, report: dict[str, Any]) -> dict[str, Any]:
+        """State of the Carbonio services and of the mail queue; the answer lists the
+        queue actions to apply (empty with an older server)."""
+        response = self._post("/services", report)
+        if response.status_code == 204 or not response.content:
+            return {}
+        result: dict[str, Any] = response.json()
+        return result
+
+    def queue_action_done(self, action_id: str, error: str | None) -> None:
+        self._post(f"/queue-actions/{action_id}/done", {"error": error})
+
+    def archive_stored(self, job_id: str, entries: list[dict[str, Any]]) -> None:
+        """Index of archived messages, sent before any of them is deleted."""
+        self._post(f"/jobs/{job_id}/archive-stored", {"entries": entries})
+
+    def archive_complete(self, job_id: str, payload: dict[str, Any]) -> None:
+        self._post(f"/jobs/{job_id}/archive-complete", payload)
+
+    def fetch_complete(self, job_id: str, data: bytes) -> None:
+        """Content of one archived message, for the interface (base64)."""
+        self._post(f"/jobs/{job_id}/fetch-complete", {"data": base64.b64encode(data).decode()})
+
+    def release(self, job_id: str) -> None:
+        """Hand a running job back (the agent is stopping): resumed at once, not counted."""
+        self._post(f"/jobs/{job_id}/release", retry=False)
 
     def fail(self, job_id: str, error: str, retryable: bool) -> None:
         self._post(f"/jobs/{job_id}/fail", {"error": error[:2000], "retryable": retryable})

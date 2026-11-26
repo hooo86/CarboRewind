@@ -21,19 +21,30 @@ import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, exists, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from . import audit
+from . import (
+    archiving,
+    audit,
+    blacklist,
+    mail_traffic,
+    monitoring,
+    restore_test,
+    standby,
+    storage_settings,
+)
 from .config import Settings
 from .db.models import (
     Account,
     AccountStatus,
     ActorType,
+    ArchivedMessage,
+    BackupType,
     Blob,
     FolderVersion,
     ItemVersion,
@@ -65,6 +76,8 @@ class TickReport:
     snapshots_expired: int = 0
     versions_pruned: int = 0
     purge_job: uuid.UUID | None = None
+    replicate_job: uuid.UUID | None = None
+    verify_jobs: list[uuid.UUID] = field(default_factory=list)
     notifications_queued: int = 0
     notifications_sent: int = 0
     errors: list[str] = field(default_factory=list)
@@ -96,58 +109,97 @@ async def _busy_accounts(db: AsyncSession) -> set[uuid.UUID]:
     return {r for r in rows if r is not None}
 
 
+async def _due_slot(
+    schedule: str, since: datetime, now: datetime, tz: str, name: str, report: TickReport
+) -> datetime | None:
+    try:
+        slot = Cron.parse(schedule).last_slot(since, now, zone(tz))
+    except CronError as exc:  # validated by the API; a manual DB edit could still break it
+        report.errors.append(f"policy {name}: {exc}")
+        return None
+    return slot.astimezone(UTC) if slot is not None else None
+
+
+async def _queue_slot(
+    db: AsyncSession,
+    policy: Policy,
+    slot_utc: datetime,
+    backup_type: BackupType,
+    busy: set[uuid.UUID],
+    report: TickReport,
+    prefix: str = "policy",
+) -> None:
+    """Queue one backup per covered account that is not already being backed up."""
+    accounts = [a for a in await db.scalars(_accounts_of(policy)) if a not in busy]
+    queued = 0
+    if accounts:
+        rows = [
+            {
+                "kind": JobKind.BACKUP,
+                "status": JobStatus.QUEUED,
+                "account_id": account,
+                "policy_id": policy.id,
+                "priority": policy.priority,
+                "params": {"backup_type": backup_type.value},
+                "idempotency_key": f"{prefix}:{policy.id}:{slot_utc:%Y%m%dT%H%M}:{account}",
+            }
+            for account in accounts
+        ]
+        result = await db.execute(
+            insert(Job)
+            .values(rows)
+            # Same slot already queued, or a backup of the account already pending.
+            .on_conflict_do_nothing()
+            .returning(Job.id)
+        )
+        queued = len(result.all())
+        report.jobs_queued += queued
+        busy.update(accounts)
+    await audit.record(
+        db,
+        action="policy.run",
+        outcome=Outcome.SUCCESS,
+        actor_type=ActorType.SYSTEM,
+        actor_name="scheduler",
+        target_type="policy",
+        target_id=str(policy.id),
+        details={
+            "policy": policy.name,
+            "slot": slot_utc.isoformat(),
+            "type": backup_type.value,
+            "jobs": queued,
+        },
+    )
+
+
 async def enqueue_due_backups(db: AsyncSession, now: datetime, report: TickReport) -> None:
     busy = await _busy_accounts(db)
     policies = await db.scalars(
         select(Policy).where(Policy.enabled.is_(True)).order_by(Policy.priority, Policy.name)
     )
     for policy in policies:
-        try:
-            slot = Cron.parse(policy.schedule).last_slot(
-                policy.last_run_at or policy.created_at, now, zone(policy.timezone)
+        # The full backup first: when both schedules fall at once, it replaces the other.
+        if policy.full_schedule:
+            since = policy.full_last_run_at or policy.last_run_at or policy.created_at
+            full_slot = await _due_slot(
+                policy.full_schedule, since, now, policy.timezone, policy.name, report
             )
-        except CronError as exc:  # validated by the API; a manual DB edit could still break it
-            report.errors.append(f"policy {policy.name}: {exc}")
-            continue
-        if slot is None:
-            continue
-        slot_utc = slot.astimezone(UTC)
-        accounts = [a for a in await db.scalars(_accounts_of(policy)) if a not in busy]
-        if accounts:
-            rows = [
-                {
-                    "kind": JobKind.BACKUP,
-                    "status": JobStatus.QUEUED,
-                    "account_id": account,
-                    "policy_id": policy.id,
-                    "priority": policy.priority,
-                    "params": {"backup_type": policy.backup_type.value},
-                    "idempotency_key": f"policy:{policy.id}:{slot_utc:%Y%m%dT%H%M}:{account}",
-                }
-                for account in accounts
-            ]
-            result = await db.execute(
-                insert(Job)
-                .values(rows)
-                .on_conflict_do_nothing(index_elements=["idempotency_key"])
-                .returning(Job.id)
-            )
-            queued = len(result.all())
-            report.jobs_queued += queued
-            busy.update(accounts)
-        else:
-            queued = 0
-        policy.last_run_at = slot_utc
-        await audit.record(
-            db,
-            action="policy.run",
-            outcome=Outcome.SUCCESS,
-            actor_type=ActorType.SYSTEM,
-            actor_name="scheduler",
-            target_type="policy",
-            target_id=str(policy.id),
-            details={"policy": policy.name, "slot": slot_utc.isoformat(), "jobs": queued},
+            if full_slot is not None:
+                await _queue_slot(
+                    db, policy, full_slot, BackupType.FULL, busy, report, "policy-full"
+                )
+                policy.full_last_run_at = full_slot
+        slot = await _due_slot(
+            policy.schedule,
+            policy.last_run_at or policy.created_at,
+            now,
+            policy.timezone,
+            policy.name,
+            report,
         )
+        if slot is not None:
+            await _queue_slot(db, policy, slot, policy.backup_type, busy, report)
+            policy.last_run_at = slot
 
 
 async def _rules_by_account(db: AsyncSession) -> dict[uuid.UUID, tuple[Retention, str] | None]:
@@ -226,16 +278,20 @@ def orphan_blobs_query(limit: int) -> Any:
     referenced = or_(
         exists().where(ItemVersion.content_blob_id == Blob.id),
         exists().where(ItemVersion.meta_blob_id == Blob.id),
+        exists().where(ArchivedMessage.content_blob_id == Blob.id),
+        exists().where(ArchivedMessage.meta_blob_id == Blob.id),
     )
     return select(Blob.id).where(~referenced).order_by(Blob.id).limit(limit)
 
 
 async def blobs_in_checkpoints(db: AsyncSession) -> set[str]:
-    """Blobs written by unfinished backups: a resumed job trusts them without re-reading."""
+    """Blobs written by unfinished backups or archive runs: a resumed job trusts them."""
     out: set[str] = set()
     checkpoints = await db.scalars(
         select(Job.checkpoint).where(
-            Job.kind == JobKind.BACKUP, Job.status.in_(PENDING), Job.checkpoint.is_not(None)
+            Job.kind.in_([JobKind.BACKUP, JobKind.ARCHIVE]),
+            Job.status.in_(PENDING),
+            Job.checkpoint.is_not(None),
         )
     )
     for checkpoint in checkpoints:
@@ -255,7 +311,11 @@ async def purge_plan(db: AsyncSession) -> dict[str, Any]:
     manifests = [{"account": carbonio, "snapshot": str(sid)} for sid, carbonio in rows]
     keep = await blobs_in_checkpoints(db)
     blobs = [b for b in await db.scalars(orphan_blobs_query(MAX_PURGE_BLOBS)) if b not in keep]
-    return {"manifests": manifests, "blobs": blobs}
+    return {
+        "manifests": manifests,
+        "blobs": blobs,
+        "archives": await archiving.purgeable_archives(db),
+    }
 
 
 async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
@@ -270,7 +330,8 @@ async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
         )
     )
     orphan = await db.scalar(orphan_blobs_query(1))
-    if not expired and orphan is None:
+    archives = (await db.execute(archiving.purgeable_archives_query(1))).first()
+    if not expired and orphan is None and archives is None:
         return
     job = Job(kind=JobKind.PURGE, status=JobStatus.QUEUED, priority=200, params={})
     db.add(job)
@@ -278,13 +339,69 @@ async def enqueue_purge(db: AsyncSession, report: TickReport) -> None:
     report.purge_job = job.id
 
 
+REPLICATE_BACKOFF = timedelta(hours=1)
+
+
+async def enqueue_replicate(db: AsyncSession, now: datetime, report: TickReport) -> None:
+    """Refresh copy 02 when the repository changed since its last refresh."""
+    cfg = await storage_settings.load(db)
+    if cfg.copy is None:
+        return
+    pending = await db.scalar(
+        select(func.count()).where(Job.kind == JobKind.REPLICATE, Job.status.in_(PENDING))
+    )
+    if pending:
+        return
+    last = await db.scalar(
+        select(Job).where(Job.kind == JobKind.REPLICATE).order_by(Job.created_at.desc()).limit(1)
+    )
+    if (
+        last is not None
+        and last.status is JobStatus.FAILED
+        and (last.finished_at or last.created_at) > now - REPLICATE_BACKOFF
+    ):
+        return  # do not hammer an unreachable NAS; the failure was notified
+    done = await db.scalar(
+        select(func.max(Job.started_at)).where(
+            Job.kind == JobKind.REPLICATE, Job.status == JobStatus.SUCCEEDED
+        )
+    )
+    changed = await db.scalar(
+        select(func.max(Job.finished_at)).where(
+            Job.kind.in_([JobKind.BACKUP, JobKind.PURGE]), Job.status == JobStatus.SUCCEEDED
+        )
+    )
+    if changed is None or (done is not None and changed <= done):
+        return
+    job = Job(kind=JobKind.REPLICATE, status=JobStatus.QUEUED, priority=210, max_attempts=2)
+    db.add(job)
+    await db.flush()
+    report.replicate_job = job.id
+
+
 async def tick(db: AsyncSession, now: datetime, *, retention: bool = True) -> TickReport:
     """One scheduling pass, in the caller's transaction."""
     report = TickReport()
     await db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": LOCK_ID})
     await enqueue_due_backups(db, now, report)
+    archived, errors = await archiving.enqueue_due(db, now)
+    report.jobs_queued += archived
+    report.errors.extend(errors)
     report.notifications_queued = await periodic_alerts(db, now)
+    await enqueue_replicate(db, now, report)
+    report.jobs_queued += await standby.enqueue_due(db, now)
+    report.verify_jobs = await monitoring.enqueue_verify(db, now)
+    await restore_test.enqueue_due(db, now)
+    try:
+        await blacklist.due_check(db, now)
+    except Exception as exc:  # DNS trouble must not stop the scheduler
+        report.errors.append(f"blacklist check: {exc!r}")
     if retention:
+        report.notifications_queued += await monitoring.periodic_alerts(db, now)
+        await monitoring.prune(db, now)
+        await mail_traffic.prune(db, now)
+        await archiving.prune_fetched(db, now)
+        await archiving.apply_retention(db, now)
         await apply_retention(db, report)
         await enqueue_purge(db, report)
     return report

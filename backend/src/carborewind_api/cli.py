@@ -150,7 +150,7 @@ def _sessionmaker() -> tuple[Any, async_sessionmaker[Any]]:
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 
-async def agent_create(name: str, hostname: str) -> tuple[str, str]:
+async def agent_create(name: str, hostname: str, role: str = "primary") -> tuple[str, str]:
     """Register an agent, or re-issue the token of one not enrolled yet.
 
     Returns (agent id, one-time enrolment token). Refuses to touch an agent that is
@@ -170,7 +170,7 @@ async def agent_create(name: str, hostname: str) -> tuple[str, str]:
                 )
             action = "agent.token.reissue" if agent is not None else "agent.create"
             if agent is None:
-                agent = Agent(name=name, hostname=hostname, status=AgentStatus.PENDING)
+                agent = Agent(name=name, hostname=hostname, status=AgentStatus.PENDING, role=role)
                 db.add(agent)
             agent.hostname = hostname
             agent.enrollment_token_hash = token_digest(token)
@@ -205,6 +205,15 @@ async def backup_request(email: str, full: bool) -> str:
             if account is None:
                 raise SystemExit(f"unknown account {email} (has the agent synced the inventory?)")
             backup_type = BackupType.FULL if full else BackupType.INCREMENTAL
+            pending = await db.scalar(
+                select(Job.id).where(
+                    Job.kind == JobKind.BACKUP,
+                    Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                    Job.account_id == account.id,
+                )
+            )
+            if pending is not None:
+                raise SystemExit(f"a backup of {email} is already queued or running ({pending})")
             job = Job(
                 kind=JobKind.BACKUP,
                 status=JobStatus.QUEUED,
@@ -237,7 +246,12 @@ async def run_scheduler(interval: float, once: bool) -> int:
     from .scheduler import log as scheduler_log
     from .scheduler import run_forever, tick
 
-    configure_logging(get_settings().log_level)
+    settings = get_settings()
+    configure_logging(
+        settings.log_level,
+        settings.redis_url.get_secret_value() if settings.redis_url else None,
+        "scheduler",
+    )
     engine, factory = _sessionmaker()
     try:
         if once:
@@ -279,12 +293,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     agent = sub.add_parser("agent-create", help="register an agent, print its enrolment token")
     agent.add_argument("name")
     agent.add_argument("hostname")
+    agent.add_argument(
+        "--role",
+        choices=("primary", "standby"),
+        default="primary",
+        help="standby: agent of the clone kept in line for a disaster (never backs up)",
+    )
     backup = sub.add_parser("backup", help="queue a backup of one account")
     backup.add_argument("email")
     backup.add_argument("--full", action="store_true", help="force a full backup")
     args = parser.parse_args(argv)
     if args.command == "agent-create":
-        agent_id, token = asyncio.run(agent_create(args.name, args.hostname))
+        agent_id, token = asyncio.run(agent_create(args.name, args.hostname, args.role))
         print(
             f"agent {agent_id} registered; one-time enrolment token (valid "
             f"{get_settings().agent_enrollment_minutes} min):\n{token}"

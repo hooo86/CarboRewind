@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -80,7 +82,7 @@ def repo_command(args: argparse.Namespace) -> int:
 
 def carbonio_command(args: argparse.Namespace) -> int:
     from .carbonio.factory import build_client
-    from .carbonio.probe import run_probe
+    from .carbonio.probe import quota_report, run_probe
 
     try:
         settings = AgentSettings()
@@ -88,6 +90,9 @@ def carbonio_command(args: argparse.Namespace) -> int:
     except (ValidationError, KeyFileError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.carbonio_command == "quota":
+        print("\n".join(quota_report(client, args.account)))
+        return 0
     report = run_probe(client, args.account)
     print(report.render())
     return 0 if report.ok else 1
@@ -119,9 +124,12 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     import signal
 
     from .api_client import AgentApi
+    from .archive import MailboxArchiver
     from .backup import AccountBackup
     from .carbonio.factory import build_client
+    from .migrate import MailboxMigration
     from .restore import AccountRestore
+    from .standby import StandbySync
     from .throttle import Throttle
     from .worker import Worker
 
@@ -135,14 +143,75 @@ def run_command(args: argparse.Namespace) -> int:  # pragma: no cover - long-run
     carbonio = build_client(settings)
     throttle = Throttle.from_mbps(settings.max_bandwidth_mbps, settings.max_load_per_cpu)
     server_ca = Path(args.server_ca) if args.server_ca else settings.api_ca_file
+    from .mailwatch import MailMonitor
+    from .mtahealth import MtaHealth
+    from .servicewatch import ServiceMonitor
+
+    stop_mail = threading.Event()
+    # Both watchers always run; Settings → Agent turns them off and on (agent.env gives
+    # the starting state until settings are saved in the interface).
+    monitor = MailMonitor(
+        AgentApi(settings, server_ca=server_ca),
+        carbonio,
+        settings.mail_logs,
+        settings.mail_state_file,
+        protected={settings.carbonio_admin_name},
+        mailbox_log=Path("/opt/zextras/log/mailbox.log"),
+    )
+    monitor.enabled = settings.mail_monitor
+    threading.Thread(target=monitor.run, args=(stop_mail,), daemon=True).start()
+    services = ServiceMonitor(
+        AgentApi(settings, server_ca=server_ca),
+        carbonio,
+        settings.service_ports,
+        mta=MtaHealth(settings.mail_logs, settings.postfix_guard_status),
+        sender=settings.carbonio_admin_name,
+    )
+    services.enabled = settings.service_monitor
+    threading.Thread(target=services.run, args=(stop_mail,), daemon=True).start()
+
+    def apply_config(cfg: dict[str, Any]) -> None:
+        throttle.configure(
+            int(cfg.get("max_bandwidth_mbps", 0)), float(cfg.get("max_load_per_cpu", 0))
+        )
+        monitor.enabled = bool(cfg.get("mail_monitor", True))
+        services.configure(
+            bool(cfg.get("service_monitor", True)), dict(cfg.get("service_ports") or {}), cfg
+        )
+
     worker = Worker(
         AgentApi(settings, server_ca=server_ca),
         carbonio,
         AccountBackup(carbonio, repo, throttle),
         AccountRestore(carbonio, repo, throttle),
         repo,
+        migration=MailboxMigration(carbonio, throttle),
+        archiver=MailboxArchiver(
+            carbonio, repo, throttle, protected={settings.carbonio_admin_name}
+        ),
+        standby=StandbySync(carbonio, repo, throttle, state_dir=settings.standby_dir),
+        storage_dir=settings.storage_dir,
+        replica=settings.replica_path,
+        kek=read_kek(settings.repository_key_file),
+        mail_store=settings.mail_store_path,
+        space=(
+            settings.min_free_gb_local,
+            settings.min_free_percent_local,
+            settings.min_free_gb_network,
+        ),
+        concurrency=settings.max_concurrent_accounts,
+        log_files={
+            "mail": next((p for p in settings.mail_logs if p.exists()), settings.mail_logs[0]),
+            "mailbox": Path("/opt/zextras/log/mailbox.log"),
+        },
+        on_config=apply_config,
     )
-    signal.signal(signal.SIGTERM, lambda *_: worker.stop())
+
+    def stop(*_: object) -> None:
+        stop_mail.set()
+        worker.stop()
+
+    signal.signal(signal.SIGTERM, stop)
     worker.run_forever()
     return 0
 
@@ -166,6 +235,14 @@ def storage_command(args: argparse.Namespace) -> int:
             str(AgentSettings.model_fields["repository_path"].default),
         )
     )
+    if args.storage_command == "apply":
+        from .storage_apply import apply_command
+
+        try:
+            return apply_command(env_file=env_file)
+        except (StorageError, KeyError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
     try:
         if args.storage_command == "status":
             info = describe(current)
@@ -227,6 +304,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     carbonio_sub = carbonio.add_subparsers(dest="carbonio_command", required=True)
     probe = carbonio_sub.add_parser("probe", help="read-only check of the Carbonio API contract")
     probe.add_argument("--account", help="account to probe (default: first one listed)")
+    quota = carbonio_sub.add_parser("quota", help="show where quota and usage come from")
+    quota.add_argument("account", help="e-mail address of the account")
     enroll_p = sub.add_parser("enroll", help="obtain the client certificate (one-time token)")
     enroll_p.add_argument("--token-file", help="file holding the token (default: read stdin)")
     enroll_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
@@ -248,8 +327,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     move.add_argument(
         "--start-empty", action="store_true", help="leave the current repository behind"
     )
+    storage_sub.add_parser(
+        "apply", help="apply the settings chosen in the web interface (root, systemd path unit)"
+    )
     local = storage_sub.add_parser("local", help="store the repository on a local directory")
     local.add_argument("path", nargs="?", default="/var/lib/carborewind/repository")
+    control = sub.add_parser("control", help="Carbonio start asked by the agent (root)")
+    control_sub = control.add_subparsers(dest="control_command", required=True)
+    control_sub.add_parser("apply", help="start Carbonio if asked (root, systemd path unit)")
+    cert = sub.add_parser("cert", help="certificate renewal asked by the agent (root)")
+    cert_sub = cert.add_subparsers(dest="cert_command", required=True)
+    cert_sub.add_parser("apply", help="renew and deploy the certificate (root, path unit)")
     run_p = sub.add_parser("run", help="run the agent service (systemd)")
     run_p.add_argument("--server-ca", help="CA bundle to verify the API's TLS certificate")
     args = parser.parse_args(argv)
@@ -265,6 +353,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return repo_command(args)
     if args.command == "storage":
         return storage_command(args)
+    if args.command == "cert":
+        from .cert_apply import apply_command as cert_apply
+
+        return cert_apply()
+    if args.command == "control":
+        from .control_apply import apply_command as control_apply
+
+        return control_apply()
     return 2  # pragma: no cover - argparse rejects unknown commands
 
 

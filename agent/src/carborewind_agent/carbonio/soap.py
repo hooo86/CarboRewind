@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -39,6 +40,25 @@ class SoapFaultError(Exception):
         super().__init__(f"{code}: {reason}")
         self.code = code
         self.reason = reason
+
+
+# The token was revoked or expired before its announced lifetime (Carbonio restarted, token
+# validity bumped, session ended): worth one new authentication.
+AUTH_FAULTS = frozenset({"service.AUTH_EXPIRED", "service.AUTH_REQUIRED"})
+
+
+class RenewableToken:
+    """A cached token that can be dropped when Carbonio no longer accepts it."""
+
+    def __init__(self, get: Callable[[], str], drop: Callable[[], object]) -> None:
+        self._get = get
+        self._drop = drop
+
+    def __call__(self) -> str:
+        return self._get()
+
+    def invalidate(self) -> None:
+        self._drop()
 
 
 class SoapClient:
@@ -63,9 +83,26 @@ class SoapClient:
         namespace: str,
         body: dict[str, Any] | None = None,
         *,
-        token: str | None = None,
+        token: str | RenewableToken | None = None,
     ) -> dict[str, Any]:
-        """Call ``<name>Request`` and return the content of ``<name>Response``."""
+        """Call ``<name>Request`` and return the content of ``<name>Response``.
+
+        With a :class:`RenewableToken`, an expired or revoked token is renewed and the call
+        made once more."""
+        if not isinstance(token, RenewableToken):
+            return self._invoke(name, namespace, body, token)
+        try:
+            return self._invoke(name, namespace, body, token())
+        except SoapFaultError as exc:
+            if exc.code not in AUTH_FAULTS:
+                raise
+            log.info("%s: %s, authenticating again", name, exc.code)
+            token.invalidate()
+            return self._invoke(name, namespace, body, token())
+
+    def _invoke(
+        self, name: str, namespace: str, body: dict[str, Any] | None, token: str | None
+    ) -> dict[str, Any]:
         context: dict[str, Any] = {"_jsns": "urn:zimbra", "format": {"type": "js"}}
         if token:
             context["authToken"] = token
@@ -77,7 +114,16 @@ class SoapClient:
         try:
             payload = response.json()
         except ValueError as exc:
-            raise SoapFaultError("client.BAD_RESPONSE", f"non-JSON answer to {name}") from exc
+            snippet = " ".join(response.text.split())[:160]
+            if response.status_code == 413:
+                raise SoapFaultError(
+                    "client.TOO_LARGE",
+                    f"{name}: request too large for Carbonio (HTTP 413): {snippet!r}",
+                ) from exc
+            raise SoapFaultError(
+                "client.BAD_RESPONSE",
+                f"non-JSON answer to {name} (HTTP {response.status_code}): {snippet!r}",
+            ) from exc
         fault = payload.get("Body", {}).get("Fault")
         if fault is not None:
             code = fault.get("Detail", {}).get("Error", {}).get("Code", "service.FAILURE")

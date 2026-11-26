@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
+
+import { AgentSettingsForm } from "../components/AgentSettingsForm";
+import { RestoreTestSettingsTab } from "../components/RestoreTests";
+import { TelegramSection } from "../components/Telegram";
+import { MonitoringSettingsForm } from "./MonitoringPage";
+import { PolicyCard } from "./UsersPage";
 
 import { api } from "../api/endpoints";
 import type { NotificationSettings, OutboxEntry } from "../api/types";
@@ -11,22 +18,40 @@ import {
   errorMessage,
   useLoad,
 } from "../components/common";
+import { StorageSettingsSection } from "../components/StorageSettingsForm";
 import { formatDate } from "../utils/format";
+import { TimezoneSelect } from "../components/TimezoneSelect";
 
-const EVENTS = [
+export const EVENTS = [
   "job_failed",
   "backup_partial",
   "restore_failed",
   "agent_offline",
   "daily_digest",
+  "migration_done",
+  "mail_limit",
+  "integrity_failed",
+  "replica_lag",
+  "storage_full",
+  "mailbox_quota",
+  "password_expiring",
+  "service_down",
+  "service_up",
+  "mail_queue",
+  "archive_report",
+  "blacklisted",
+  "blacklist_cleared",
+  "restore_test_failed",
+  "ip_blocked",
 ];
 
 type Form = Omit<
   NotificationSettings,
-  "password_set" | "secret_key_configured"
+  "password_set" | "secret_key_configured" | "fallback_password_set"
 > & {
   password: string;
   recipientsText: string;
+  fallbackPassword: string;
 };
 
 function toForm(s: NotificationSettings): Form {
@@ -44,6 +69,13 @@ function toForm(s: NotificationSettings): Form {
     timezone: s.timezone,
     language: s.language,
     password: "",
+    fallback_enabled: s.fallback_enabled ?? false,
+    fallback_host: s.fallback_host ?? "",
+    fallback_port: s.fallback_port ?? 587,
+    fallback_security: s.fallback_security ?? "starttls",
+    fallback_username: s.fallback_username ?? "",
+    fallback_sender: s.fallback_sender ?? "",
+    fallbackPassword: "",
   };
 }
 
@@ -65,6 +97,9 @@ function NotificationsForm({
     text: string;
   } | null>(null);
   const [testTo, setTestTo] = useState("");
+  const [fallbackPw, setFallbackPw] = useState<"keep" | "change" | "clear">(
+    initial.fallback_password_set ? "keep" : "change",
+  );
 
   useEffect(() => setForm(toForm(initial)), [initial]);
 
@@ -79,7 +114,7 @@ function NotificationsForm({
       .split(/[\s,;]+/)
       .map((r) => r.trim())
       .filter(Boolean);
-    const { recipientsText: _r, password, ...rest } = form;
+    const { recipientsText: _r, password, fallbackPassword, ...rest } = form;
     void _r;
     try {
       const saved = await api.saveNotificationSettings({
@@ -91,9 +126,16 @@ function NotificationsForm({
             : passwordAction === "clear"
               ? ""
               : password,
+        fallback_password:
+          fallbackPw === "keep"
+            ? null
+            : fallbackPw === "clear"
+              ? ""
+              : fallbackPassword,
       });
       setMessage({ kind: "ok", text: t("settings.saved") });
       setPasswordAction(saved.password_set ? "keep" : "change");
+      setFallbackPw(saved.fallback_password_set ? "keep" : "change");
       onSaved(saved);
     } catch (err) {
       setMessage({
@@ -105,11 +147,11 @@ function NotificationsForm({
     }
   }
 
-  async function test() {
+  async function test(server: "main" | "fallback" = "main") {
     setBusy(true);
     setMessage(null);
     try {
-      const r = await api.testNotification(testTo.trim() || undefined);
+      const r = await api.testNotification(testTo.trim() || undefined, server);
       setMessage(
         r.ok
           ? { kind: "ok", text: t("settings.testOk") }
@@ -233,6 +275,110 @@ function NotificationsForm({
         </div>
       </fieldset>
       <fieldset>
+        <legend>{t("settings.fallback")}</legend>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={form.fallback_enabled}
+            onChange={(e) => set("fallback_enabled", e.target.checked)}
+          />
+          {t("settings.fallbackEnabled")}
+        </label>
+        <p className="muted small">{t("settings.fallbackHelp")}</p>
+        <div className="row">
+          <label className="grow">
+            {t("settings.fallbackHost")}
+            <input
+              value={form.fallback_host}
+              placeholder="smtp.relais.example.com"
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_host", e.target.value)}
+            />
+          </label>
+          <label>
+            {t("settings.fallbackPort")}
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              value={form.fallback_port}
+              disabled={!form.fallback_enabled}
+              onChange={(e) =>
+                set("fallback_port", Number(e.target.value) || 0)
+              }
+            />
+          </label>
+          <label>
+            {t("settings.fallbackSecurity")}
+            <select
+              value={form.fallback_security}
+              disabled={!form.fallback_enabled}
+              onChange={(e) => {
+                const security = e.target.value as "starttls" | "ssl" | "none";
+                set("fallback_security", security);
+                set(
+                  "fallback_port",
+                  security === "ssl" ? 465 : security === "starttls" ? 587 : 25,
+                );
+              }}
+            >
+              <option value="starttls">STARTTLS</option>
+              <option value="ssl">SSL/TLS</option>
+              <option value="none">{t("settings.noEncryption")}</option>
+            </select>
+          </label>
+        </div>
+        <div className="row">
+          <label className="grow">
+            {t("settings.fallbackUsername")}
+            <input
+              value={form.fallback_username}
+              autoComplete="off"
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_username", e.target.value)}
+            />
+          </label>
+          <label className="grow">
+            {t("settings.fallbackPassword")}
+            {fallbackPw === "change" ? (
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={form.fallbackPassword}
+                disabled={!form.fallback_enabled}
+                onChange={(e) => set("fallbackPassword", e.target.value)}
+              />
+            ) : (
+              <span className="muted">
+                {fallbackPw === "keep"
+                  ? t("settings.passwordStored")
+                  : t("settings.passwordCleared")}
+              </span>
+            )}
+          </label>
+          {initial.fallback_password_set && fallbackPw !== "change" && (
+            <div className="actions">
+              <button
+                type="button"
+                className="small secondary"
+                onClick={() => setFallbackPw("change")}
+              >
+                {t("settings.fallbackChangePassword")}
+              </button>
+            </div>
+          )}
+          <label className="grow">
+            {t("settings.fallbackSender")}
+            <input
+              type="email"
+              value={form.fallback_sender}
+              disabled={!form.fallback_enabled}
+              onChange={(e) => set("fallback_sender", e.target.value)}
+            />
+          </label>
+        </div>
+      </fieldset>
+      <fieldset>
         <legend>{t("settings.messages")}</legend>
         <div className="row">
           <label className="grow">
@@ -294,9 +440,9 @@ function NotificationsForm({
           </label>
           <label className="grow">
             {t("policies.timezone")}
-            <input
+            <TimezoneSelect
               value={form.timezone}
-              onChange={(e) => set("timezone", e.target.value)}
+              onChange={(zone) => set("timezone", zone)}
             />
           </label>
         </div>
@@ -328,6 +474,16 @@ function NotificationsForm({
         >
           {t("settings.sendTest")}
         </button>
+        {initial.fallback_enabled && initial.fallback_host && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => void test("fallback")}
+          >
+            {t("settings.sendTestFallback")}
+          </button>
+        )}
       </div>
     </form>
   );
@@ -363,7 +519,12 @@ function Outbox({ refresh }: { refresh: number }) {
                   {rows.map((n) => (
                     <tr key={n.id}>
                       <td>{formatDate(n.created_at)}</td>
-                      <td className="wrap">{n.subject}</td>
+                      <td className="wrap">
+                        {n.channel === "telegram" && (
+                          <span className="badge info">Telegram</span>
+                        )}{" "}
+                        {n.subject}
+                      </td>
                       <td>
                         <StatusBadge
                           status={
@@ -391,6 +552,36 @@ function Outbox({ refresh }: { refresh: number }) {
   );
 }
 
+function MonitoringSettingsTab() {
+  const [load, reload] = useLoad(() => api.monitoring(), []);
+  return (
+    <LoadView load={load} reload={reload}>
+      {(d) => <MonitoringSettingsForm initial={d.settings} onSaved={reload} />}
+    </LoadView>
+  );
+}
+
+function AgentTab() {
+  const [load, reload] = useLoad(() => api.agentTuning(), []);
+  return (
+    <LoadView load={load} reload={reload}>
+      {(cfg) => (
+        <AgentSettingsForm key={cfg.revision} initial={cfg} onSaved={reload} />
+      )}
+    </LoadView>
+  );
+}
+
+const TABS = [
+  "notifications",
+  "storage",
+  "monitoring",
+  "security",
+  "restoreTest",
+  "agent",
+] as const;
+type Tab = (typeof TABS)[number];
+
 export function SettingsPage() {
   const { t } = useTranslation();
   const { canManageSettings } = useAuth();
@@ -400,6 +591,7 @@ export function SettingsPage() {
   );
   const [current, setCurrent] = useState<NotificationSettings | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [params, setParams] = useSearchParams();
   if (!canManageSettings) {
     return (
       <p role="alert" className="alert error">
@@ -407,21 +599,52 @@ export function SettingsPage() {
       </p>
     );
   }
+  const tab: Tab = TABS.includes(params.get("tab") as Tab)
+    ? (params.get("tab") as Tab)
+    : "notifications";
   return (
     <>
       <h1>{t("settings.title")}</h1>
-      <LoadView load={settings} reload={reload}>
-        {(s) => (
-          <NotificationsForm
-            initial={current ?? s}
-            onSaved={(saved) => {
-              setCurrent(saved);
-              setRefresh((n) => n + 1);
-            }}
-          />
-        )}
-      </LoadView>
-      <Outbox refresh={refresh} />
+      <div className="tabs" role="tablist" aria-label={t("settings.title")}>
+        {TABS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            role="tab"
+            aria-selected={tab === name}
+            className={tab === name ? "" : "secondary"}
+            onClick={() =>
+              setParams(name === "notifications" ? {} : { tab: name })
+            }
+          >
+            {t(`settings.tabs.${name}`)}
+          </button>
+        ))}
+      </div>
+      {tab === "notifications" && (
+        <>
+          <LoadView load={settings} reload={reload}>
+            {(s) => (
+              <NotificationsForm
+                initial={current ?? s}
+                onSaved={(saved) => {
+                  setCurrent(saved);
+                  setRefresh((n) => n + 1);
+                }}
+              />
+            )}
+          </LoadView>
+          <TelegramSection events={EVENTS} />
+          <Outbox refresh={refresh} />
+        </>
+      )}
+      {tab === "storage" && <StorageSettingsSection />}
+      {tab === "monitoring" && <MonitoringSettingsTab />}
+
+      {tab === "security" && <PolicyCard />}
+
+      {tab === "restoreTest" && <RestoreTestSettingsTab />}
+      {tab === "agent" && <AgentTab />}
     </>
   );
 }

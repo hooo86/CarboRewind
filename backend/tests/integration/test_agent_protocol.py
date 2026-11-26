@@ -412,6 +412,25 @@ def test_abandoned_job_is_resumed_with_its_checkpoint(
     assert (resumed["snapshot_id"], resumed["seq"]) == (first["snapshot_id"], first["seq"])
 
 
+def test_released_job_resumes_at_once_without_counting(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    _drain(agent)
+    email = f"dan@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    job_id = api.post(
+        "/api/backups", json={"account_id": str(_account_id(engine, email))}, headers=admin
+    ).json()["id"]
+    for _ in range(5):  # five agent updates in a row never exhaust the 3 attempts
+        claimed = agent.post("/jobs/claim").json()
+        assert claimed["job_id"] == job_id and claimed["attempt"] == 1
+        agent.post(f"/jobs/{job_id}/heartbeat", {"checkpoint": {"done": {"2": {"x": 1}}}})
+        assert agent.post(f"/jobs/{job_id}/release").status_code == 204
+    resumed = agent.post("/jobs/claim").json()
+    assert resumed["checkpoint"] == {"done": {"2": {"x": 1}}}
+    assert agent.post(f"/jobs/{uuid.uuid4()}/release").status_code == 404
+
+
 def test_lease_expiring_too_often_fails_the_job(
     api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
 ) -> None:
@@ -974,3 +993,63 @@ def test_inventory_storage_report_reaches_the_dashboard(
     assert mine["agent"].startswith("mx-") and mine["reported_at"]
     bad = {**report, "kind": "tape"}
     assert agent.post("/inventory", {"accounts": [], "storage": bad}).status_code == 422
+
+
+def test_large_full_backup_completes(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    """A mailbox of 12 000 items: beyond PostgreSQL's 32 767 bind parameters per query."""
+    _drain(agent)
+    email = f"big@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    account_id = _account_id(engine, email)
+    api.post("/api/backups", json={"account_id": str(account_id)}, headers=admin)
+    claimed = agent.post("/jobs/claim").json()
+    added = {
+        str(1000 + n): {
+            **_item("a", f"Message {n}\x00"),
+            "blob": f"b1{n:062x}",
+            "meta_blob": f"b2{n:062x}",
+        }
+        for n in range(12_000)
+    }
+    body = {
+        "backup_type": "full",
+        "manifest_ref": "m/1",
+        "token": "1",
+        "item_count": len(added),
+        "size_bytes": 100 * len(added),
+        "new_bytes": 100 * len(added),
+        "folders": FOLDERS,
+        "added": added,
+    }
+    checkpoint = {"done": {"1000": {"subject": "a\x00b"}}, "progress": {"bytes": 1}}
+    beat = agent.post(f"/jobs/{claimed['job_id']}/heartbeat", {"checkpoint": checkpoint})
+    assert beat.status_code == 204, beat.text
+    r = agent.post(f"/jobs/{claimed['job_id']}/complete", body)
+    assert r.status_code == 204, r.text
+    assert api.get(f"/api/jobs/{claimed['job_id']}").json()["status"] == "succeeded"
+
+
+def test_one_backup_of_a_mailbox_at_a_time(
+    api: TestClient, admin: dict[str, str], agent: AgentHandle, engine: Engine
+) -> None:
+    _drain(agent)
+    email = f"once@{uuid.uuid4().hex[:6]}.test"
+    _inventory(agent, email)
+    account_id = str(_account_id(engine, email))
+    first = api.post("/api/backups", json={"account_id": account_id}, headers=admin)
+    assert first.status_code == 202
+    again = api.post("/api/backups", json={"account_id": account_id}, headers=admin)
+    assert again.status_code == 409
+    assert "already" in again.json()["detail"]
+    claimed = agent.post("/jobs/claim").json()  # still refused while it runs
+    assert (
+        api.post("/api/backups", json={"account_id": account_id}, headers=admin).status_code == 409
+    )
+    bulk = api.post("/api/backups/bulk", json={"account_ids": [account_id]}, headers=admin)
+    assert bulk.json()["skipped_busy"] == 1
+    agent.post(f"/jobs/{claimed['job_id']}/fail", {"error": "x", "retryable": False})
+    assert (
+        api.post("/api/backups", json={"account_id": account_id}, headers=admin).status_code == 202
+    )

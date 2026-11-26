@@ -29,7 +29,7 @@ export function fakeApi(routes: Record<string, Handler | object>) {
       method,
       url: input,
       headers: (init.headers ?? {}) as Record<string, string>,
-      body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+      body: typeof init.body === "string" ? JSON.parse(init.body) : init.body,
     };
     calls.push(call);
     const path = input.split("?")[0];

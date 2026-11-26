@@ -9,6 +9,7 @@ Every directory is 0700 and every file 0600 (owner: the agent's system user).
       keys/master.json                 master key wrapped by the KEK
       blobs/<id[:2]>/<id>              sealed objects, content-addressed
       manifests/<account>/<snap>.json  sealed snapshot manifests
+      archives/<account>/<id>.json     sealed archive manifests (messages moved to the archive)
       locks/repo.lock                  advisory lock (shared: backup/restore, exclusive: purge)
 
 Writes are atomic (temporary file in the same directory, ``fsync``, ``rename``, ``fsync`` of
@@ -25,6 +26,7 @@ import os
 import random
 import re
 import tempfile
+import threading
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -43,6 +45,10 @@ class RepositoryError(Exception):
     """Invalid repository layout, version or arguments."""
 
 
+class SpaceError(RepositoryError):
+    """Not enough free space left: writing more could fill the disk Carbonio runs on."""
+
+
 @dataclass(frozen=True)
 class PutResult:
     blob_id: str
@@ -55,10 +61,12 @@ class PutResult:
 class VerifyReport:
     checked: int = 0
     corrupted: list[str] = field(default_factory=list)
+    manifests_checked: int = 0
+    manifests_corrupted: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.corrupted
+        return not self.corrupted and not self.manifests_corrupted
 
 
 def _fsync_dir(path: Path) -> None:
@@ -69,8 +77,13 @@ def _fsync_dir(path: Path) -> None:
         os.close(fd)
 
 
-def _atomic_write(path: Path, data: bytes) -> None:
-    """Write ``data`` to ``path`` atomically, owner-only (0600)."""
+def _atomic_write(path: Path, data: bytes, pending: set[Path] | None = None) -> None:
+    """Write ``data`` to ``path`` atomically, owner-only (0600).
+
+    With ``pending``, the directory is not synced now but recorded there, to be synced
+    once for many files (:meth:`Repository.sync`): on a network share each directory sync
+    is a round trip.
+    """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
     try:
@@ -84,7 +97,10 @@ def _atomic_write(path: Path, data: bytes) -> None:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp)
         raise
-    _fsync_dir(path.parent)
+    if pending is None:
+        _fsync_dir(path.parent)
+    else:
+        pending.add(path.parent)
 
 
 def _segment(value: str, what: str) -> str:
@@ -99,6 +115,15 @@ class Repository:
         self.root = root
         self.repo_id = repo_id
         self._keys = keys
+        self._pending_dirs: set[Path] = set()
+        self._pending_lock = threading.Lock()
+
+    def sync(self) -> None:
+        """Make the blobs written since the last call durable (directory entries)."""
+        with self._pending_lock:
+            dirs, self._pending_dirs = self._pending_dirs, set()
+        for directory in dirs:
+            _fsync_dir(directory)
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -164,13 +189,36 @@ class Repository:
             raise RepositoryError(f"invalid blob id {blob_id!r}")
         return self.root / "blobs" / blob_id[:2] / blob_id
 
+    # Free space that must remain on the repository's file system (0 = no check). Checked
+    # every SPACE_CHECK_EVERY new blobs and by ``check_space``.
+    min_free_bytes = 0
+    SPACE_CHECK_EVERY = 64
+    _writes = 0
+
+    def check_space(self, needed: int = 0) -> None:
+        if not self.min_free_bytes:
+            return
+        st = os.statvfs(self.root)
+        free = st.f_bavail * st.f_frsize
+        if free - needed < self.min_free_bytes:
+            raise SpaceError(
+                f"not enough free space on {self.root}: {free // 2**20} MiB free, "
+                f"{self.min_free_bytes // 2**20} MiB must stay free"
+            )
+
     def put(self, data: bytes) -> PutResult:
         blob_id = self._keys.blob_id(data)
         path = self._blob_path(blob_id)
         if path.exists():
             return PutResult(blob_id, len(data), path.stat().st_size, created=False)
+        if self._writes % self.SPACE_CHECK_EVERY == 0:
+            self.check_space(len(data))
+        self._writes += 1
         sealed = self._keys.seal(data, aad=blob_id.encode())
-        _atomic_write(path, sealed)
+        pending: set[Path] = set()
+        _atomic_write(path, sealed, pending)
+        with self._pending_lock:
+            self._pending_dirs |= pending
         return PutResult(blob_id, len(data), len(sealed), created=True)
 
     def has(self, blob_id: str) -> bool:
@@ -209,6 +257,7 @@ class Repository:
         return self.root / rel, rel.encode()
 
     def put_manifest(self, account: str, snapshot: str, manifest: dict[str, Any]) -> str:
+        self.sync()  # every blob it lists is durable before the manifest is
         path, aad = self._manifest_path(account, snapshot)
         payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
         _atomic_write(path, self._keys.seal(payload, aad=aad))
@@ -228,6 +277,34 @@ class Repository:
         with contextlib.suppress(FileNotFoundError):
             path.unlink()
 
+    # ------------------------------------------------------------------ archive manifests
+
+    def _archive_path(self, account: str, archive: str) -> tuple[Path, bytes]:
+        rel = f"archives/{_segment(account, 'account')}/{_segment(archive, 'archive')}.json"
+        return self.root / rel, rel.encode()
+
+    def put_archive(self, account: str, archive: str, manifest: dict[str, Any]) -> str:
+        """Seal the list of messages one archive run took out of a mailbox."""
+        self.sync()
+        path, aad = self._archive_path(account, archive)
+        payload = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        _atomic_write(path, self._keys.seal(payload, aad=aad))
+        return aad.decode()
+
+    def get_archive(self, account: str, archive: str) -> dict[str, Any]:
+        path, aad = self._archive_path(account, archive)
+        try:
+            sealed = path.read_bytes()
+        except FileNotFoundError as exc:
+            raise RepositoryError(f"archive {aad.decode()} not found") from exc
+        result: dict[str, Any] = json.loads(self._keys.open(sealed, aad=aad))
+        return result
+
+    def delete_archive(self, account: str, archive: str) -> None:
+        path, _ = self._archive_path(account, archive)
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+
     # ------------------------------------------------------------------ verification
 
     def verify(self, sample: float = 1.0, seed: int | None = None) -> VerifyReport:
@@ -244,4 +321,17 @@ class Repository:
                 self.get(blob_id)
             except (IntegrityError, RepositoryError):
                 report.corrupted.append(blob_id)
+        for sub, read in (("manifests", self.get_manifest), ("archives", self.get_archive)):
+            base = self.root / sub
+            for path in sorted(base.glob("*/*.json")) if base.exists() else []:
+                if sample < 1 and rng.random() >= sample:
+                    continue
+                report.manifests_checked += 1
+                try:
+                    read(path.parent.name, path.stem)
+                except (IntegrityError, RepositoryError, ValueError):
+                    name = f"{path.parent.name}/{path.stem}"
+                    report.manifests_corrupted.append(
+                        name if sub == "manifests" else f"archives/{name}"
+                    )
         return report

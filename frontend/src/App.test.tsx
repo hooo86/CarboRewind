@@ -118,7 +118,8 @@ describe("authentication", () => {
       "POST /api/auth/logout": { status: 204, body: undefined },
     });
     renderAt("/");
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Alice/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(await screen.findByLabelText("Username")).toBeInTheDocument();
     const logout = calls.find((c) => c.url === "/api/auth/logout");
     expect(logout?.headers["X-CSRF-Token"]).toBe("cookie-token");
@@ -241,9 +242,8 @@ describe("jobs page", () => {
     expect(
       screen.getByRole("link", { name: "Tableau de bord" }),
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Langue"), {
-      target: { value: "en" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: /Alice/ }));
+    fireEvent.click(screen.getByRole("button", { name: "English" }));
     expect(
       await screen.findByRole("link", { name: "Dashboard" }),
     ).toBeInTheDocument();
@@ -259,5 +259,40 @@ describe("jobs page", () => {
     expect(
       await screen.findByRole("heading", { name: "Dashboard" }),
     ).toBeInTheDocument();
+  });
+
+  it("switches to the light theme and remembers it", async () => {
+    fakeApi({
+      "GET /api/auth/me": user("super_admin"),
+      "GET /api/dashboard": {
+        ...dashboard,
+        agents_active: null,
+        last_agent_heartbeat: null,
+      },
+      "GET /api/jobs": page([]),
+      "GET /api/policies": [],
+    });
+    renderAt("/");
+    fireEvent.click(await screen.findByRole("button", { name: /Alice/ }));
+    const menu = screen.getByRole("dialog", { name: "Account menu" });
+    expect(within(menu).getByText("Super administrator")).toBeInTheDocument();
+    expect(
+      within(menu).getByRole("link", { name: "Settings" }),
+    ).toHaveAttribute("href", "/settings");
+    expect(
+      within(menu).getByRole("link", { name: /two-factor authentication/ }),
+    ).toHaveAttribute("href", "/me");
+    fireEvent.click(within(menu).getByRole("button", { name: "Light" }));
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(localStorage.getItem("carborewind.theme")).toBe("light");
+    expect(within(menu).getByRole("button", { name: "Light" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(within(menu).getByRole("button", { name: "Auto" }));
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem("carborewind.theme")).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Account menu" })).toBeNull();
   });
 });

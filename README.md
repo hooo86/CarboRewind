@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/logo.svg" alt="CarboRewind" width="360"></p>
+
 # CarboRewind
 
 > Sauvegarde et restauration à chaud, point-in-time, pour serveurs de messagerie **Carbonio** (Zextras).

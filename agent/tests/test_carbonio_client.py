@@ -85,6 +85,27 @@ def test_delegation_is_cached_and_unknown_account_fails(
         client.delegate("does-not-exist")
 
 
+def test_revoked_tokens_are_renewed(
+    client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox
+) -> None:
+    """Carbonio restarted (or the tokens were revoked) in the middle of a long job: the
+    agent authenticates again and goes on, for SOAP and REST calls alike."""
+    first = sorted(alice.items)[0]
+    client.sync(alice.id, None)
+    fake.admin_tokens.clear()
+    fake.delegated.clear()
+    assert client.fetch_raw(alice.name, alice.id, first) == EML
+    fake.delegated.clear()
+    assert client.sync(alice.id, None).token
+    fake.admin_tokens.clear()
+    fake.delegated.clear()
+    folder = client.create_folder(alice.id, 1, "After-restart")
+    fake.delegated.clear()
+    assert alice.items[client.add_message(alice.id, folder, LATIN1)].raw == LATIN1
+    fake.admin_tokens.clear()
+    assert [a.name for a in client.iter_accounts()]
+
+
 def test_initial_sync_lists_folders_and_items(client: CarbonioClient, alice: Mailbox) -> None:
     delta = client.sync(alice.id, None)
     paths = {f.path: f for f in delta.folders}
@@ -162,6 +183,38 @@ def test_add_message_inline_and_uploaded(
     assert any(c.startswith("upload:") for c in fake.calls)
     with pytest.raises(SoapFaultError, match="NO_SUCH_FOLDER"):
         client.add_message(alice.id, 4242, EML)
+
+
+def test_add_message_too_large_inline_goes_by_upload(
+    client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox
+) -> None:
+    fake.inline_max = 100
+    small = b"Subject: s\r\n\r\nok\r\n"
+    big = b"Subject: big\r\n\r\n" + b"x" * 500 + b"\r\n"
+    big_id = client.add_message(alice.id, 2, big)
+    assert alice.items[big_id].raw == big
+    uploads = sum(c.startswith("upload:") for c in fake.calls)
+    assert uploads == 1
+    # The limit is remembered: the next big message goes straight to the upload.
+    calls = len(fake.calls)
+    client.add_message(alice.id, 2, big + b"y")
+    assert sum(c.startswith("upload:") for c in fake.calls) == 2
+    assert len(fake.calls) - calls <= 3  # no inline attempt first
+    small_id = client.add_message(alice.id, 2, small)
+    assert alice.items[small_id].raw == small
+    assert sum(c.startswith("upload:") for c in fake.calls) == 2  # small stays inline
+    # Upload refused and too big for inline: the error comes back.
+    fake.upload_reply = "401,'null'"
+    with pytest.raises(SoapFaultError):
+        client.add_message(alice.id, 2, big + b"z")
+    fake.upload_reply = "413,'null'"
+    with pytest.raises(SoapFaultError, match=r"UPLOAD_TOO_LARGE.*zimbraFileUploadMaxSize"):
+        client.add_message(alice.id, 2, big + b"v")
+    # An HTTP error of the upload servlet is a per-message fault too.
+    fake.upload_reply = None
+    fake.fail_next = [500]
+    with pytest.raises(SoapFaultError, match="UPLOAD_FAILED"):
+        client.add_message(alice.id, 2, big + b"w")
 
 
 def test_rest_import_formats(client: CarbonioClient, fake: FakeCarbonio, alice: Mailbox) -> None:
@@ -282,3 +335,25 @@ def test_cli_probe_runs(
     )
     assert main(["carbonio", "probe", "--account", alice.name]) == 0
     assert "✓ SyncRequest (initial, typed)" in capsys.readouterr().out
+
+
+def test_non_json_answers_are_explained(tmp_path: Path) -> None:
+    import httpx
+
+    from carborewind_agent.carbonio.soap import SoapClient, SoapFaultError
+
+    def page(status: int) -> SoapClient:
+        transport = httpx.MockTransport(
+            lambda r: httpx.Response(
+                status, text="<html><body>Request Entity Too Large</body></html>"
+            )
+        )
+        return SoapClient(httpx.Client(transport=transport), "https://x/service/soap", retries=0)
+
+    with pytest.raises(SoapFaultError) as big:
+        page(413).invoke("AddMsg", "urn:zimbraMail")
+    assert big.value.code == "client.TOO_LARGE" and "HTTP 413" in str(big.value)
+    with pytest.raises(SoapFaultError) as other:
+        page(200).invoke("AddMsg", "urn:zimbraMail")
+    assert other.value.code == "client.BAD_RESPONSE"
+    assert "HTTP 200" in str(other.value) and "Request Entity Too Large" in str(other.value)

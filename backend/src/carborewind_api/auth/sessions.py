@@ -79,11 +79,13 @@ async def revoke_session(db: AsyncSession, session: UserSession) -> None:
     await db.flush()
 
 
-async def revoke_all_sessions(db: AsyncSession, user_id: object) -> int:
-    """Revoke every live session of a user (deactivation, role change). Returns the count."""
-    result = await db.execute(
-        update(UserSession)
-        .where(UserSession.user_id == user_id, UserSession.revoked_at.is_(None))
-        .values(revoked_at=datetime.now(UTC))
+async def revoke_all_sessions(db: AsyncSession, user_id: object, keep: object = None) -> int:
+    """Revoke every live session of a user (deactivation, role change), except ``keep``.
+    Returns the count."""
+    query = update(UserSession).where(
+        UserSession.user_id == user_id, UserSession.revoked_at.is_(None)
     )
+    if keep is not None:
+        query = query.where(UserSession.id != keep)
+    result = await db.execute(query.values(revoked_at=datetime.now(UTC)))
     return int(result.rowcount or 0)  # type: ignore[attr-defined]

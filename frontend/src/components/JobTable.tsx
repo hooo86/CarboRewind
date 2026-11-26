@@ -41,6 +41,10 @@ function kindLabel(job: Job, t: TFunction): string {
     if (job.dry_run) label += ` · ${t("restore.simulation")}`;
     if (job.snapshot_seq) label += ` · #${job.snapshot_seq}`;
   }
+  if (job.kind === "migrate") {
+    if (job.dry_run) label += ` · ${t("migrations.test")}`;
+    if (job.source_email) label += ` · ${job.source_email}`;
+  }
   return label;
 }
 
@@ -59,25 +63,67 @@ function duration(job: Job): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+export type JobSort = "created_at" | "account" | "kind" | "status" | "duration";
+
+/** "12,4 MB/s" (bytes per second, shown in decimal megabytes like transfer tools). */
+export function formatRate(bps: number | null | undefined): string {
+  if (!bps) return "—";
+  if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(1)} MB/s`;
+  return `${Math.max(1, Math.round(bps / 1000))} kB/s`;
+}
+
 export function JobTable({
   jobs,
   showAccount = true,
+  sort,
+  order,
+  onSort,
 }: {
   jobs: Job[];
   showAccount?: boolean;
+  sort?: JobSort;
+  order?: "asc" | "desc";
+  onSort?: (column: JobSort) => void;
 }) {
   const { t } = useTranslation();
   if (jobs.length === 0) return <p className="muted">{t("jobs.empty")}</p>;
+  const head = (column: JobSort, label: string, className?: string) => (
+    <th
+      className={className}
+      aria-sort={
+        sort === column
+          ? order === "asc"
+            ? "ascending"
+            : "descending"
+          : undefined
+      }
+    >
+      {onSort ? (
+        <button
+          type="button"
+          className="th-sort"
+          title={t("jobs.sortBy", { column: label })}
+          onClick={() => onSort(column)}
+        >
+          {label}
+          {sort === column ? (order === "asc" ? " ▲" : " ▼") : ""}
+        </button>
+      ) : (
+        label
+      )}
+    </th>
+  );
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>{t("jobs.created")}</th>
-            {showAccount && <th>{t("jobs.account")}</th>}
-            <th>{t("jobs.kind")}</th>
-            <th>{t("jobs.status")}</th>
-            <th>{t("jobs.duration")}</th>
+            {head("created_at", t("jobs.created"))}
+            {showAccount && head("account", t("jobs.account"))}
+            {head("kind", t("jobs.kind"))}
+            {head("status", t("jobs.status"))}
+            {head("duration", t("jobs.duration"))}
+            <th className="num">{t("jobs.throughput")}</th>
             <th className="num">{t("jobs.attempts")}</th>
             <th>{t("jobs.error")}</th>
           </tr>
@@ -105,6 +151,19 @@ export function JobTable({
                     <RestoreSummaryText job={job} />
                   </>
                 )}
+                {job.kind === "migrate" && job.progress && (
+                  <>
+                    <br />
+                    <span className="summary">
+                      {t("migrations.jobSummary", {
+                        copied: Number(job.progress.copied ?? 0),
+                        failed: Number(
+                          job.progress.failed_count ?? job.progress.failed ?? 0,
+                        ),
+                      })}
+                    </span>
+                  </>
+                )}
                 {job.kind === "purge" &&
                   job.status === "succeeded" &&
                   job.progress && (
@@ -126,6 +185,15 @@ export function JobTable({
                 <StatusBadge status={job.status} />
               </td>
               <td>{duration(job)}</td>
+              <td className="num">
+                {formatRate(job.throughput_bps)}
+                {!!job.bytes_done && (
+                  <span className="muted small">
+                    <br />
+                    {t("jobs.read", { bytes: formatBytes(job.bytes_done) })}
+                  </span>
+                )}
+              </td>
               <td className="num">{job.attempts}</td>
               <td className="error-cell" title={job.error ?? undefined}>
                 {job.error ?? ""}

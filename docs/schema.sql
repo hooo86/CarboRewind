@@ -402,4 +402,442 @@ ALTER TABLE agents ADD COLUMN storage JSONB;
 
 UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
 
+-- Running upgrade 0006 -> 0007
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate'));
+
+CREATE TABLE migration_sources (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(253) NOT NULL,
+    port INTEGER NOT NULL,
+    security VARCHAR(32) NOT NULL,
+    verify_tls BOOLEAN DEFAULT true NOT NULL,
+    auth_mode VARCHAR(32) NOT NULL,
+    master_username VARCHAR(320),
+    master_password_enc TEXT,
+    master_separator VARCHAR(8) DEFAULT '*' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_sources PRIMARY KEY (id),
+    CONSTRAINT ck_migration_sources_port_range CHECK (port BETWEEN 1 AND 65535),
+    CONSTRAINT uq_migration_sources_name UNIQUE (name),
+    CONSTRAINT ck_migration_sources_imap_security CHECK (security IN ('ssl', 'starttls', 'none')),
+    CONSTRAINT ck_migration_sources_migration_auth CHECK (auth_mode IN ('password', 'master_plain', 'master_login'))
+);
+
+CREATE TABLE migration_batches (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    source_id UUID NOT NULL,
+    options JSONB DEFAULT '{}'::jsonb NOT NULL,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_batches PRIMARY KEY (id),
+    CONSTRAINT fk_migration_batches_source_id_migration_sources FOREIGN KEY(source_id) REFERENCES migration_sources (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_migration_batches_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT uq_migration_batches_name UNIQUE (name)
+);
+
+CREATE TABLE migration_mailboxes (
+    id UUID NOT NULL,
+    batch_id UUID NOT NULL,
+    source_email VARCHAR(320) NOT NULL,
+    source_login VARCHAR(320),
+    password_enc TEXT,
+    target_account_id UUID,
+    match VARCHAR(16),
+    root VARCHAR(128),
+    last_job_id UUID,
+    state JSONB DEFAULT '{}'::jsonb NOT NULL,
+    stats JSONB,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_migration_mailboxes PRIMARY KEY (id),
+    CONSTRAINT fk_migration_mailboxes_batch_id_migration_batches FOREIGN KEY(batch_id) REFERENCES migration_batches (id) ON DELETE CASCADE,
+    CONSTRAINT fk_migration_mailboxes_target_account_id_accounts FOREIGN KEY(target_account_id) REFERENCES accounts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_migration_mailboxes_last_job_id_jobs FOREIGN KEY(last_job_id) REFERENCES jobs (id) ON DELETE SET NULL,
+    CONSTRAINT uq_migration_mailboxes_pair UNIQUE NULLS NOT DISTINCT (batch_id, source_email, target_account_id)
+);
+
+CREATE INDEX ix_migration_mailboxes_batch_id ON migration_mailboxes (batch_id);
+
+CREATE INDEX ix_migration_mailboxes_target ON migration_mailboxes (target_account_id);
+
+UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
+
+-- Running upgrade 0007 -> 0008
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate'));
+
+UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
+
+-- Running upgrade 0008 -> 0009
+
+ALTER TABLE accounts ADD COLUMN profile JSONB DEFAULT '{}'::jsonb NOT NULL;
+
+UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
+
+-- Running upgrade 0009 -> 0010
+
+CREATE TABLE mail_stats (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    email VARCHAR(320) NOT NULL,
+    account_id UUID,
+    sent_messages INTEGER DEFAULT 0 NOT NULL,
+    sent_recipients INTEGER DEFAULT 0 NOT NULL,
+    spam_received INTEGER DEFAULT 0 NOT NULL,
+    spam_sent INTEGER DEFAULT 0 NOT NULL,
+    CONSTRAINT pk_mail_stats PRIMARY KEY (hour, email),
+    CONSTRAINT fk_mail_stats_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_mail_stats_hour ON mail_stats (hour);
+
+CREATE INDEX ix_mail_stats_account_hour ON mail_stats (account_id, hour);
+
+CREATE TABLE spam_senders (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    sender VARCHAR(320) NOT NULL,
+    count INTEGER DEFAULT 0 NOT NULL,
+    ips JSONB DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT pk_spam_senders PRIMARY KEY (hour, sender)
+);
+
+CREATE INDEX ix_spam_senders_hour ON spam_senders (hour);
+
+CREATE TABLE mail_alerts (
+    id UUID NOT NULL,
+    account_id UUID,
+    email VARCHAR(320) NOT NULL,
+    metric VARCHAR(32) NOT NULL,
+    value INTEGER NOT NULL,
+    threshold INTEGER NOT NULL,
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    acknowledged_at TIMESTAMP WITH TIME ZONE,
+    acknowledged_by UUID,
+    CONSTRAINT pk_mail_alerts PRIMARY KEY (id),
+    CONSTRAINT fk_mail_alerts_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_mail_alerts_acknowledged_by_users FOREIGN KEY(acknowledged_by) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT uq_mail_alerts_window UNIQUE (email, metric, window_start)
+);
+
+CREATE INDEX ix_mail_alerts_open ON mail_alerts (created_at) WHERE acknowledged_at IS NULL;
+
+CREATE TABLE account_actions (
+    id UUID NOT NULL,
+    account_id UUID NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    reason TEXT,
+    alert_id UUID,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    error TEXT,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    done_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_account_actions PRIMARY KEY (id),
+    CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock')),
+    CONSTRAINT ck_account_actions_status_known CHECK (status IN ('pending', 'done', 'failed')),
+    CONSTRAINT fk_account_actions_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_account_actions_alert_id_mail_alerts FOREIGN KEY(alert_id) REFERENCES mail_alerts (id) ON DELETE SET NULL,
+    CONSTRAINT fk_account_actions_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_account_actions_pending ON account_actions (created_at) WHERE status = 'pending';
+
+UPDATE alembic_version SET version_num='0010' WHERE alembic_version.version_num = '0009';
+
+-- Running upgrade 0010 -> 0011
+
+CREATE TABLE storage_samples (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    agent_id UUID NOT NULL,
+    target VARCHAR(16) NOT NULL,
+    total_bytes BIGINT NOT NULL,
+    free_bytes BIGINT NOT NULL,
+    CONSTRAINT pk_storage_samples PRIMARY KEY (hour, agent_id, target),
+    CONSTRAINT fk_storage_samples_agent_id_agents FOREIGN KEY(agent_id) REFERENCES agents (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_storage_samples_hour ON storage_samples (hour);
+
+UPDATE alembic_version SET version_num='0011' WHERE alembic_version.version_num = '0010';
+
+-- Running upgrade 0011 -> 0012
+
+ALTER TABLE users ADD COLUMN totp_secret_enc TEXT;
+
+ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT false NOT NULL;
+
+ALTER TABLE users ADD COLUMN totp_last_step BIGINT;
+
+ALTER TABLE users ADD COLUMN recovery_codes JSONB DEFAULT '[]'::jsonb NOT NULL;
+
+ALTER TABLE users ADD COLUMN password_changed_at TIMESTAMP WITH TIME ZONE;
+
+UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num = '0011';
+
+-- Running upgrade 0012 -> 0013
+
+ALTER TABLE agents ADD COLUMN services JSONB;
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate', 'archive', 'fetch'));
+
+CREATE TABLE archive_policies (
+    id UUID NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    enabled BOOLEAN DEFAULT false NOT NULL,
+    mode VARCHAR(16) DEFAULT 'simulate' NOT NULL,
+    domain_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    account_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    exclude_account_ids JSONB DEFAULT '[]'::jsonb NOT NULL,
+    older_than_days INTEGER DEFAULT 365 NOT NULL,
+    exclude_folders JSONB DEFAULT '[]'::jsonb NOT NULL,
+    keep_flagged BOOLEAN DEFAULT true NOT NULL,
+    keep_unread BOOLEAN DEFAULT false NOT NULL,
+    include_admins BOOLEAN DEFAULT false NOT NULL,
+    max_per_run INTEGER DEFAULT 5000 NOT NULL,
+    schedule VARCHAR(128) DEFAULT '30 1 * * *' NOT NULL,
+    timezone VARCHAR(64) DEFAULT 'UTC' NOT NULL,
+    retention_days INTEGER DEFAULT 0 NOT NULL,
+    criteria_changed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    simulated_at TIMESTAMP WITH TIME ZONE,
+    last_run_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_archive_policies PRIMARY KEY (id),
+    CONSTRAINT ck_archive_policies_mode_valid CHECK (mode IN ('simulate', 'copy', 'archive')),
+    CONSTRAINT ck_archive_policies_max_per_run_bounded CHECK (max_per_run BETWEEN 1 AND 50000),
+    CONSTRAINT ck_archive_policies_age_positive CHECK (older_than_days >= 1),
+    CONSTRAINT ck_archive_policies_retention_positive CHECK (retention_days >= 0),
+    CONSTRAINT uq_archive_policies_name UNIQUE (name)
+);
+
+CREATE TABLE archived_messages (
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
+    account_id UUID NOT NULL,
+    policy_id UUID,
+    job_id UUID,
+    carbonio_item_id INTEGER NOT NULL,
+    folder_path TEXT NOT NULL,
+    subject TEXT,
+    sender TEXT,
+    recipients TEXT,
+    item_date TIMESTAMP WITH TIME ZONE,
+    size BIGINT NOT NULL,
+    has_attachments BOOLEAN DEFAULT false NOT NULL,
+    flags VARCHAR(32) DEFAULT '' NOT NULL,
+    content_blob_id VARCHAR(64) NOT NULL,
+    meta_blob_id VARCHAR(64),
+    archived_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    removed_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_archived_messages PRIMARY KEY (id),
+    CONSTRAINT fk_archived_messages_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_archived_messages_content_blob_id_blobs FOREIGN KEY(content_blob_id) REFERENCES blobs (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_archived_messages_job_id_jobs FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE SET NULL,
+    CONSTRAINT fk_archived_messages_meta_blob_id_blobs FOREIGN KEY(meta_blob_id) REFERENCES blobs (id) ON DELETE RESTRICT,
+    CONSTRAINT fk_archived_messages_policy_id_archive_policies FOREIGN KEY(policy_id) REFERENCES archive_policies (id) ON DELETE SET NULL,
+    CONSTRAINT uq_archived_messages_item UNIQUE (account_id, carbonio_item_id, content_blob_id)
+);
+
+CREATE INDEX ix_archived_messages_account_date ON archived_messages (account_id, item_date);
+
+CREATE INDEX ix_archived_messages_archived_at ON archived_messages (archived_at);
+
+CREATE INDEX ix_archived_messages_content_blob ON archived_messages (content_blob_id);
+
+CREATE INDEX ix_archived_messages_job_id ON archived_messages (job_id);
+
+CREATE INDEX ix_archived_messages_meta_blob ON archived_messages (meta_blob_id);
+
+CREATE INDEX ix_archived_messages_sender_trgm ON archived_messages USING gin (sender gin_trgm_ops);
+
+CREATE INDEX ix_archived_messages_subject_trgm ON archived_messages USING gin (subject gin_trgm_ops);
+
+CREATE TABLE fetched_contents (
+    job_id UUID NOT NULL,
+    data BYTEA NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_fetched_contents PRIMARY KEY (job_id),
+    CONSTRAINT fk_fetched_contents_job_id_jobs FOREIGN KEY(job_id) REFERENCES jobs (id) ON DELETE CASCADE
+);
+
+UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
+
+-- Running upgrade 0013 -> 0014
+
+ALTER TABLE archived_messages ADD COLUMN legal_hold BOOLEAN DEFAULT false NOT NULL;
+
+UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
+
+-- Running upgrade 0014 -> 0015
+
+ALTER TABLE notifications ADD COLUMN channel VARCHAR(16) DEFAULT 'email' NOT NULL;
+
+UPDATE alembic_version SET version_num='0015' WHERE alembic_version.version_num = '0014';
+
+-- Running upgrade 0015 -> 0016
+
+UPDATE jobs SET status = 'cancelled', finished_at = now(),
+               error = 'cancelled: another backup of this mailbox was already pending'
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id, row_number() OVER (
+                    PARTITION BY account_id
+                    ORDER BY (status = 'running') DESC, created_at
+                ) AS rank
+                FROM jobs
+                WHERE kind = 'backup' AND status IN ('queued', 'running')
+                  AND account_id IS NOT NULL
+            ) ranked
+            WHERE rank > 1 AND id IN (SELECT id FROM jobs WHERE status = 'queued')
+        );
+
+CREATE UNIQUE INDEX uq_jobs_one_backup_per_account ON jobs (account_id) WHERE kind = 'backup' AND status IN ('queued', 'running');
+
+UPDATE alembic_version SET version_num='0016' WHERE alembic_version.version_num = '0015';
+
+-- Running upgrade 0016 -> 0017
+
+ALTER TABLE policies ADD COLUMN full_schedule VARCHAR(128);
+
+ALTER TABLE policies ADD COLUMN full_last_run_at TIMESTAMP WITH TIME ZONE;
+
+CREATE TABLE saved_views (
+    id UUID NOT NULL,
+    owner_id UUID NOT NULL,
+    page VARCHAR(32) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    query VARCHAR(4000) NOT NULL,
+    shared BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    CONSTRAINT pk_saved_views PRIMARY KEY (id),
+    CONSTRAINT fk_saved_views_owner_id_users FOREIGN KEY(owner_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT uq_saved_views_owner_page_name UNIQUE (owner_id, page, name)
+);
+
+CREATE INDEX ix_saved_views_page ON saved_views (page);
+
+UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
+
+-- Running upgrade 0017 -> 0018
+
+ALTER TABLE users ADD COLUMN dashboard JSONB;
+
+CREATE TABLE login_failures (
+    hour TIMESTAMP WITH TIME ZONE NOT NULL,
+    ip VARCHAR(64) NOT NULL,
+    failed_mailbox INTEGER DEFAULT 0 NOT NULL,
+    failed_smtp INTEGER DEFAULT 0 NOT NULL,
+    suspended INTEGER DEFAULT 0 NOT NULL,
+    last_suspended_at TIMESTAMP WITH TIME ZONE,
+    accounts JSONB DEFAULT '[]'::jsonb NOT NULL,
+    CONSTRAINT pk_login_failures PRIMARY KEY (hour, ip)
+);
+
+CREATE INDEX ix_login_failures_hour ON login_failures (hour);
+
+UPDATE alembic_version SET version_num='0018' WHERE alembic_version.version_num = '0017';
+
+-- Running upgrade 0018 -> 0019
+
+CREATE TABLE ip_actions (
+    id UUID NOT NULL,
+    ip VARCHAR(64) NOT NULL,
+    action VARCHAR(16) NOT NULL,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    error TEXT,
+    created_by UUID,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    done_at TIMESTAMP WITH TIME ZONE,
+    CONSTRAINT pk_ip_actions PRIMARY KEY (id),
+    CONSTRAINT ck_ip_actions_action_known CHECK (action IN ('trust', 'untrust')),
+    CONSTRAINT ck_ip_actions_status_known CHECK (status IN ('pending', 'done', 'failed')),
+    CONSTRAINT fk_ip_actions_created_by_users FOREIGN KEY(created_by) REFERENCES users (id) ON DELETE SET NULL
+);
+
+UPDATE alembic_version SET version_num='0019' WHERE alembic_version.version_num = '0018';
+
+-- Running upgrade 0019 -> 0020
+
+ALTER TABLE login_failures ADD COLUMN last_failed_at TIMESTAMP WITH TIME ZONE;
+
+UPDATE alembic_version SET version_num='0020' WHERE alembic_version.version_num = '0019';
+
+-- Running upgrade 0020 -> 0021
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete'));
+
+UPDATE alembic_version SET version_num='0021' WHERE alembic_version.version_num = '0020';
+
+-- Running upgrade 0021 -> 0022
+
+ALTER TABLE account_actions ADD COLUMN value BIGINT;
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete', 'quota'));
+
+UPDATE alembic_version SET version_num='0022' WHERE alembic_version.version_num = '0021';
+
+-- Running upgrade 0022 -> 0023
+
+ALTER TABLE agents ADD COLUMN role VARCHAR(16) DEFAULT 'primary' NOT NULL;
+
+ALTER TABLE agents ADD CONSTRAINT ck_agents_role_known CHECK (role IN ('primary', 'standby'));
+
+CREATE TABLE standby_states (
+    account_id UUID NOT NULL,
+    snapshot_id UUID,
+    snapshot_taken_at TIMESTAMP WITH TIME ZONE,
+    applied_at TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(16) DEFAULT 'ok' NOT NULL,
+    error TEXT,
+    stats JSONB DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT pk_standby_states PRIMARY KEY (account_id),
+    CONSTRAINT ck_standby_states_status_known CHECK (status IN ('ok', 'partial', 'failed')),
+    CONSTRAINT fk_standby_states_account_id_accounts FOREIGN KEY(account_id) REFERENCES accounts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_standby_states_snapshot_id_snapshots FOREIGN KEY(snapshot_id) REFERENCES snapshots (id) ON DELETE SET NULL
+);
+
+ALTER TABLE jobs DROP CONSTRAINT ck_jobs_job_kind;
+
+ALTER TABLE jobs ADD CONSTRAINT ck_jobs_job_kind CHECK (kind IN ('backup', 'restore', 'config_backup', 'verify', 'purge', 'migrate', 'replicate', 'archive', 'fetch', 'standby_sync'));
+
+UPDATE alembic_version SET version_num='0023' WHERE alembic_version.version_num = '0022';
+
+-- Running upgrade 0023 -> 0024
+
+ALTER TABLE spam_senders ADD COLUMN rcpts JSONB DEFAULT '[]'::jsonb NOT NULL;
+
+UPDATE alembic_version SET version_num='0024' WHERE alembic_version.version_num = '0023';
+
+-- Running upgrade 0024 -> 0025
+
+ALTER TABLE accounts ADD COLUMN password_changed_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN password_max_age_days INTEGER;
+
+ALTER TABLE accounts ADD COLUMN password_expires_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE accounts ADD COLUMN password_must_change BOOLEAN DEFAULT false NOT NULL;
+
+CREATE INDEX ix_accounts_password_expires_at ON accounts (password_expires_at);
+
+ALTER TABLE account_actions ADD COLUMN secret TEXT;
+
+ALTER TABLE account_actions DROP CONSTRAINT ck_account_actions_action_known;
+
+ALTER TABLE account_actions ADD CONSTRAINT ck_account_actions_action_known CHECK (action IN ('lock', 'unlock', 'delete', 'quota', 'password'));
+
+UPDATE alembic_version SET version_num='0025' WHERE alembic_version.version_num = '0024';
+
 COMMIT;

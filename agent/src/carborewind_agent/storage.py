@@ -19,6 +19,7 @@ asks for SMB 3 transport encryption.
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import os
 import pwd
@@ -28,10 +29,13 @@ import subprocess
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ETC = Path("/etc/carborewind")
 SYSTEMD = Path("/etc/systemd/system")
 DEFAULT_MOUNT = Path("/var/lib/carborewind/nas")
+COPY_MOUNT = Path("/var/lib/carborewind/copy02")
+NETWORK_FS = frozenset({"cifs", "smb3", "nfs", "nfs4"})
 # The agent's systemd sandbox can only write under this directory.
 MOUNT_ROOT = "/var/lib/carborewind/"
 AGENT_USER = "carborewind"
@@ -78,7 +82,7 @@ def describe(path: Path) -> dict[str, object]:
     info = mount_info(path)
     out: dict[str, object] = {
         "path": str(path),
-        "kind": "network" if info and info.fstype in {"cifs", "smb3", "nfs", "nfs4"} else "local",
+        "kind": "network" if info and info.fstype in NETWORK_FS else "local",
         "fstype": info.fstype if info else None,
         "source": info.source if info else None,
     }
@@ -183,6 +187,17 @@ def set_env(env_file: Path, key: str, value: str) -> None:
     _write(env_file, "\n".join(lines) + "\n", mode)
 
 
+def unset_env(env_file: Path, key: str) -> None:
+    if not env_file.exists():
+        return
+    lines = [
+        line
+        for line in env_file.read_text().splitlines()
+        if not re.match(rf"^\s*{re.escape(key)}=", line)
+    ]
+    _write(env_file, "\n".join(lines) + "\n", env_file.stat().st_mode & 0o777)
+
+
 def _run(*cmd: str) -> None:
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)  # noqa: S603
     if result.returncode != 0:
@@ -242,21 +257,12 @@ class SmbRequest:
     start_empty: bool = False
 
 
-def configure_smb(
-    req: SmbRequest,
-    env_file: Path,
-    current_repository: Path,
-    etc: Path = ETC,
-    systemd: Path = SYSTEMD,
-    run: object = None,
-) -> dict[str, object]:
-    """Do steps 1-4 of the module docstring; returns what was done (for display)."""
-    runner = run if callable(run) else _run
+def _validate(req: SmbRequest) -> pwd.struct_passwd:
     if os.geteuid() != 0:
         raise StorageError("run this command as root (sudo)")
     if shutil.which("mount.cifs") is None:
         raise StorageError("mount.cifs is missing: apt install cifs-utils")
-    if not SHARE_RE.match(req.share):
+    if not SHARE_RE.match(req.share) or any(part in {".", ".."} for part in req.share.split("/")):
         raise StorageError("share must look like //server/share[/folder]")
     for name, value in (("username", req.username), ("domain", req.domain)):
         if not SAFE_FIELD.match(value) or "\n" in value:
@@ -266,9 +272,58 @@ def configure_smb(
     if not str(req.mount_point).startswith(MOUNT_ROOT):
         raise StorageError(f"the mount point must be under {MOUNT_ROOT}")
     try:
-        user = pwd.getpwnam(AGENT_USER)
+        return pwd.getpwnam(AGENT_USER)
     except KeyError as exc:
         raise StorageError(f"user {AGENT_USER} does not exist (is the agent installed?)") from exc
+
+
+def _mount(
+    req: SmbRequest,
+    user: pwd.struct_passwd,
+    credentials: Path,
+    systemd: Path,
+    runner: Any,
+    remount: bool = False,
+) -> str:
+    """Write the credentials file and the mount unit, mount, check the agent can write."""
+    lines = [f"username={req.username}", f"password={req.password}"]
+    if req.domain:
+        lines.append(f"domain={req.domain}")
+    _write(credentials, "\n".join(lines) + "\n", 0o600)
+    unit_name = systemd_escape_path(req.mount_point) + ".mount"
+    _write(
+        systemd / unit_name,
+        mount_unit(req.share, req.mount_point, credentials, user.pw_uid, user.pw_gid, req.seal),
+        0o600,  # systemd reads units as root
+    )
+    req.mount_point.mkdir(parents=True, exist_ok=True)
+    runner("systemctl", "daemon-reload")
+    try:
+        runner("systemctl", "enable", "--now", unit_name)
+        if remount:  # new credentials or share on an already mounted unit
+            runner("systemctl", "restart", unit_name)
+        check_writable(req.mount_point, user.pw_uid, user.pw_gid)
+    except StorageError:
+        # Leave nothing half-done behind (a failing unit enabled at boot).
+        with contextlib.suppress(StorageError):
+            runner("systemctl", "disable", "--now", unit_name)
+        raise
+    return unit_name
+
+
+def configure_smb(
+    req: SmbRequest,
+    env_file: Path,
+    current_repository: Path,
+    etc: Path = ETC,
+    systemd: Path = SYSTEMD,
+    run: object = None,
+    *,
+    remount: bool = False,
+) -> dict[str, object]:
+    """Do steps 1-4 of the module docstring; returns what was done (for display)."""
+    runner = run if callable(run) else _run
+    user = _validate(req)
     target = req.mount_point / "repository"
     if (
         is_repository(current_repository)
@@ -280,19 +335,9 @@ def configure_smb(
             "share, or --start-empty to leave it behind (its snapshots would no longer be "
             "restorable)"
         )
-
-    credentials = etc / "smb.credentials"
-    lines = [f"username={req.username}", f"password={req.password}"]
-    if req.domain:
-        lines.append(f"domain={req.domain}")
-    _write(credentials, "\n".join(lines) + "\n", 0o600)
-
-    unit_name = systemd_escape_path(req.mount_point) + ".mount"
-    _write(
-        systemd / unit_name,
-        mount_unit(req.share, req.mount_point, credentials, user.pw_uid, user.pw_gid, req.seal),
-        0o600,  # systemd reads units as root
-    )
+    unit_name = _mount(req, user, etc / "smb.credentials", systemd, runner, remount)
+    # Only once the share is mounted and writable: a requirement on a mount that fails would
+    # stop the agent from starting at all.
     _write(
         systemd / "carborewind-agent.service.d" / "storage.conf",
         "# Written by carborewind-agent storage smb.\n"
@@ -300,10 +345,7 @@ def configure_smb(
         f"RequiresMountsFor={req.mount_point}\n",
         0o600,  # systemd reads units as root
     )
-    req.mount_point.mkdir(parents=True, exist_ok=True)
     runner("systemctl", "daemon-reload")
-    runner("systemctl", "enable", "--now", unit_name)
-    check_writable(req.mount_point, user.pw_uid, user.pw_gid)
 
     copied = 0
     if is_repository(current_repository) and req.migrate and current_repository != target:
@@ -316,6 +358,46 @@ def configure_smb(
         "copied_files": copied,
         "initialised": is_repository(target),
     }
+
+
+def configure_replica(
+    req: SmbRequest,
+    env_file: Path,
+    etc: Path = ETC,
+    systemd: Path = SYSTEMD,
+    run: object = None,
+    *,
+    remount: bool = False,
+) -> dict[str, object]:
+    """Mount the second share (copy 02). The agent does not depend on it: a missing copy
+    must never stop backups, so there is no ``RequiresMountsFor``."""
+    runner = run if callable(run) else _run
+    user = _validate(req)
+    unit_name = _mount(req, user, etc / "smb-copy02.credentials", systemd, runner, remount)
+    target = req.mount_point / "repository"
+    target.mkdir(exist_ok=True)
+    set_env(env_file, "CARBOREWIND_AGENT_REPLICA_PATH", str(target))
+    return {"unit": unit_name, "replica": str(target)}
+
+
+def remove_replica(
+    mount_point: Path,
+    env_file: Path,
+    etc: Path = ETC,
+    systemd: Path = SYSTEMD,
+    run: object = None,
+) -> None:
+    """Stop using copy 02 (the files on the share are left untouched)."""
+    runner = run if callable(run) else _run
+    if os.geteuid() != 0:
+        raise StorageError("run this command as root (sudo)")
+    unit_name = systemd_escape_path(mount_point) + ".mount"
+    if (systemd / unit_name).exists():
+        runner("systemctl", "disable", "--now", unit_name)
+        (systemd / unit_name).unlink()
+        runner("systemctl", "daemon-reload")
+    (etc / "smb-copy02.credentials").unlink(missing_ok=True)
+    unset_env(env_file, "CARBOREWIND_AGENT_REPLICA_PATH")
 
 
 def configure_local(

@@ -26,6 +26,28 @@ L'agent n'ouvre **aucun port** sur le serveur Carbonio : il initie toutes les co
 
 ---
 
+## Installation rapide (deux scripts)
+
+Sur une VM Ubuntu neuve, depuis le code source :
+
+```bash
+sudo ./deploy/bootstrap-server.sh --server-name carborewind.example.org \
+     --carbonio-host mail.example.org --agent-name mx1 --admin admin --build-agent
+```
+
+Il installe Docker, lance `install-server.sh`, crée le premier super-administrateur, enregistre
+l'agent (jeton à usage unique) et construit le paquet de l'agent. Copiez ensuite sur le serveur
+Carbonio `deploy/setup-agent.sh`, `/opt/carborewind/deploy/tls/server.crt` et le `.deb`, puis :
+
+```bash
+sudo bash setup-agent.sh --api-url https://carborewind.example.org --api-ca server.crt \
+     --deb carborewind-agent_<version>_amd64.deb [--api-ip 192.0.2.10]
+```
+
+Il installe le paquet, crée le compte administrateur Carbonio dédié (mot de passe aléatoire dans
+un fichier 0600), remplit `agent.env`, crée la clé et le dépôt chiffré, enrôle l'agent et le
+démarre. Les deux scripts se relancent sans risque. Les sections suivantes détaillent chaque étape.
+
 ## 1. Prérequis
 
 **Serveur CarboRewind**
@@ -126,6 +148,12 @@ sudo nano /etc/carborewind/carbonio-admin.password
 # /opt/carborewind/deploy/tls/server.crt), puis décommenter CARBOREWIND_AGENT_API_CA_FILE
 sudo install -m 0644 server.crt /etc/carborewind/api-ca.crt
 ```
+
+Sans `--tls-cert`, le certificat HTTPS est signé par une autorité locale propre à l'installation :
+importez `/opt/carborewind/deploy/tls/local-ca.crt` dans les racines de confiance des postes
+d'administration (Windows : `certutil -addstore -user Root local-ca.crt`). Une installation plus
+ancienne, au certificat auto-signé, passe à ce modèle avec `install-server.sh --local-ca` ; recopiez
+ensuite `server.crt` vers `/etc/carborewind/api-ca.crt` sur Carbonio.
 
 Si le certificat de Carbonio est auto-signé, renseignez `CARBOREWIND_AGENT_CARBONIO_CA_FILE`. La
 vérification TLS n'est jamais désactivée.

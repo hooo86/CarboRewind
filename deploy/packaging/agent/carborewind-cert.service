@@ -1,0 +1,11 @@
+[Unit]
+Description=CarboRewind: renew the Let's Encrypt certificate of Carbonio when the agent asks
+Documentation=https://github.com/hooo86/CarboRewind/blob/main/docs/monitoring.md
+
+[Service]
+Type=oneshot
+# Root is needed to run certbot and zmcertmgr. The request is validated again here: only
+# "renew" of a valid host name is accepted; the commands are fixed, no shell gets the name.
+ExecStart=/usr/bin/carborewind-agent cert apply
+UMask=0077
+TimeoutStartSec=1500

@@ -11,8 +11,11 @@ end-to-end tests; it does not replace a check against a real server
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from email.parser import BytesHeaderParser
 from typing import Any
 from urllib.parse import unquote
 
@@ -99,9 +102,29 @@ class FakeCarbonio:
         self.admin_tokens: set[str] = set()
         self.delegated: dict[str, str] = {}  # token -> account id
         self.uploads: dict[str, bytes] = {}
+        self.passwords: dict[str, str] = {}  # account id -> password set by SetPassword
+        self.domain_attrs: dict[str, dict[str, list[str]]] = {}  # ModifyDomain
         self.calls: list[str] = []
         self.fail_next: list[int] = []  # HTTP statuses to return before answering
         self.quota_denied = False
+        self.quota_missing: set[str] = set()  # accounts GetQuotaUsage does not list
+        self.vip_quota = 5 * 1024**3
+        # zmcontrol-like status: service -> (running, checked at, s); queue name -> count.
+        self.services: dict[str, tuple[bool, int]] = {}
+        self.upload_reply: str | None = None  # e.g. "401,'null'": the servlet refuses
+        self.inline_max: int | None = None  # AddMsg refuses bigger inline content
+        self.queues: dict[str, int] | None = {"deferred": 0, "active": 0}
+        # Messages per queue (GetMailQueue) and the queue actions received.
+        self.queue_items: dict[str, list[dict[str, Any]]] = {}
+        self.queue_ops: list[tuple[str, str, str]] = []
+        # Global configuration (multi-valued attributes are lists).
+        self.config: dict[str, list[str]] = {
+            "zimbraHttpThrottleSafeIPs": ["192.168.8.0/24"],
+            "zimbraInvalidLoginFilterMaxFailedLogin": ["10"],
+            "zimbraInvalidLoginFilterDelayInMinBetwnReqBeforeReinstating": ["15"],
+            "zimbraInvalidLoginFilterReinstateIpTaskIntervalInMin": ["5"],
+            "zimbraSoapRequestMaxSize": ["31457280"],
+        }
 
     # ------------------------------------------------------------------ setup helpers
 
@@ -116,6 +139,14 @@ class FakeCarbonio:
     # ------------------------------------------------------------------ HTTP dispatch
 
     def handle(self, request: httpx.Request) -> httpx.Response:
+        try:
+            return self._handle(request)
+        except _Fault as fault:  # REST call with an unknown or revoked cookie
+            if fault.code != "service.AUTH_EXPIRED":
+                raise
+            return httpx.Response(401)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
         if self.fail_next:
             return httpx.Response(self.fail_next.pop(0))
         path = request.url.path
@@ -146,6 +177,8 @@ class FakeCarbonio:
             return self._rest_get(request)
         if request.method == "POST" and path == "/service/upload":
             account = self._cookie_account(request)
+            if self.upload_reply is not None:
+                return httpx.Response(200, text=self.upload_reply)
             aid = secrets.token_hex(6)
             self.uploads[aid] = request.content
             self.calls.append(f"upload:{account}")
@@ -217,7 +250,30 @@ class FakeCarbonio:
 
     def _GetAllCosRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
-        return {"cos": [{"id": "cos-default", "name": "default"}, {"id": "cos-vip", "name": "vip"}]}
+        return {
+            "cos": [
+                {
+                    "id": "cos-default",
+                    "name": "default",
+                    "a": [
+                        {"n": "zimbraMailQuota", "_content": "0"},
+                        {"n": "zimbraPasswordMaxAgeDays", "_content": "90"},
+                    ],
+                },
+                {
+                    "id": "cos-vip",
+                    "name": "vip",
+                    "a": [{"n": "zimbraMailQuota", "_content": str(self.vip_quota)}],
+                },
+            ]
+        }
+
+    def _GetMailboxRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["mbox"]["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        return {"mbox": [{"mbid": "1", "s": sum(len(i.raw) for i in mbox.items.values())}]}
 
     def _GetQuotaUsageRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
@@ -235,13 +291,138 @@ class FakeCarbonio:
                     "limit": int(q) if (q := m.attrs.get("zimbraMailQuota", "0")).isdigit() else 0,
                 }
                 for m in page
+                if m.id not in self.quota_missing
             ],
             "more": offset + limit < len(boxes),
         }
 
+    def _GetServiceStatusRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        return {
+            "status": [
+                {
+                    "server": "mail.example.test",
+                    "service": name,
+                    "t": t,
+                    "_content": "1" if up else "0",
+                }
+                for name, (up, t) in self.services.items()
+            ]
+        }
+
+    def _GetMailQueueInfoRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if self.queues is None:
+            raise _Fault("service.FAILURE", "queue info unavailable")
+        queues = [{"name": k, "n": v} for k, v in self.queues.items()]
+        return {"server": [{"name": body["server"]["name"], "queue": queues}]}
+
+    def _GetMailQueueRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        srv = body["server"]
+        name = srv["queue"]["name"]
+        items = self.queue_items.get(name, [])
+        reasons: dict[str, int] = {}
+        for qi in items:
+            reasons[qi.get("reason", "")] = reasons.get(qi.get("reason", ""), 0) + 1
+        return {
+            "server": [
+                {
+                    "name": srv["name"],
+                    "queue": [
+                        {
+                            "name": name,
+                            "total": len(items),
+                            "qi": items[: int(srv["queue"]["query"]["limit"])],
+                            "qs": [
+                                {
+                                    "type": "reason",
+                                    "qsi": [{"t": t, "n": n} for t, n in reasons.items()],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+
+    def _MailQueueActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        queue = body["server"]["queue"]
+        action = queue["action"]
+        ids = set(action["_content"].split(","))
+        self.queue_ops.append((queue["name"], action["op"], action["_content"]))
+        if action["op"] in ("delete", "requeue", "hold"):
+            kept = [m for m in self.queue_items.get(queue["name"], []) if m["id"] not in ids]
+            self.queue_items[queue["name"]] = kept
+            if self.queues is not None:
+                self.queues[queue["name"]] = len(kept)
+        return {}
+
+    def _MailQueueFlushRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        self.queue_ops.append(("*", "flush", body["server"]["name"]))
+        return {}
+
+    def _DeleteAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if body["id"] not in self.mailboxes:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        del self.mailboxes[body["id"]]
+        return {}
+
+    def _GetAllConfigRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        return {"a": [{"n": n, "_content": v} for n, vs in self.config.items() for v in vs]}
+
+    def _ModifyConfigRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        for attr in body.get("a", []):
+            name, value = attr["n"], attr["_content"]
+            if name.startswith("+"):
+                values = self.config.setdefault(name[1:], [])
+                if value not in values:
+                    values.append(value)
+            elif name.startswith("-"):
+                values = self.config.get(name[1:], [])
+                if value not in values:
+                    raise _Fault("service.INVALID_REQUEST", f"no such value {value}")
+                values.remove(value)
+            else:
+                self.config[name] = [value]
+        return {}
+
+    def _SetPasswordRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        if len(body["newPassword"]) < 8:
+            raise _Fault("account.INVALID_PASSWORD", "too short")
+        self.passwords[mbox.id] = body["newPassword"]
+        return {}
+
+    def _ModifyAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        mbox = self.mailboxes.get(body["id"])
+        if mbox is None:
+            raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
+        for attr in body.get("a", []):
+            if attr["n"] == "zimbraAccountStatus":
+                mbox.status = attr["_content"]
+            elif attr["_content"] == "":
+                mbox.attrs.pop(attr["n"], None)
+            else:
+                mbox.attrs[attr["n"]] = attr["_content"]
+        return {"account": [self._account_entry(mbox)]}
+
     def _GetAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         self._admin_only(token, admin)
-        mbox = self.mailboxes.get(body["account"]["_content"])
+        key = body["account"]["_content"]
+        if body["account"].get("by") == "name":
+            mbox = next((m for m in self.mailboxes.values() if m.name == key), None)
+        else:
+            mbox = self.mailboxes.get(key)
         if mbox is None:
             raise _Fault("account.NO_SUCH_ACCOUNT", "no such account")
         return {"account": [self._account_entry(mbox)]}
@@ -308,6 +489,18 @@ class FakeCarbonio:
             raise _Fault("mail.NO_SUCH_ITEM", "no such item")
         return {item.kind: [self._item_entry(item)]}
 
+    def _GetMsgMetadataRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        self.meta_batches = getattr(self, "meta_batches", 0) + 1
+        ids = [int(i) for i in body["m"]["ids"].split(",")]
+        return {
+            "m": [
+                self._item_entry(mbox.items[i])
+                for i in ids
+                if i in mbox.items and mbox.items[i].kind == "m"
+            ]
+        }
+
     def _CreateFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
         spec = body["folder"]
@@ -327,6 +520,12 @@ class FakeCarbonio:
     def _AddMsgRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)
         m = body["m"]
+        if (
+            "content" in m
+            and self.inline_max is not None
+            and len(m["content"]["_content"]) > self.inline_max
+        ):
+            raise _Fault("service.INVALID_REQUEST", "invalid request: inline message too large")
         raw = self.uploads.pop(m["aid"]) if "aid" in m else m["content"]["_content"].encode("utf-8")
         if int(m["l"]) not in mbox.folders:
             raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
@@ -339,6 +538,136 @@ class FakeCarbonio:
             date=int(m.get("d", 0)),
         )
         return {"m": [{"id": str(item.id)}]}
+
+    def _SearchRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        """``inid:<folder> msgid:"<id>"`` (migrations) and ``before:M/D/YYYY`` (archiving)."""
+        mbox = self._mailbox_for(token)
+        before = re.fullmatch(r"before:(\d{1,2})/(\d{1,2})/(\d{4})", body["query"])
+        if before:
+            month, day, year = (int(g) for g in before.groups())
+            limit_ms = int(datetime(year, month, day, tzinfo=UTC).timestamp() * 1000)
+            found = sorted(
+                (i for i in mbox.items.values() if i.kind == "m" and i.date < limit_ms),
+                key=lambda i: (i.date, i.id),
+            )
+            offset, limit = int(body.get("offset", 0)), int(body.get("limit", 100))
+            page = found[offset : offset + limit]
+            return {
+                "m": [self._item_entry(i) for i in page],
+                "more": offset + limit < len(found),
+            }
+        m = re.fullmatch(r'inid:(\d+) msgid:"((?:\\.|[^"\\])*)"', body["query"])
+        if not m:
+            raise _Fault("mail.QUERY_PARSE_ERROR", body["query"])
+        folder = int(m.group(1))
+        wanted = m.group(2).replace('\\"', '"').replace("\\\\", "\\")
+        hits = []
+        for item in mbox.items.values():
+            if item.kind != "m" or item.folder != folder:
+                continue
+            head = BytesHeaderParser().parsebytes(item.raw)
+            if " ".join(str(head.get("Message-ID", "")).split()) == wanted:
+                hits.append({"id": str(item.id)})
+        return {"m": hits[: int(body.get("limit", 100))]} if hits else {}
+
+    def _MsgActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        if action["op"] != "delete":
+            raise _Fault("service.INVALID_REQUEST", action["op"])
+        ids = [int(i) for i in action["id"].split(",")]
+        missing = [i for i in ids if i not in mbox.items]
+        if missing:
+            raise _Fault("mail.NO_SUCH_ITEM", f"no such item: {missing[0]}")
+        for item_id in ids:
+            mbox.delete(item_id)
+        return {"action": {"op": "delete", "id": action["id"]}}
+
+    def _GetDomainRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        name = body["domain"]["_content"]
+        if not any(m.name.endswith("@" + name) for m in self.mailboxes.values()):
+            raise _Fault("account.NO_SUCH_DOMAIN", "no such domain")
+        return {"domain": [{"id": f"dom-{name}", "name": name}]}
+
+    def _ModifyDomainRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        attrs = self.domain_attrs.setdefault(body["id"], {})
+        for attr in body.get("a", []):
+            name, value = attr["n"], attr["_content"]
+            values = attrs.setdefault(name.lstrip("+-"), [])
+            if name.startswith("+") and value not in values:
+                values.append(value)
+            elif name.startswith("-") and value in values:
+                values.remove(value)
+        return {"domain": [{"id": body["id"]}]}
+
+    def _CreateAccountRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        self._admin_only(token, admin)
+        if any(m.name == body["name"] for m in self.mailboxes.values()):
+            raise _Fault("account.ACCOUNT_EXISTS", "email address already exists")
+        attrs = {a["n"]: a["_content"] for a in body.get("a", [])}
+        mbox = Mailbox(id=attrs.pop("zimbraId", None) or secrets.token_hex(8), name=body["name"])
+        mbox.attrs = attrs
+        self.mailboxes[mbox.id] = mbox
+        self.calls.append(f"create-account:{body['name']}")
+        return {"account": [self._account_entry(mbox)]}
+
+    def _ItemActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        ids = [int(i) for i in action["id"].split(",")]
+        missing = [i for i in ids if i not in mbox.items]
+        if missing:
+            raise _Fault("mail.NO_SUCH_ITEM", f"no such item: {missing[0]}")
+        self.calls.append(f"item-action:{action['op']}:{len(ids)}")
+        for item_id in ids:
+            if action["op"] == "delete":
+                mbox.delete(item_id)
+            elif action["op"] == "move":
+                if int(action["l"]) not in mbox.folders:
+                    raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+                mbox.modify(item_id, folder=int(action["l"]))
+            elif action["op"] == "update":
+                changes = {}
+                if "f" in action:
+                    changes["flags"] = action["f"]
+                if "tn" in action:
+                    changes["tags"] = action["tn"]
+                mbox.modify(item_id, **changes)
+            else:
+                raise _Fault("service.INVALID_REQUEST", action["op"])
+        return {"action": {"op": action["op"], "id": action["id"]}}
+
+    def _FolderActionRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
+        mbox = self._mailbox_for(token)
+        action = body["action"]
+        if action["op"] == "empty":
+            fid = int(action["id"])
+            if fid not in mbox.folders:
+                raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+            for item_id in [i for i, item in mbox.items.items() if item.folder == fid]:
+                mbox.delete(item_id)
+            self.calls.append(f"empty:{fid}")
+            return {"action": {"op": "empty", "id": action["id"]}}
+        if action["op"] != "delete":
+            raise _Fault("service.INVALID_REQUEST", action["op"])
+        root = int(action["id"])
+        if root not in mbox.folders or root < 256:
+            raise _Fault("mail.NO_SUCH_FOLDER", "no such folder")
+        doomed = {root}
+        changed = True
+        while changed:
+            changed = False
+            for f in mbox.folders.values():
+                if f.parent in doomed and f.id not in doomed:
+                    doomed.add(f.id)
+                    changed = True
+        for item_id in [i for i, item in mbox.items.items() if item.folder in doomed]:
+            mbox.delete(item_id)
+        for fid in doomed:
+            del mbox.folders[fid]
+        return {"action": {"op": "delete", "id": action["id"]}}
 
     def _GetFolderRequest(self, body: dict[str, Any], token: str | None, admin: bool) -> Any:
         mbox = self._mailbox_for(token)

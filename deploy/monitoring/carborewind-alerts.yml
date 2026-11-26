@@ -1,0 +1,61 @@
+# Prometheus alerting rules for CarboRewind (rule_files: [carborewind-alerts.yml]).
+groups:
+  - name: carborewind
+    rules:
+      - alert: CarboRewindAccountsUnprotected
+        expr: sum(carborewind_accounts_at_risk{reason=~"never|stale"}) > 0
+        for: 2h
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} mailbox(es) without a recent backup"
+      - alert: CarboRewindBackupJobsFailing
+        expr: sum(carborewind_jobs_failed_24h{kind="backup"}) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} backup job(s) failed in the last 24 h"
+      - alert: CarboRewindStorageFullSoon
+        expr: carborewind_storage_days_until_full < 14
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.target }} storage of {{ $labels.agent }} full in {{ $value }} days"
+      - alert: CarboRewindStorageLow
+        expr: carborewind_storage_free_bytes / carborewind_storage_total_bytes < 0.10
+        for: 30m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.target }} storage of {{ $labels.agent }} below 10 % free"
+      - alert: CarboRewindCopy2Late
+        expr: carborewind_replica_lag_seconds > 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "Copy 2 is {{ $value | humanizeDuration }} behind"
+      - alert: CarboRewindCorruption
+        expr: carborewind_integrity_corrupted_files > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Integrity check found corrupted files in {{ $labels.target }}"
+      - alert: CarboRewindIntegrityNotChecked
+        expr: time() - carborewind_integrity_last_check_timestamp_seconds > 8 * 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "No integrity check of {{ $labels.target }} for more than 8 days"
+      - alert: CarboRewindAgentSilent
+        expr: carborewind_agent_last_seen_seconds > 1800
+        labels: { severity: critical }
+        annotations:
+          summary: "Agent {{ $labels.agent }} silent for {{ $value | humanizeDuration }}"
+      - alert: CarboRewindAgentCertificateExpiring
+        expr: carborewind_agent_certificate_expiry_seconds < 30 * 86400
+        labels: { severity: warning }
+        annotations:
+          summary: "Certificate of agent {{ $labels.agent }} expires in {{ $value | humanizeDuration }}"
+      - alert: CarboRewindSpamSent
+        expr: carborewind_mail_spam_sent_current_hour > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "A local mailbox is sending spam (stolen password?)"
+      - alert: CarboRewindMailLimitAlerts
+        expr: carborewind_mail_alerts_open > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} sending-limit alert(s) not acknowledged"

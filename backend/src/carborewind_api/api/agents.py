@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -28,6 +28,8 @@ class AgentCreate(BaseModel):
 
     name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
     hostname: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9.-]+$")
+    # "standby": the agent of a clone kept in line for a disaster (never backs up).
+    role: Literal["primary", "standby"] = "primary"
 
 
 class AgentOut(BaseModel):
@@ -38,6 +40,7 @@ class AgentOut(BaseModel):
     cert_not_after: datetime | None
     last_heartbeat_at: datetime | None
     version: str | None
+    role: str = "primary"
 
     @classmethod
     def of(cls, a: Agent) -> AgentOut:
@@ -49,6 +52,7 @@ class AgentOut(BaseModel):
             cert_not_after=a.cert_not_after,
             last_heartbeat_at=a.last_heartbeat_at,
             version=a.version,
+            role=a.role,
         )
 
 
@@ -89,6 +93,7 @@ async def create_agent(
         name=body.name,
         hostname=body.hostname,
         status=AgentStatus.PENDING,
+        role=body.role,
         enrollment_token_hash=token_digest(token),
         enrollment_expires_at=expires,
     )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -58,6 +59,10 @@ class UserUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=320)
     unlock: bool = Field(default=False, description="Clear the failed-login lock")
+    # New password for a local account (the user's sessions are closed).
+    password: str | None = Field(default=None, max_length=1024, repr=False)
+    # Turn the user's two-factor authentication off (lost phone): enrol again at next login.
+    reset_2fa: bool = False
 
 
 class RoleGrant(BaseModel):
@@ -178,6 +183,23 @@ async def update_user(
         user.locked_until = None
         user.failed_logins = 0
         changes["unlocked"] = True
+    if body.password is not None:
+        if user.auth_source is not AuthSource.LOCAL:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "the password is managed by the directory"
+            )
+        try:
+            user.password_hash = hash_password(body.password)
+        except WeakPasswordError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        user.password_changed_at = datetime.now(UTC)
+        changes["password_reset"] = True
+        changes["sessions_revoked"] = await revoke_all_sessions(db, user.id)
+    if body.reset_2fa and (user.totp_enabled or user.totp_secret_enc):
+        user.totp_enabled, user.totp_secret_enc, user.recovery_codes = False, None, []
+        user.totp_last_step = None
+        changes["2fa_reset"] = True
+        changes["sessions_revoked"] = await revoke_all_sessions(db, user.id)
     if changes:
         await _audit(db, admin, request, "user.update", user, changes=changes)
     return UserOut.of(user)
@@ -237,3 +259,20 @@ async def revoke_role(
         sessions_revoked=revoked,
     )
     return UserOut.of(user)
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(user_id: uuid.UUID, admin: Admin, db: DbSession, request: Request) -> None:
+    """Delete an access account (its audit trail stays). Not yourself, not the last
+    active super-administrator."""
+    user = await _get_user(db, user_id)
+    if user.id == admin.user.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "cannot delete yourself")
+    if (
+        user.is_active
+        and any(r.role is Role.SUPER_ADMIN for r in user.roles)
+        and await _active_super_admins(db) <= 1
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, "last active super_admin")
+    await _audit(db, admin, request, "user.delete", user)
+    await db.delete(user)

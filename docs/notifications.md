@@ -14,3 +14,30 @@ Menu **Paramètres** (super-administrateurs) → *Notifications par e-mail (SMTP
 Les messages sont mis en file d'attente dans la même transaction que l'événement, puis envoyés par le service
 `scheduler`, avec jusqu'à 6 tentatives (délais croissants). La liste **Derniers messages** montre l'état de
 chaque envoi. Le conteneur `scheduler` dispose pour cela d'un réseau sortant (`egress`).
+
+
+## Serveur SMTP de secours
+
+**Paramètres → Notifications → Serveur SMTP de secours** : quand le serveur principal refuse ou
+ne répond pas, chaque alerte repart aussitôt par le serveur de secours (son propre hôte, port,
+chiffrement, identifiant, mot de passe chiffré, et expéditeur facultatif). Le journal d'envoi
+indique « sent by the fallback server » avec l'erreur du serveur principal ; si les deux
+échouent, le message est retenté plus tard avec les deux erreurs. Un bouton envoie un e-mail de
+test par le serveur de secours.
+
+
+## Alertes Telegram
+
+**Paramètres → Notifications → Alertes Telegram** : gratuites, et indépendantes de la messagerie
+(elles arrivent même si Carbonio est en panne).
+
+1. Dans Telegram, écrire à **@BotFather**, taper `/newbot`, copier le jeton.
+2. Créer un groupe, y ajouter le bot et les personnes à prévenir, écrire un message dans le groupe.
+3. Coller le jeton, enregistrer, « Détecter les groupes », ajouter le groupe, activer, enregistrer.
+
+* Le jeton est stocké chiffré, jamais renvoyé par l'API ni écrit dans les erreurs.
+* Par défaut, seules les alertes urgentes partent sur Telegram (échec définitif, agent muet,
+  corruption, stockage plein, limite d'envoi, service arrêté/rétabli, file d'attente, liste
+  noire, test de restauration en échec) ; le choix se fait événement par événement.
+* Même file d'envoi et mêmes nouvelles tentatives que les e-mails ; le journal d'envoi marque les
+  messages Telegram. Le serveur CarboRewind doit joindre `api.telegram.org` en HTTPS.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { ApiError } from "../api/client";
 import { api } from "../api/endpoints";
 import type { BackupType, Job } from "../api/types";
 import { errorMessage } from "./common";
@@ -24,7 +25,13 @@ export function BackupButtons({
     try {
       onQueued(await api.startBackup(accountId, type));
     } catch (err) {
-      onError(errorMessage(err));
+      onError(
+        err instanceof ApiError &&
+          err.status === 409 &&
+          /already/.test(err.detail)
+          ? t("accounts.backupPending", { email })
+          : errorMessage(err),
+      );
     } finally {
       setBusy(false);
     }

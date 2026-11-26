@@ -18,7 +18,12 @@ import {
   page,
   user,
 } from "../test/fakeApi";
-import { buildSchedule, readSchedule } from "./PoliciesPage";
+import {
+  buildPlan,
+  buildSchedule,
+  readPlan,
+  readSchedule,
+} from "./PoliciesPage";
 
 const OTHER_DOMAIN = "d0000000-0000-0000-0000-000000000002";
 const domains = page([
@@ -140,6 +145,9 @@ describe("policies page", () => {
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "Nuit" },
     });
+    fireEvent.change(screen.getByLabelText("Frequency"), {
+      target: { value: "daily" },
+    });
     fireEvent.change(screen.getByLabelText("Time"), {
       target: { value: "02:15" },
     });
@@ -230,7 +238,7 @@ describe("policies page", () => {
     const row = (await screen.findByText("Nightly")).closest(
       "tr",
     ) as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Edit" }));
+    fireEvent.click(within(row).getByRole("button", { name: /^Edit policy / }));
     expect(screen.getByLabelText("Scope")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Time"), {
       target: { value: "03:00" },
@@ -239,7 +247,9 @@ describe("policies page", () => {
     await waitFor(() => expect(patched()?.schedule).toBe("0 3 * * *"));
     expect(patched()).not.toHaveProperty("target_type");
 
-    fireEvent.click(within(row).getByRole("button", { name: "Pause" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Pause policy / }),
+    );
     await waitFor(() => expect(patched()).toEqual({ enabled: false }));
     fireEvent.click(
       within(row).getByRole("button", { name: "Delete policy Nightly" }),
@@ -268,12 +278,162 @@ describe("policies page", () => {
     const row = (await screen.findByText("Nightly")).closest(
       "tr",
     ) as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Pause" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Pause policy / }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("forbidden");
     vi.mocked(window.confirm).mockReturnValue(false);
     fireEvent.click(
       within(row).getByRole("button", { name: "Delete policy Nightly" }),
     );
+  });
+
+  it("plans full and incremental backups day by day", async () => {
+    const { created } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Semaine" },
+    });
+    // Default plan: incremental every day, full on Friday, at 01:00.
+    expect(screen.getByLabelText("Frequency")).toHaveValue("plan");
+    expect(screen.queryByLabelText("Backup type")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Monday"), {
+      target: { value: "none" },
+    });
+    fireEvent.change(screen.getByLabelText("Sunday"), {
+      target: { value: "full" },
+    });
+    fireEvent.change(screen.getByLabelText("Time"), {
+      target: { value: "22:30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(created()).toBeDefined());
+    expect(created()).toMatchObject({
+      schedule: "30 22 * * 2,3,4,6",
+      backup_type: "incremental",
+      full_schedule: "30 22 * * 0,5",
+    });
+  });
+
+  it("refuses a plan without any backup day", async () => {
+    open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    for (const day of [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ])
+      fireEvent.change(screen.getByLabelText(day), {
+        target: { value: "none" },
+      });
+    expect(
+      screen.getByText("Choose at least one day with a backup."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("shows a planned policy and reopens it as a plan", async () => {
+    open(user("super_admin"), [
+      policy({ schedule: "0 2 * * 0,1,2,3,4,6", full_schedule: "0 2 * * 5" }),
+    ]);
+    expect(
+      await screen.findByText(
+        "full : Friday · incremental : Monday, Tuesday, Wednesday, Thursday, Saturday, Sunday — 02:00",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Edit policy / }));
+    expect(screen.getByLabelText("Frequency")).toHaveValue("plan");
+    expect(screen.getByLabelText("Friday")).toHaveValue("full");
+    expect(screen.getByLabelText("Monday")).toHaveValue("incremental");
+  });
+
+  it("reads and builds week plans", () => {
+    expect(readPlan("0 1 1-5 * *", "incremental", null)).toBeNull();
+    expect(readPlan("0 1 * * 1", "incremental", "0 2 * * 5")).toBeNull(); // other time
+    const plan = readPlan("0 1 * * *", "full", null);
+    expect(plan?.days[3]).toBe("full");
+    expect(plan && buildPlan(plan)).toEqual({
+      schedule: "0 1 * * *",
+      backup_type: "full",
+      full_schedule: "",
+    });
+  });
+
+  it("adds a weekly full backup to a nightly incremental", async () => {
+    const { created } = open();
+    fireEvent.click(await screen.findByRole("button", { name: "New policy" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Mixte" },
+    });
+    fireEvent.change(screen.getByLabelText("Frequency"), {
+      target: { value: "daily" },
+    });
+    fireEvent.change(screen.getByLabelText("Full"), {
+      target: { value: "weekly" },
+    });
+    const times = screen.getAllByLabelText("Time");
+    fireEvent.change(times[1] as HTMLElement, { target: { value: "03:30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(created()).toBeDefined());
+    expect(created()).toMatchObject({
+      schedule: "0 1 * * *",
+      backup_type: "incremental",
+      full_schedule: "30 3 * * 0",
+    });
+  });
+
+  it("shows the volume, the last run and the history of a policy", async () => {
+    const run = {
+      started_at: "2026-11-20T00:00:00Z",
+      finished_at: "2026-11-20T00:42:00Z",
+      backup_type: "incremental",
+      trigger: "schedule",
+      status: "partial",
+      accounts: 40,
+      succeeded: 39,
+      failed: 1,
+      pending: 0,
+      read_bytes: 2 * 1024 ** 3,
+      new_bytes: 1024 ** 3,
+      size_bytes: 300 * 1024 ** 3,
+    };
+    open(
+      user("super_admin"),
+      [
+        policy({
+          full_schedule: "0 2 * * 0",
+          next_full_run_at: "2026-11-22T01:00:00Z",
+          account_count: 40,
+          protected_bytes: 300 * 1024 ** 3,
+          stored_bytes: 120 * 1024 ** 3,
+          snapshot_count: 400,
+          last_run: run as never,
+        }),
+      ],
+      { "GET /api/policies/p1/runs": page([run]) },
+    );
+    const row = (await screen.findByText("Nightly")).closest(
+      "tr",
+    ) as HTMLElement;
+    expect(
+      within(row).getByText(/full every Sunday at 02:00/),
+    ).toBeInTheDocument();
+    expect(within(row).getByText(/^300(\.0)? GB$/)).toBeInTheDocument();
+    expect(within(row).getByText("40 accounts")).toBeInTheDocument();
+    expect(within(row).getByText("39/40 succeeded")).toBeInTheDocument();
+    fireEvent.click(
+      within(row).getByRole("button", { name: /History of Nightly/ }),
+    );
+    const panel = await screen.findByRole("region", {
+      name: "History of Nightly",
+    });
+    expect(await within(panel).findByText("1 failed")).toBeInTheDocument();
+    expect(within(panel).getByText("42 min")).toBeInTheDocument();
+    expect(within(panel).getByText("scheduled")).toBeInTheDocument();
   });
 
   it("limits domain admins to their domain", async () => {
@@ -296,12 +456,16 @@ describe("policies page", () => {
       "tr",
     ) as HTMLElement;
     expect(
-      within(own).getByRole("button", { name: "Edit" }),
+      within(own).getByRole("button", { name: /^Edit policy / }),
     ).toBeInTheDocument();
     const other = screen.getByText("Other").closest("tr") as HTMLElement;
-    expect(within(other).queryByRole("button")).not.toBeInTheDocument();
+    // Only the history: no run, edit, suspend or delete.
+    expect(within(other).getAllByRole("button")).toHaveLength(1);
+    expect(
+      within(other).getByRole("button", { name: /History/ }),
+    ).toBeInTheDocument();
     const glob = screen.getByText("Global").closest("tr") as HTMLElement;
-    expect(within(glob).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(glob).getAllByRole("button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "New policy" }));
     const scope = screen.getByLabelText("Scope");
     expect(within(scope).queryByText("All accounts")).not.toBeInTheDocument();
@@ -364,14 +528,12 @@ describe("dashboard storage", () => {
     });
     window.history.pushState({}, "", "/");
     render(<App />);
-    const nas = await screen.findByText(
-      /network share \/\/nas\/backups \(cifs\)/,
-    );
-    expect(nas).toHaveTextContent("5 GB free of 100 GB");
-    expect(nas).toHaveClass("warn");
-    expect(screen.getByText(/local disk \/srv\/repo/)).toHaveTextContent(
-      "unreachable!",
-    );
+    const nas = await screen.findByRole("meter", {
+      name: "Backup NAS — //nas/backups",
+    });
+    expect(nas).toHaveAttribute("aria-valuenow", "95");
+    expect(screen.getByText("95 GB / 100 GB (95 %)")).toHaveClass("bad-text");
+    expect(screen.getByText("unreachable!")).toBeInTheDocument();
   });
 });
 
@@ -424,5 +586,36 @@ describe("dashboard alerts", () => {
         "12 object(s) and 2 snapshot(s) deleted, 2 KB freed",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("run a policy now", () => {
+  it("queues its backups and reports the result", async () => {
+    const { calls } = open(user("super_admin"), [policy()], {
+      "POST /api/policies/p1/run": {
+        status: 202,
+        body: { queued: 4, skipped_busy: 1, skipped_deleted: 0 },
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Run policy .* now/ }),
+    );
+    expect(
+      await screen.findByText(/4 backup\(s\) started \(1 already running\)/),
+    ).toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/api/policies/p1/run")).toBe(true);
+  });
+
+  it("shows a refusal", async () => {
+    open(user("super_admin"), [policy()], {
+      "POST /api/policies/p1/run": {
+        status: 403,
+        body: { detail: "forbidden" },
+      },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Run policy .* now/ }),
+    );
+    expect(await screen.findByText("Error: forbidden")).toBeInTheDocument();
   });
 });
